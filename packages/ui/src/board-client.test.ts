@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -185,17 +186,26 @@ describe('BoardClient sync', () => {
 describe('BoardClient against a daemon', () => {
   let daemon: RunningDaemon | null = null;
   let projectPath = '';
+  let worktreesDir = '';
   afterEach(async () => {
     await daemon?.close();
     await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
+    await rm(worktreesDir, { recursive: true, force: true, maxRetries: 5 });
   });
 
-  it('follows a task from creation to done', async () => {
+  it('follows a task from creation to review', async () => {
     projectPath = await mkdtemp(join(tmpdir(), 'agentcats-ui-'));
+    worktreesDir = await mkdtemp(join(tmpdir(), 'agentcats-ui-wt-'));
+    const git = (...args: string[]) =>
+      execFileSync('git', args, { cwd: projectPath, stdio: 'pipe' });
+    git('init', '-q');
+    await writeFile(join(projectPath, 'README.md'), '# ui test\n');
+    git('add', '.');
+    git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
     daemon = await startDaemon({
       projectPath,
-      adapter: createMockAdapter({ timeScale: 0 }),
-      config: AgentcatsConfig.parse({ adapter: 'mock' }),
+      adapter: createMockAdapter({ timeScale: 0, realFiles: true }),
+      config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir }),
     });
     const origin = daemon.url;
     const client = new BoardClient({
@@ -213,10 +223,10 @@ describe('BoardClient against a daemon', () => {
     const { task } = await client.request('createTask', {}, { title: 'add a hello function' });
     await vi.waitFor(() => {
       const view: BoardView = client.getView();
-      expect(view.board.tasks[task.id]?.status).toBe('done');
+      expect(view.board.tasks[task.id]?.status).toBe('review');
     });
-    const cat = Object.values(client.getView().board.cats)[0];
-    expect(cat?.status).toBe('done');
+    const worker = Object.values(client.getView().board.cats).find((c) => c.role === 'worker');
+    expect(worker?.status).toBe('done');
     client.stop();
   });
 });

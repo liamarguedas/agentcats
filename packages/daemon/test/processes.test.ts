@@ -1,40 +1,59 @@
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { isProcessAlive, killProcessTree } from '@agentcats/kit';
 import { createMockAdapter } from '@agentcats/adapter-mock';
-import { AgentcatsConfig } from '@agentcats/protocol';
-import { describe, expect, it } from 'vitest';
+import { isProcessAlive, killProcessTree } from '@agentcats/kit';
+import { AgentcatsConfig, Snapshot, type Task } from '@agentcats/protocol';
+import { describe, expect, it, vi } from 'vitest';
 
 import { startDaemon } from '../src/index.js';
-import { connectEvents, isType, tempProject } from './harness.js';
+import { tempDir, tempProject } from './harness.js';
 
 const pidsFile = (projectPath: string) => join(projectPath, '.agentcats', 'run', 'pids.json');
 
 async function recordedPids(projectPath: string): Promise<number[]> {
-  const file = JSON.parse(await readFile(pidsFile(projectPath), 'utf8')) as {
+  const file = JSON.parse(
+    await readFile(pidsFile(projectPath), 'utf8').catch(() => '{"processes":[]}'),
+  ) as {
     processes: { pid: number }[];
   };
   return file.processes.map((p) => p.pid);
 }
 
-async function startTask(url: string, token: string): Promise<void> {
-  const res = await fetch(`${url}/api/tasks`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title: 'long job' }),
-  });
-  expect(res.status).toBe(201);
+async function waitForPid(projectPath: string): Promise<number> {
+  let pid = 0;
+  await vi.waitFor(
+    async () => {
+      [pid = 0] = await recordedPids(projectPath);
+      expect(pid).toBeGreaterThan(0);
+    },
+    { timeout: 10_000, interval: 50 },
+  );
+  return pid;
+}
+
+function client(url: string, token: string) {
+  return async (method: string, path: string, body?: unknown) => {
+    const res = await fetch(`${url}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
+    return { status: res.status, body: await res.json() };
+  };
 }
 
 async function waitUntilDead(pid: number, timeoutMs = 5_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (isProcessAlive(pid)) {
-    if (Date.now() > deadline) throw new Error(`pid ${pid} is still alive`);
+    if (Date.now() > deadline) throw new Error(`pid ${String(pid)} is still alive`);
     await new Promise((r) => setTimeout(r, 50));
   }
 }
@@ -51,53 +70,95 @@ async function spawnSleeper(): Promise<number> {
   return child.pid!;
 }
 
+async function cleanup(...dirs: string[]) {
+  for (const dir of dirs) await rm(dir, { recursive: true, force: true, maxRetries: 10 });
+}
+
 describe('agent process cleanup', () => {
-  it('records the agent pid and kills it on graceful shutdown', async () => {
+  it('records the worker pid and kills it on graceful shutdown', async () => {
     const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
     const daemon = await startDaemon({
       projectPath,
-      adapter: createMockAdapter({ timeScale: 0, scenario: 'hang', spawnProcess: true }),
-      config: AgentcatsConfig.parse({ adapter: 'mock' }),
+      adapter: createMockAdapter({
+        timeScale: 0,
+        scenario: 'hang',
+        spawnProcess: true,
+        realFiles: true,
+      }),
+      config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir }),
     });
-    const stream = await connectEvents(daemon);
-    await startTask(daemon.url, daemon.token);
-    await stream.waitFor(isType('tool.called'));
+    const api = client(daemon.url, daemon.token);
+    expect((await api('POST', '/api/tasks', { title: 'long job' })).status).toBe(201);
+    const pid = await waitForPid(projectPath);
+    expect(isProcessAlive(pid)).toBe(true);
 
-    const [pid] = await recordedPids(projectPath);
-    expect(pid).toBeDefined();
-    expect(isProcessAlive(pid!)).toBe(true);
-
-    stream.close();
     await daemon.close();
-    expect(isProcessAlive(pid!)).toBe(false);
-    await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
+    expect(isProcessAlive(pid)).toBe(false);
+    await cleanup(projectPath, worktreesDir);
   });
 
-  it('leaves no orphan when the daemon is hard-killed', async () => {
+  it('survives a hard kill mid-task: no orphan, tasks interrupted, nothing lost, re-runnable', async () => {
     const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
     const fixture = fileURLToPath(new URL('./fixtures/run-daemon.ts', import.meta.url));
     const tsx = pathToFileURL(createRequire(import.meta.url).resolve('tsx')).href;
-    const daemonProcess = spawn(
+    const child = spawn(
       process.execPath,
-      ['--conditions=@agentcats/source', '--import', tsx, fixture, projectPath],
+      ['--conditions=@agentcats/source', '--import', tsx, fixture, projectPath, worktreesDir],
       { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
     );
     const line = await new Promise<string>((resolve) =>
-      createInterface({ input: daemonProcess.stdout }).once('line', resolve),
+      createInterface({ input: child.stdout }).once('line', resolve),
     );
     const { url, token } = JSON.parse(line) as { url: string; token: string };
-    await startTask(url, token);
-    const [agentPid] = await recordedPids(projectPath);
-    expect(isProcessAlive(agentPid!)).toBe(true);
+    const api = client(url, token);
+    const created = (await api('POST', '/api/tasks', { title: 'long job' })).body as { task: Task };
+    const agentPid = await waitForPid(projectPath);
+    await vi.waitFor(async () => {
+      const snap = Snapshot.parse((await api('GET', '/api/snapshot')).body);
+      expect(snap.board.tasks[created.task.id]?.status).toBe('running');
+    });
+    const before = Snapshot.parse((await api('GET', '/api/snapshot')).body);
 
-    process.kill(daemonProcess.pid!, 'SIGKILL'); // no shutdown code runs
+    process.kill(child.pid!, 'SIGKILL'); // no shutdown code runs
+    await waitUntilDead(agentPid);
 
-    await waitUntilDead(agentPid!);
-    await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
-  }, 30_000);
+    const restarted = await startDaemon({
+      projectPath,
+      adapter: createMockAdapter({ timeScale: 0, realFiles: true }),
+      config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir }),
+    });
+    const api2 = client(restarted.url, restarted.token);
+    const after = Snapshot.parse((await api2('GET', '/api/snapshot')).body);
+
+    // Nothing lost: every event from before the kill is still there, in order.
+    expect(after.events.slice(0, before.events.length).map((e) => e.id)).toEqual(
+      before.events.map((e) => e.id),
+    );
+    const task = after.board.tasks[created.task.id]!;
+    expect(task).toMatchObject({ status: 'interrupted', reasonCode: 'daemon_restarted' });
+    expect(await stat(task.worktreePath!)).toBeTruthy();
+    expect(Object.values(after.board.cats).every((c) => c.status === 'idle')).toBe(true);
+
+    // The user can re-run it, in the same worktree.
+    const rerun = (await api2('POST', `/api/tasks/${task.id}/rerun`)).body as { task: Task };
+    expect(rerun.task).toMatchObject({ status: 'queued', attempt: 2 });
+    await vi.waitFor(
+      async () => {
+        const snap = Snapshot.parse((await api2('GET', '/api/snapshot')).body);
+        expect(snap.board.tasks[task.id]?.status).toBe('review');
+      },
+      { timeout: 10_000 },
+    );
+
+    await restarted.close();
+    await cleanup(projectPath, worktreesDir);
+  }, 60_000);
 
   it('reaps a recorded leftover on startup, but spares a reused pid', async () => {
     const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
     const leftover = await spawnSleeper();
     const reused = await spawnSleeper();
     await mkdir(join(projectPath, '.agentcats', 'run'), { recursive: true });
@@ -116,7 +177,7 @@ describe('agent process cleanup', () => {
     const daemon = await startDaemon({
       projectPath,
       adapter: createMockAdapter({ timeScale: 0 }),
-      config: AgentcatsConfig.parse({ adapter: 'mock' }),
+      config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir }),
     });
 
     expect(isProcessAlive(leftover)).toBe(false);
@@ -125,6 +186,18 @@ describe('agent process cleanup', () => {
 
     await daemon.close();
     await killProcessTree(reused);
-    await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
+    await cleanup(projectPath, worktreesDir);
   }, 30_000);
+
+  it('refuses to start outside a git repository, with a clear message', async () => {
+    const dir = await tempDir();
+    await expect(
+      startDaemon({
+        projectPath: dir,
+        adapter: createMockAdapter({ timeScale: 0 }),
+        config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir: dir }),
+      }),
+    ).rejects.toThrow(/not a git repository/);
+    await cleanup(dir);
+  });
 });

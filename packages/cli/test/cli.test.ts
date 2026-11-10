@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +13,22 @@ afterEach(async () => {
   if (project) await rm(project, { recursive: true, force: true, maxRetries: 5 });
   project = '';
 });
+
+/** A temp git repo with one commit and a config that keeps worktrees out of the home dir. */
+async function gitProject(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: dir, stdio: 'pipe' });
+  git('init', '-q');
+  await writeFile(join(dir, 'README.md'), '# cli test\n');
+  git('add', '.');
+  git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
+  await mkdir(join(dir, '.agentcats'));
+  await writeFile(
+    join(dir, '.agentcats', 'agentcats.config.json'),
+    JSON.stringify({ worktreesDir: join(dir, '.agentcats', 'worktrees') }),
+  );
+  return dir;
+}
 
 function testIo() {
   const out: string[] = [];
@@ -55,7 +72,7 @@ describe('parseCliArgs', () => {
 
 describe('main', () => {
   it('starts the daemon, prints the board URL, and stops cleanly', async () => {
-    project = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
+    project = await gitProject();
     const { io, out, stop } = testIo();
     const running = main(['--project', project, '--adapter', 'mock', '--no-open'], io);
 
@@ -71,7 +88,10 @@ describe('main', () => {
       headers: { Authorization: `Bearer ${token}` },
     });
     const snapshot = Snapshot.parse(await res.json());
-    expect(Object.values(snapshot.board.cats)[0]?.adapter).toBe('mock');
+    expect(Object.values(snapshot.board.cats)[0]).toMatchObject({
+      adapter: 'mock',
+      role: 'orchestrator',
+    });
 
     stop();
     expect(await running).toBe(0);
@@ -79,7 +99,7 @@ describe('main', () => {
   });
 
   it('opens the browser unless --no-open is given', async () => {
-    project = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
+    project = await gitProject();
     const { io, stop } = testIo();
     const running = main(['--project', project, '--adapter', 'mock'], io);
     await vi.waitFor(() => {

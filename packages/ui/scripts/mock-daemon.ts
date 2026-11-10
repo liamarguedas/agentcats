@@ -1,10 +1,12 @@
 // A daemon with the mock adapter, for UI development and the browser tests.
-// No agent CLI, no API key, no tokens spent.
+// No agent CLI, no API key, no tokens spent. The project is a throwaway git
+// repo; mock workers really commit to their branches in throwaway worktrees.
 //
 // Env: AGENTCATS_PORT (default 4545), AGENTCATS_TOKEN (default random),
 // AGENTCATS_TIME_SCALE (default 1), AGENTCATS_UI_DIR (default: serve no UI;
 // set it to packages/ui/dist to serve the built UI).
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,17 +16,41 @@ import { AgentcatsConfig } from '@agentcats/protocol';
 
 const env = process.env;
 const projectPath = await mkdtemp(join(tmpdir(), 'agentcats-mock-'));
+const worktreesDir = await mkdtemp(join(tmpdir(), 'agentcats-mock-wt-'));
+const git = (...args: string[]) => execFileSync('git', args, { cwd: projectPath, stdio: 'pipe' });
+git('init', '-q', '-b', 'main');
+await writeFile(join(projectPath, 'README.md'), '# mock project\n');
+await writeFile(join(projectPath, '.gitignore'), '.agentcats/\n');
+git('add', '.');
+git(
+  '-c',
+  'user.name=agentcats',
+  '-c',
+  'user.email=mock@agentcats.local',
+  'commit',
+  '-q',
+  '-m',
+  'init',
+);
+
 const daemon = await startDaemon({
   projectPath,
-  adapter: createMockAdapter({ timeScale: Number(env['AGENTCATS_TIME_SCALE'] ?? 1) }),
-  config: AgentcatsConfig.parse({ adapter: 'mock', port: Number(env['AGENTCATS_PORT'] ?? 4545) }),
+  adapter: createMockAdapter({
+    timeScale: Number(env['AGENTCATS_TIME_SCALE'] ?? 1),
+    realFiles: true,
+  }),
+  config: AgentcatsConfig.parse({
+    adapter: 'mock',
+    port: Number(env['AGENTCATS_PORT'] ?? 4545),
+    worktreesDir,
+  }),
   uiDir: env['AGENTCATS_UI_DIR'] ?? null,
   ...(env['AGENTCATS_TOKEN'] && { token: env['AGENTCATS_TOKEN'] }),
   logger: consoleLogger,
 });
 
 const fragment = daemon.uiUrl.slice(daemon.uiUrl.indexOf('#'));
-console.log(`Mock daemon on ${daemon.url}`);
+console.log(`Mock daemon on ${daemon.url} for ${projectPath}`);
 console.log(`Vite dev UI: http://localhost:5173/${fragment}`);
 if (env['AGENTCATS_UI_DIR']) console.log(`Built UI:    ${daemon.uiUrl}`);
 
@@ -33,6 +59,7 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     void daemon
       .close()
       .then(() => rm(projectPath, { recursive: true, force: true, maxRetries: 5 }))
+      .then(() => rm(worktreesDir, { recursive: true, force: true, maxRetries: 5 }))
       .then(() => process.exit(0));
   });
 }

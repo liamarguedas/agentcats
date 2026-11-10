@@ -24,14 +24,15 @@ import {
 import { type WebSocket, WebSocketServer } from 'ws';
 import type { z } from 'zod';
 
-import type { CatRunner } from './cat-runner.js';
+import type { CatManager } from './cat-manager.js';
 import { ApiError } from './errors.js';
 import type { EventLog } from './event-log.js';
 import type { Logger } from './logger.js';
+import { handleMcpRequest, MCP_PATH } from './mcp-server.js';
 
 export interface HttpServerOptions {
   readonly log: EventLog;
-  readonly runner: CatRunner;
+  readonly manager: CatManager;
   readonly token: string;
   /** Directory with the built UI, or `null` to serve no UI. */
   readonly uiDir: string | null;
@@ -67,12 +68,14 @@ type Handler = (params: Record<string, string>, body: unknown) => Promise<unknow
  *   must be the daemon's own.
  * - The WebSocket needs the token in its subprotocol list and must come from
  *   the daemon's own `Origin`; a missing `Origin` is rejected too.
+ * - `/mcp` is for agents, not browsers: it needs a per-session agent token
+ *   (never the UI token), and a foreign `Origin` is rejected.
  */
 export function createHttpServer(options: HttpServerOptions): {
   server: Server;
   closeSockets: () => void;
 } {
-  const { log, runner, token, logger } = options;
+  const { log, manager, token, logger } = options;
   const expectedToken = Buffer.from(token);
   const uiDir = options.uiDir === null ? null : resolve(options.uiDir);
 
@@ -89,44 +92,66 @@ export function createHttpServer(options: HttpServerOptions): {
     return given.length === expectedToken.length && timingSafeEqual(given, expectedToken);
   };
 
-  const requireCat = (catId: string | undefined) => {
-    if (catId !== undefined && catId !== runner.catId) {
-      throw new ApiError('not_found', `No cat ${catId}`);
-    }
-  };
+  const param = (params: Record<string, string>, name: string) => params[name] ?? '';
+  const accepted = { accepted: true } as const;
 
   const handlers: Record<RouteName, Handler> = {
-    createTask: async (_params, body) => {
+    createTask: (_params, body) => {
       const { title, description, catId } = body as z.infer<typeof routes.createTask.body>;
-      requireCat(catId);
-      return { task: await runner.createTask(title, description) };
+      const task = manager.createTask(title, description, {
+        actor: 'user',
+        ...(catId !== undefined && { catId }),
+      });
+      return Promise.resolve({ task });
     },
     resolveApproval: async (params, body) => {
       const { decision } = body as z.infer<typeof routes.resolveApproval.body>;
-      const approvalId = params['approvalId'] ?? '';
-      await runner.resolveApproval(approvalId, decision);
+      const approvalId = param(params, 'approvalId');
+      await manager.resolveApproval(approvalId, decision);
       return { approvalId, decision };
     },
     killCat: async (params) => {
-      requireCat(params['catId']);
-      await runner.kill();
-      return { accepted: true };
+      await manager.killCat(param(params, 'catId'));
+      return accepted;
+    },
+    updateCat: (params, body) =>
+      Promise.resolve({
+        cat: manager.updateCat(
+          param(params, 'catId'),
+          body as z.infer<typeof routes.updateCat.body>,
+        ),
+      }),
+    pauseCat: async (params) => {
+      await manager.pauseCat(param(params, 'catId'), 'user');
+      return accepted;
+    },
+    resumeCat: async (params) => {
+      await manager.resumeCat(param(params, 'catId'));
+      return accepted;
+    },
+    nudgeCat: async (params, body) => {
+      const { text } = body as z.infer<typeof routes.nudgeCat.body>;
+      await manager.nudgeCat(param(params, 'catId'), text);
+      return accepted;
+    },
+    reviewTask: async (params, body) => {
+      const { decision } = body as z.infer<typeof routes.reviewTask.body>;
+      return { task: await manager.reviewTask(param(params, 'taskId'), decision) };
+    },
+    rerunTask: (params) => Promise.resolve({ task: manager.rerunTask(param(params, 'taskId')) }),
+    cancelTask: async (params) => ({
+      task: await manager.cancelTask(param(params, 'taskId'), 'user'),
+    }),
+    taskEvents: (params) => {
+      const taskId = param(params, 'taskId');
+      manager.task(taskId);
+      return Promise.resolve({ events: log.taskEvents(taskId) });
     },
     chat: async (_params, body) => {
       const { text, catId } = body as z.infer<typeof routes.chat.body>;
-      requireCat(catId);
-      await runner.chat(text);
-      return { accepted: true };
+      await manager.chat(text, catId);
+      return accepted;
     },
-    // Interim: these arrive with the M1 cat manager.
-    updateCat: notYet('updateCat'),
-    pauseCat: notYet('pauseCat'),
-    resumeCat: notYet('resumeCat'),
-    nudgeCat: notYet('nudgeCat'),
-    reviewTask: notYet('reviewTask'),
-    rerunTask: notYet('rerunTask'),
-    cancelTask: notYet('cancelTask'),
-    taskEvents: notYet('taskEvents'),
     snapshot: () =>
       Promise.resolve({
         protocolVersion: PROTOCOL_VERSION,
@@ -188,6 +213,20 @@ export function createHttpServer(options: HttpServerOptions): {
     throw new ApiError('not_found', `No route ${pathname}`);
   }
 
+  async function handleMcp(req: IncomingMessage, res: ServerResponse) {
+    const origin = req.headers.origin;
+    if (origin !== undefined && !originAllowed(origin)) {
+      throw new ApiError('forbidden', 'Origin not allowed');
+    }
+    const auth = req.headers.authorization;
+    const agentToken = auth?.startsWith('Bearer ') ? auth.slice(7) : '';
+    if (!manager.catForMcpToken(agentToken)) {
+      throw new ApiError('unauthorized', 'Missing or invalid agent token');
+    }
+    const body = req.method === 'POST' ? await readJson(req) : undefined;
+    await handleMcpRequest(manager, req, res, body);
+  }
+
   async function serveStatic(req: IncomingMessage, res: ServerResponse, pathname: string) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       throw new ApiError('not_found', 'Not found');
@@ -237,7 +276,9 @@ export function createHttpServer(options: HttpServerOptions): {
       try {
         if (!hostAllowed(req.headers.host)) throw new ApiError('forbidden', 'Host not allowed');
         const { pathname } = new URL(req.url ?? '/', 'http://localhost');
-        if (pathname === API_PREFIX || pathname.startsWith(`${API_PREFIX}/`)) {
+        if (pathname === MCP_PATH) {
+          await handleMcp(req, res);
+        } else if (pathname === API_PREFIX || pathname.startsWith(`${API_PREFIX}/`)) {
           await handleApi(req, res, pathname);
         } else {
           await serveStatic(req, res, pathname);
@@ -324,10 +365,6 @@ export function createHttpServer(options: HttpServerOptions): {
       server.closeAllConnections();
     },
   };
-}
-
-function notYet(route: string): Handler {
-  return () => Promise.reject(new ApiError('bad_request', `${route} is not available yet`));
 }
 
 function errorBody(code: ErrorResponse['error']['code'], message: string): ErrorResponse {

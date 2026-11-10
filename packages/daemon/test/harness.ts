@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,34 +16,60 @@ import WebSocket from 'ws';
 
 import { type RunningDaemon, startDaemon } from '../src/index.js';
 
+/** A fresh temp directory. */
+export async function tempDir(prefix = 'agentcats-test-'): Promise<string> {
+  return mkdtemp(join(tmpdir(), prefix));
+}
+
+/** A fresh temp git repository with one commit, as the daemon requires. */
 export async function tempProject(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'agentcats-test-'));
+  const repo = await tempDir();
+  const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
+  git('init', '-q', '-b', 'main');
+  git('config', 'user.email', 'test@agentcats.local');
+  git('config', 'user.name', 'agentcats test');
+  await writeFile(join(repo, 'README.md'), '# test project\n');
+  await writeFile(join(repo, '.gitignore'), '.agentcats/\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'init');
+  return repo;
+}
+
+/** Run git in a directory and return its trimmed output. */
+export function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, stdio: 'pipe' }).toString().trim();
 }
 
 export interface TestDaemon {
   readonly daemon: RunningDaemon;
   readonly projectPath: string;
+  readonly worktreesDir: string;
   /** Authenticated JSON request with the daemon's own Origin. */
   api(method: string, path: string, body?: unknown): Promise<{ status: number; body: unknown }>;
   close(): Promise<void>;
 }
 
-/** Start a daemon on a fresh temp project with the mock adapter at full speed. */
+/**
+ * Start a daemon on a fresh temp repo with the mock adapter at full speed.
+ * Mock workers write and commit for real, in worktrees under a temp dir.
+ */
 export async function startTestDaemon(
   mock: MockAdapterOptions = {},
   config: AgentcatsConfigInput = {},
   uiDir: string | null = null,
 ): Promise<TestDaemon> {
   const projectPath = await tempProject();
+  const worktreesDir = await tempDir('agentcats-wt-');
   const daemon = await startDaemon({
     projectPath,
-    adapter: createMockAdapter({ timeScale: 0, ...mock }),
-    config: AgentcatsConfig.parse({ adapter: 'mock', ...config }),
+    adapter: createMockAdapter({ timeScale: 0, realFiles: true, ...mock }),
+    config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir, ...config }),
     uiDir,
   });
   return {
     daemon,
     projectPath,
+    worktreesDir,
     api: async (method, path, body) => {
       const res = await fetch(`${daemon.url}${path}`, {
         method,
@@ -59,6 +86,7 @@ export async function startTestDaemon(
     close: async () => {
       await daemon.close();
       await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
+      await rm(worktreesDir, { recursive: true, force: true, maxRetries: 5 });
     },
   };
 }
