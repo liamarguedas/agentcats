@@ -53,7 +53,14 @@ const created: AgentcatsEvent = {
   ts: 1,
   type: 'cat.created',
   catId: 'cat-1',
-  payload: { name: 'Mochi', adapter: 'mock', model: null, permissionMode: 'accept_edits' },
+  payload: {
+    name: 'Mochi',
+    role: 'worker',
+    adapter: 'mock',
+    model: null,
+    permissionMode: 'accept_edits',
+    budget: { maxUsd: 2, maxTokens: null },
+  },
 };
 
 function snapshotOf(events: AgentcatsEvent[]): Snapshot {

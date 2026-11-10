@@ -118,6 +118,15 @@ export function createHttpServer(options: HttpServerOptions): {
       await runner.chat(text);
       return { accepted: true };
     },
+    // Interim: these arrive with the M1 cat manager.
+    updateCat: notYet('updateCat'),
+    pauseCat: notYet('pauseCat'),
+    resumeCat: notYet('resumeCat'),
+    nudgeCat: notYet('nudgeCat'),
+    reviewTask: notYet('reviewTask'),
+    rerunTask: notYet('rerunTask'),
+    cancelTask: notYet('cancelTask'),
+    taskEvents: notYet('taskEvents'),
     snapshot: () =>
       Promise.resolve({
         protocolVersion: PROTOCOL_VERSION,
@@ -315,6 +324,10 @@ export function createHttpServer(options: HttpServerOptions): {
       server.closeAllConnections();
     },
   };
+}
+
+function notYet(route: string): Handler {
+  return () => Promise.reject(new ApiError('bad_request', `${route} is not available yet`));
 }
 
 function errorBody(code: ErrorResponse['error']['code'], message: string): ErrorResponse {

@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 import { AsyncQueue, killProcessTree, spawnGuarded } from '@agentcats/kit';
-import type { ApprovalDecision, PermissionMode } from '@agentcats/protocol';
+import type { ApprovalDecision, Billing, PermissionMode } from '@agentcats/protocol';
 import {
   type Adapter,
   type AdapterCapabilities,
@@ -23,7 +23,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 
 import { claudeVersion, resolveClaudeExecutable, TESTED_CLAUDE_VERSIONS } from './executable.js';
-import { summarizeInput, toolKind, Translator } from './translate.js';
+import { billingOf, summarizeInput, toolKind, Translator } from './translate.js';
 
 export interface ClaudeAdapterOptions {
   /** Path to `claude`. `null` or omitted resolves `claude` on PATH. */
@@ -147,7 +147,8 @@ async function spawnClaudeSession(
     });
   }
 
-  session.attach(q, child, options.model);
+  const account = await q.accountInfo().catch(() => null);
+  session.attach(q, child, options.model, billingOf(account));
   return session;
 }
 
@@ -175,7 +176,7 @@ class ClaudeSession implements Session {
     private readonly version: string | null,
   ) {}
 
-  attach(q: Query, child: ChildProcess | null, model: string | null): void {
+  attach(q: Query, child: ChildProcess | null, model: string | null, billing: Billing): void {
     this.#query = q;
     this.#child = child;
     this.pid = child?.pid ?? null;
@@ -184,6 +185,7 @@ class ClaudeSession implements Session {
       resumeId: this.resumeId,
       model,
       agentVersion: this.version,
+      billing,
     });
     if (this.version === null || !TESTED_CLAUDE_VERSIONS.includes(this.version)) {
       this.#emit({

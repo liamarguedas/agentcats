@@ -2,7 +2,7 @@ import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_pr
 import { randomUUID } from 'node:crypto';
 
 import { AsyncQueue, killProcessTree, spawnGuarded } from '@agentcats/kit';
-import type { ApprovalDecision, Usage } from '@agentcats/protocol';
+import type { ApprovalDecision, Billing, Usage } from '@agentcats/protocol';
 import {
   type Adapter,
   type AdapterCapabilities,
@@ -32,6 +32,8 @@ export interface MockAdapterOptions {
    * agent CLI, so process tracking and cleanup can be tested. Default `false`.
    */
   readonly spawnProcess?: boolean;
+  /** Billing the mock reports at session start. Default `metered`, so budgets apply. */
+  readonly billing?: Billing;
 }
 
 const CAPABILITIES: AdapterCapabilities = {
@@ -66,7 +68,13 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
     async spawn(spawnOptions) {
       const scenario = resolveScenario(options.scenario ?? 'happy-path');
       const child = options.spawnProcess ? await startStandInProcess(spawnOptions.cwd) : null;
-      return new MockSession(spawnOptions, scenario, timeScale, child);
+      return new MockSession(
+        spawnOptions,
+        scenario,
+        timeScale,
+        child,
+        options.billing ?? 'metered',
+      );
     },
   };
 }
@@ -122,6 +130,7 @@ class MockSession implements Session {
     private readonly scenario: Scenario,
     private readonly timeScale: number,
     private readonly child: ChildProcess | null,
+    billing: Billing,
   ) {
     this.pid = child?.pid ?? null;
     child?.once('exit', (code) => void this.#onChildExit(code));
@@ -130,6 +139,7 @@ class MockSession implements Session {
       resumeId: null,
       model: options.model,
       agentVersion: 'mock',
+      billing,
     });
   }
 

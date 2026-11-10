@@ -6,7 +6,7 @@ import {
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk';
 import { describe, expect, it } from 'vitest';
 
-import { summarizeInput, toolKind, Translator } from './translate.js';
+import { billingOf, summarizeInput, toolKind, Translator } from './translate.js';
 
 // Minimal SDK message fixtures. Only the fields the translator reads are set.
 const assistant = (id: string, content: unknown[], parent: string | null = null) =>
@@ -89,7 +89,13 @@ describe('Translator', () => {
     expect(events.at(-1)).toEqual({ type: 'turn.ended', stopReason: 'end_turn' });
 
     const stream: AgentEvent[] = [
-      { type: 'session.started', resumeId: 'r', model: null, agentVersion: '2.1.302' },
+      {
+        type: 'session.started',
+        resumeId: 'r',
+        model: null,
+        agentVersion: '2.1.302',
+        billing: 'subscription',
+      },
       { type: 'turn.started' },
       ...events,
       { type: 'session.ended', reason: 'killed', exitCode: null },
@@ -211,5 +217,22 @@ describe('tool helpers', () => {
     expect(summarizeInput({ description: 'Explore the repo' })).toBe('Explore the repo');
     expect(summarizeInput({ todos: [1] })).toBe('{"todos":[1]}');
     expect(summarizeInput({ file_path: 'x'.repeat(300) })).toHaveLength(200);
+  });
+});
+
+describe('billingOf', () => {
+  it.each([
+    [{ apiProvider: 'firstParty', subscriptionType: 'Claude Pro' }, 'subscription'],
+    [{ apiProvider: 'firstParty', apiKeySource: 'ANTHROPIC_API_KEY' }, 'metered'],
+    [{ apiProvider: 'bedrock' }, 'metered'],
+    [{ apiProvider: 'vertex' }, 'metered'],
+    [
+      { apiProvider: 'firstParty', apiKeySource: 'none', subscriptionType: 'Claude Max' },
+      'subscription',
+    ],
+    [{}, 'unknown'],
+    [null, 'unknown'],
+  ] as const)('classifies %o as %s', (account, billing) => {
+    expect(billingOf(account)).toBe(billing);
   });
 });

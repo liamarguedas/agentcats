@@ -1,6 +1,6 @@
-import type { ToolKind, Usage } from '@agentcats/protocol';
+import type { Billing, ToolKind, Usage } from '@agentcats/protocol';
 import type { AgentEvent, StopReason } from '@agentcats/protocol/adapter';
-import type { SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { AccountInfo, SDKMessage, SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 
 const SUMMARY_LIMIT = 200;
 
@@ -59,6 +59,19 @@ function textOf(content: unknown): string {
         : '',
     )
     .join(' ');
+}
+
+/**
+ * How a Claude session is paid for. Cloud providers and API keys are metered;
+ * a first-party login with a subscription plan is not. `null` account info
+ * (an older CLI, or the lookup failed) is `unknown`.
+ */
+export function billingOf(account: AccountInfo | null): Billing {
+  if (!account) return 'unknown';
+  if (account.apiProvider !== undefined && account.apiProvider !== 'firstParty') return 'metered';
+  if (account.apiKeySource !== undefined && account.apiKeySource !== 'none') return 'metered';
+  if (account.subscriptionType) return 'subscription';
+  return 'unknown';
 }
 
 /** How a Claude `result` message ends the turn. */

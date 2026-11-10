@@ -5,6 +5,14 @@ function describe(event: AgentcatsEvent): string {
   switch (event.type) {
     case 'cat.created':
       return `${event.payload.name} joined (${event.payload.adapter})`;
+    case 'cat.updated':
+      return Object.keys(event.payload).join(', ');
+    case 'cat.paused':
+      return event.payload.reason === 'budget' ? 'paused: budget reached' : 'paused';
+    case 'cat.resumed':
+      return 'resumed';
+    case 'notice':
+      return event.payload.message;
     case 'cat.status_changed':
       return event.payload.reason
         ? `${event.payload.status}: ${event.payload.reason}`

@@ -9,7 +9,7 @@ Orchestration, parallel workers, memory and hiring arrive in M1 to M5 (see `docs
 
 ## Requirements
 
-- Node.js 22 or newer, and pnpm 11.
+- Node.js 22.13 or newer, and pnpm 11.
 - For real runs: [Claude Code](https://code.claude.com) installed and logged in (`claude` on your PATH).
 
 ## Quick start

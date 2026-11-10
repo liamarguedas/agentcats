@@ -65,9 +65,14 @@ export class CatRunner {
       catId: this.catId,
       payload: {
         name: options.name,
+        role: 'worker',
         adapter: options.adapter.id,
-        model: options.config.defaultModel,
-        permissionMode: options.config.permissionMode,
+        model: options.config.workers.model,
+        permissionMode: options.config.workers.permissionMode,
+        budget: {
+          maxUsd: options.config.budget.perCatUsd,
+          maxTokens: options.config.budget.perCatTokens,
+        },
       },
     });
   }
@@ -195,9 +200,9 @@ export class CatRunner {
     this.#spawning = adapter.spawn({
       catId: this.catId,
       cwd: projectPath,
-      model: config.defaultModel,
+      model: config.workers.model,
       systemPrompt: null,
-      permissionMode: config.permissionMode,
+      permissionMode: config.workers.permissionMode,
     });
     try {
       const session = await this.#spawning;
@@ -226,6 +231,13 @@ export class CatRunner {
 
     switch (event.type) {
       case 'session.started':
+        if (this.options.log.board.cats[this.catId]?.billing !== event.billing) {
+          log.append({
+            type: 'cat.updated',
+            catId: this.catId,
+            payload: { billing: event.billing },
+          });
+        }
         this.options.logger.info(
           `Agent session started (${this.options.adapter.id} ${event.agentVersion ?? 'unknown version'})`,
         );

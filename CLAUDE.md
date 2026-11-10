@@ -5,7 +5,7 @@ TypeScript pnpm monorepo: `packages/protocol`, `packages/kit`, `packages/daemon`
 
 ## Commands
 
-Package manager is pnpm (version pinned in `package.json`). Node >= 22.
+Package manager is pnpm (version pinned in `package.json`). Node >= 22.13.
 
 | Task                     | Command                                                                                                     |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------- |
