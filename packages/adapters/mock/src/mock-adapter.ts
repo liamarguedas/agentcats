@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'node:child_process';
+import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 
 import { AsyncQueue, killProcessTree, spawnGuarded } from '@agentcats/kit';
@@ -81,7 +81,7 @@ function resolveScenario(scenario: string | Scenario): Scenario {
   return found;
 }
 
-async function startStandInProcess(cwd: string): Promise<ChildProcess> {
+async function startStandInProcess(cwd: string): Promise<ChildProcessWithoutNullStreams> {
   const child = spawnGuarded(process.execPath, ['-e', 'setInterval(() => {}, 1 << 30)'], { cwd });
   await new Promise<void>((resolve, reject) => {
     child.once('spawn', resolve);
@@ -91,8 +91,8 @@ async function startStandInProcess(cwd: string): Promise<ChildProcess> {
       );
     });
   });
-  child.stdout?.resume();
-  child.stderr?.resume();
+  child.stdout.resume();
+  child.stderr.resume();
   return child;
 }
 

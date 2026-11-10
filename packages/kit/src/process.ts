@@ -1,4 +1,4 @@
-import { type ChildProcess, execFile, spawn } from 'node:child_process';
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -27,7 +27,7 @@ export function spawnGuarded(
   command: string,
   args: readonly string[],
   options: GuardedSpawnOptions = {},
-): ChildProcess {
+): ChildProcessWithoutNullStreams {
   const ownerPid = options.ownerPid ?? process.pid;
   return spawn(process.execPath, [GUARDIAN_PATH, String(ownerPid), command, ...args], {
     cwd: options.cwd,

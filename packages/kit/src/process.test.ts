@@ -36,7 +36,7 @@ async function waitUntilDead(pid: number, timeoutMs = 5_000): Promise<void> {
 describe('spawnGuarded and killProcessTree', () => {
   it('kills the guardian and the agent together', async () => {
     const guardian = spawnGuarded(process.execPath, SLEEPER);
-    const agentPid = Number(await firstLine(guardian.stdout!));
+    const agentPid = Number(await firstLine(guardian.stdout));
     expect(isProcessAlive(agentPid)).toBe(true);
 
     await killProcessTree(guardian.pid!);
