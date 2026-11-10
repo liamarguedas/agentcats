@@ -2,8 +2,6 @@
 
 A local, open source whiteboard where coding agents are cats. An orchestrator cat delegates to worker cats, workers learn from past tasks, and you hire and fire them from the UI. TypeScript, local-first, Claude Code first, other agent CLIs later through adapters.
 
-`PLAN.md` in the repo root is the high-level overview. These documents are the build instructions, one per milestone.
-
 ## Order
 
 | # | Document | Outcome |

@@ -122,10 +122,25 @@ The CLI equivalent is `claude -p --strict-mcp-config --mcp-config <file.json>`, 
 
 ---
 
-## Open questions (raised 2026-11-10, awaiting answers)
+## 2026-11-10 - Auth is inherited from the user's Claude Code setup
 
-- Auth path given the claude.ai-login restriction above.
-- Directory and package naming for the Claude adapter given the branding guideline.
+**Verified empirically** with zero model calls: a `query()` with `settingSources: []` reported `accountInfo()` as `apiProvider: "firstParty"`, `subscriptionType: "Claude Pro"`.
+This held for both the SDK's bundled binary (2.1.321) and the globally installed `claude` (2.1.302, via `pathToClaudeCodeExecutable`).
+Both read the credentials the user already set up in Claude Code (`/login`, `ANTHROPIC_API_KEY`, or Bedrock / Vertex env).
+
+**Consequence:** agentcats never handles, stores or prompts for Claude credentials, and never offers a login.
+How a user authenticates is configured in Claude Code itself.
+Open: whether to run the bundled or the installed binary by default, and the README wording about Anthropic's terms for subscription use.
+
+## 2026-11-10 - Answers to the M0 planning round
+
+- **Adapter naming:** `packages/adapters/claude/`, npm `@agentcats/adapter-claude`, UI label "Claude". Other packages are `@agentcats/protocol`, `@agentcats/daemon`, `@agentcats/adapter-mock`, `@agentcats/ui`, and the CLI package `agentcats` with bin `agentcats`.
+- **Token transport:** REST uses `Authorization: Bearer <token>`. The WebSocket carries the token as a `Sec-WebSocket-Protocol` value, never in the query string. The daemon also rejects a `Host` other than `127.0.0.1:<port>` / `localhost:<port>` (DNS rebinding) and a foreign `Origin` on REST. Each rule has a test.
+- **Orphans:** agent PIDs go to `.agentcats/run/pids.json`. Graceful shutdown kills each process tree (`taskkill /T /F` on Windows). On startup, leftover PIDs are killed. The mock adapter has a child-process mode so the automated test hard-kills a real daemon and checks no child survives.
+- **Interface additions now rather than in M4:** `Session.interrupt()`, a terminal end-of-turn / end-of-session `AgentEvent` with a stop reason, optional `resume` id in `spawn` options, `Adapter.capabilities`. Approvals stay `allow | deny`.
+- **Node baseline:** `engines.node >=22`. CI on 22 and 24.
+- **Repo:** https://github.com/liamarguedas/agentcats, branch `main`. Commits carry no AI co-author trailer.
+- **Housekeeping:** dropped the dangling `PLAN.md` reference from the milestones README. `POST /chat` takes `{ catId?, text }`, defaulting to the only cat in M0.
 
 ## M1 handoff notes
 
