@@ -50,7 +50,7 @@ export default defineConfig(
   },
   {
     // Tests may assert presence with `!`; a wrong guess fails the test anyway.
-    files: ['**/*.test.ts'],
+    files: ['**/*.test.ts', '**/*.spec.ts'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {

@@ -1,0 +1,25 @@
+{
+  "name": "agentcats",
+  "version": "0.0.0",
+  "description": "A local whiteboard where coding agents are cats.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "agentcats": "./bin/agentcats.mjs"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentcats/adapter-claude": "workspace:*",
+    "@agentcats/adapter-mock": "workspace:*",
+    "@agentcats/daemon": "workspace:*",
+    "@agentcats/protocol": "workspace:*",
+    "@agentcats/ui": "workspace:*"
+  }
+}

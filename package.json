@@ -16,7 +16,8 @@
     "typecheck": "pnpm -r run typecheck",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test"
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
+    "agentcats": "node --conditions=@agentcats/source --import tsx packages/cli/src/bin.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
