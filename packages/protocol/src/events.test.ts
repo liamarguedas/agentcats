@@ -16,6 +16,7 @@ describe('AgentcatsEvent', () => {
         'cat.updated',
         'daemon.error',
         'message.agent',
+        'message.user',
         'notice',
         'task.created',
         'task.updated',

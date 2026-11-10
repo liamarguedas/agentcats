@@ -143,6 +143,7 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
 
     case 'tool.called':
     case 'message.agent':
+    case 'message.user':
     case 'notice':
     case 'daemon.error':
       return next;

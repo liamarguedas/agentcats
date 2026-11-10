@@ -1,9 +1,9 @@
-import type { Cat, PendingApproval, ToolKind, Usage } from '@agentcats/protocol';
+import type { Cat, PendingApproval, Task, ToolKind, Usage } from '@agentcats/protocol';
 
 import { CatSprite } from './Cat.js';
 import { InlineText } from './InlineText.js';
 
-const STATUS_LABEL: Record<Cat['status'], string> = {
+export const STATUS_LABEL: Record<Cat['status'], string> = {
   idle: 'Idle',
   thinking: 'Thinking',
   working: 'Working',
@@ -27,57 +27,99 @@ export const KIND_ICON: Record<ToolKind, string> = {
 
 export interface CatCardProps {
   readonly cat: Cat;
+  readonly size: 'lead' | 'worker';
   readonly approval: PendingApproval | undefined;
   readonly usage: Usage | undefined;
+  /** The task the cat is on, for workers. */
+  readonly task: Task | null;
   /** Latest agent text, shown in the thought bubble. */
   readonly lastMessage: string | null;
   readonly onApprove: (approvalId: string, decision: 'allow' | 'deny') => void;
   readonly onKill: () => void;
+  readonly onPause: () => void;
+  readonly onResume: () => void;
+  readonly onOpen: () => void;
 }
 
-export function CatCard({ cat, approval, usage, lastMessage, onApprove, onKill }: CatCardProps) {
-  const sessionActive = cat.status !== 'idle' && cat.status !== 'done' && cat.status !== 'error';
+const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
+
+export function CatCard(props: CatCardProps) {
+  const { cat, size, usage, task } = props;
+  const paused = cat.pausedReason !== null;
+  const status = paused ? 'blocked' : cat.status;
   return (
-    <section className={`cat-card cat-card--${cat.status}`} aria-label={`Cat ${cat.name}`}>
+    <section
+      className={`cat-card cat-card--${size} cat-card--${status}`}
+      aria-label={`Cat ${cat.name}`}
+      data-testid={`cat-${cat.name}`}
+    >
       <div className="cat-card__stage">
-        <Bubble cat={cat} approval={approval} lastMessage={lastMessage} onApprove={onApprove} />
-        <CatSprite status={cat.status} />
+        <Bubble {...props} />
+        <CatSprite status={status} />
       </div>
       <div className="cat-card__meta">
-        <h2 className="cat-card__name">{cat.name}</h2>
+        <h2 className="cat-card__name">
+          {cat.name}
+          <span className="role-tag">{cat.role === 'orchestrator' ? 'Lead' : 'Worker'}</span>
+        </h2>
         <p
-          className={`status-pill status-pill--${cat.status}`}
+          className={`status-pill status-pill--${status}`}
           data-testid="cat-status"
           aria-live="polite"
         >
-          {STATUS_LABEL[cat.status]}
+          {paused
+            ? cat.pausedReason === 'budget'
+              ? 'Paused: budget'
+              : 'Paused'
+            : STATUS_LABEL[cat.status]}
         </p>
-        <p className="cat-card__detail">
-          {cat.adapter} · {cat.model ?? 'default model'} · {cat.permissionMode.replace('_', ' ')}
-        </p>
-        {usage && <UsageLine usage={usage} />}
-        <button
-          type="button"
-          className="button button--ghost"
-          onClick={onKill}
-          disabled={!sessionActive}
-        >
-          Stop
-        </button>
+        {task && size === 'worker' && <p className="cat-card__task">{task.title}</p>}
+        <Spend cat={cat} usage={usage} />
+        <div className="cat-card__actions">
+          {paused ? (
+            <button type="button" className="button button--small" onClick={props.onResume}>
+              Resume
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button button--small"
+              onClick={props.onPause}
+              disabled={!ACTIVE.has(cat.status)}
+            >
+              Pause
+            </button>
+          )}
+          <button
+            type="button"
+            className="button button--small"
+            onClick={props.onKill}
+            disabled={!ACTIVE.has(cat.status) && !paused}
+          >
+            Stop
+          </button>
+          <button
+            type="button"
+            className="button button--small button--ghost"
+            onClick={props.onOpen}
+            aria-label={`Properties of ${cat.name}`}
+          >
+            ⚙
+          </button>
+        </div>
       </div>
     </section>
   );
 }
 
-function Bubble({
-  cat,
-  approval,
-  lastMessage,
-  onApprove,
-}: Pick<CatCardProps, 'cat' | 'approval' | 'lastMessage' | 'onApprove'>) {
+function Bubble({ cat, approval, lastMessage, onApprove }: CatCardProps) {
   if (approval) {
     return (
-      <div className="bubble bubble--approval" role="alertdialog" aria-label="Approval request">
+      <div
+        className="bubble bubble--approval"
+        role="alertdialog"
+        aria-label={`Approval request from ${cat.name}`}
+      >
         <p className="bubble__title">
           {KIND_ICON[approval.kind]} May I use <strong>{approval.toolName}</strong>?
         </p>
@@ -105,6 +147,16 @@ function Bubble({
       </div>
     );
   }
+  if (cat.pausedReason) {
+    return (
+      <div className="bubble bubble--warning" data-testid="bubble">
+        <p className="bubble__title">
+          {cat.pausedReason === 'budget' ? 'Out of budget' : 'Paused'}
+        </p>
+        <p className="bubble__text">{cat.statusReason ?? 'Resume when you are ready.'}</p>
+      </div>
+    );
+  }
   switch (cat.status) {
     case 'thinking':
       return (
@@ -128,13 +180,20 @@ function Bubble({
         </div>
       );
     case 'done':
-      return (
+      if (cat.role === 'worker') {
+        return (
+          <div className="bubble bubble--done" data-testid="bubble">
+            <p className="bubble__text">Finished. The result is on its task card.</p>
+          </div>
+        );
+      }
+      return lastMessage ? (
         <div className="bubble bubble--done" data-testid="bubble">
           <p className="bubble__text">
-            <InlineText text={lastMessage ?? 'Done!'} />
+            <InlineText text={lastMessage} />
           </p>
         </div>
-      );
+      ) : null;
     case 'error':
       return (
         <div className="bubble bubble--error" role="alert" data-testid="bubble">
@@ -144,7 +203,7 @@ function Bubble({
       );
     case 'blocked':
       return (
-        <div className="bubble bubble--error" data-testid="bubble">
+        <div className="bubble bubble--warning" data-testid="bubble">
           <p className="bubble__title">Blocked</p>
           <p className="bubble__text">{cat.statusReason ?? 'Waiting on something'}</p>
         </div>
@@ -155,16 +214,30 @@ function Bubble({
   }
 }
 
-function UsageLine({ usage }: { usage: Usage }) {
-  const tokens = usage.inputTokens + usage.outputTokens;
-  const cost =
-    usage.costUsd === null
-      ? 'cost unknown'
-      : `${usage.costSource === 'estimated' ? '≈ ' : ''}$${usage.costUsd.toFixed(4)}`;
+/** Running spend against the budget. On a subscription the cost is an API-equivalent estimate. */
+function Spend({ cat, usage }: { cat: Cat; usage: Usage | undefined }) {
+  const spent = usage?.costUsd ?? null;
+  const tokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
+  const estimate = cat.billing === 'subscription' || usage?.costSource === 'estimated';
+  const max = cat.budget.maxUsd;
+  const ratio = spent !== null && max !== null ? Math.min(1, spent / max) : null;
   return (
-    <p className="cat-card__usage" title={`Cost source: ${usage.costSource}`}>
-      {tokens.toLocaleString()} tokens · {cost}
-      {usage.costSource === 'estimated' && <span className="tag">estimate</span>}
-    </p>
+    <div className="spend" title={estimate ? 'API-equivalent estimate' : 'Reported by the agent'}>
+      <span className="spend__text">
+        {spent === null
+          ? 'cost unknown'
+          : `${estimate ? '≈ ' : ''}$${spent.toFixed(spent < 1 ? 3 : 2)}`}
+        {max !== null && <span className="spend__max"> / ${max.toFixed(2)}</span>}
+        <span className="spend__tokens"> · {tokens.toLocaleString()} tokens</span>
+      </span>
+      {ratio !== null && (
+        <span className="meter" aria-hidden="true">
+          <span
+            className={`meter__fill${ratio >= 1 ? ' meter__fill--over' : ratio >= 0.8 ? ' meter__fill--warn' : ''}`}
+            style={{ width: `${String(Math.round(ratio * 100))}%` }}
+          />
+        </span>
+      )}
+    </div>
   );
 }

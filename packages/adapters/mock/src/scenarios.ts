@@ -248,7 +248,7 @@ const orchestrator: Scenario = {
           diffStat: { files: number };
         };
         lines.push(
-          `- "${task.title}" is ready for review on \`${result.branch}\` (${String(result.diffStat.files)} files).`,
+          `- "${task.title}" is ready for review on \`${result.branch}\` (${String(result.diffStat.files)} file${result.diffStat.files === 1 ? '' : 's'} changed).`,
         );
       }
       ctx.addUsage(400, 60);

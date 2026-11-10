@@ -168,7 +168,14 @@ export const MessageAgentEvent = z.strictObject({
   }),
 });
 
-/** Cumulative usage for the cat's current session. */
+/** Something the user said to a cat in the chat panel. */
+export const MessageUserEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('message.user'),
+  payload: z.strictObject({ text: z.string().min(1).max(20_000) }),
+});
+
+/** Cumulative usage of the cat, across all its sessions. */
 export const UsageUpdatedEvent = z.strictObject({
   ...catScoped,
   type: z.literal('usage.updated'),
@@ -211,6 +218,7 @@ export const AgentcatsEvent = z.discriminatedUnion('type', [
   ApprovalRequestedEvent,
   ApprovalResolvedEvent,
   MessageAgentEvent,
+  MessageUserEvent,
   UsageUpdatedEvent,
   NoticeEvent,
   DaemonErrorEvent,

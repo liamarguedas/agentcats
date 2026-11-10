@@ -139,6 +139,14 @@ export const sampleEvents = {
     catId: 'cat-1',
     payload: {},
   },
+  'message.user': {
+    id: 'e15',
+    seq: 15,
+    ts: 15_000,
+    type: 'message.user',
+    catId: 'cat-1',
+    payload: { text: 'Add a login endpoint and write tests for it' },
+  },
   notice: {
     id: 'e14',
     seq: 14,

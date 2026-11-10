@@ -11,6 +11,8 @@ function describe(event: AgentcatsEvent): string {
       return event.payload.reason === 'budget' ? 'paused: budget reached' : 'paused';
     case 'cat.resumed':
       return 'resumed';
+    case 'message.user':
+      return `you: ${event.payload.text}`;
     case 'notice':
       return event.payload.message;
     case 'cat.status_changed':

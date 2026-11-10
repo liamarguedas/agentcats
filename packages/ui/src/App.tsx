@@ -1,13 +1,12 @@
-import type { AgentcatsEvent, Task } from '@agentcats/protocol';
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import type { AgentcatsEvent, Cat, Task } from '@agentcats/protocol';
+import { useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { ApiRequestError, type BoardClient, type ConnectionState } from './board-client.js';
 import { CatCard } from './components/CatCard.js';
+import { ChatPanel } from './components/ChatPanel.js';
+import { CatDrawer, TaskDrawer } from './components/Drawers.js';
 import { EventLog } from './components/EventLog.js';
-import { PromptBox } from './components/PromptBox.js';
-
-const BUSY = new Set(['thinking', 'working', 'waiting_approval', 'blocked']);
-const TITLE_LIMIT = 200;
+import { TaskCard } from './components/TaskCard.js';
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
   connecting: 'Connecting…',
@@ -16,13 +15,19 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
   unauthorized: 'Token rejected',
 };
 
-/** Text of the most recent agent message, all chunks joined. */
-function lastAgentMessage(events: readonly AgentcatsEvent[], limit = 160): string | null {
+type Drawer = { kind: 'task'; id: string } | { kind: 'cat'; id: string } | null;
+
+/** Text of the most recent agent message from one cat, all chunks joined. */
+function lastAgentMessage(
+  events: readonly AgentcatsEvent[],
+  catId: string,
+  limit = 160,
+): string | null {
   let messageId: string | null = null;
   const parts: string[] = [];
   for (let i = events.length - 1; i >= 0; i--) {
     const event = events[i];
-    if (event?.type !== 'message.agent') continue;
+    if (event?.type !== 'message.agent' || event.catId !== catId) continue;
     messageId ??= event.payload.messageId;
     if (event.payload.messageId !== messageId) break;
     parts.unshift(event.payload.text);
@@ -32,36 +37,80 @@ function lastAgentMessage(events: readonly AgentcatsEvent[], limit = 160): strin
   return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
 }
 
+const ACTIVE_TASK = new Set<Task['status']>(['running', 'blocked']);
+
 export function App({ client }: { client: BoardClient }) {
   const view = useSyncExternalStore(client.subscribe, client.getView);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [drawer, setDrawer] = useState<Drawer>(null);
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
+  const [errors, setErrors] = useState<readonly { id: number; text: string }[]>([]);
+  const { board, events } = view;
 
-  const cat = Object.values(view.board.cats)[0];
-  const approval = Object.values(view.board.pendingApprovals).find((a) => a.catId === cat?.id);
-  const tasks = useMemo(
-    () => Object.values(view.board.tasks).sort((a, b) => b.createdAt - a.createdAt),
-    [view.board.tasks],
+  const cats = useMemo(
+    () => Object.values(board.cats).sort((a, b) => a.createdAt - b.createdAt),
+    [board.cats],
   );
-  const lastMessage = useMemo(() => lastAgentMessage(view.events), [view.events]);
-  const busy = cat !== undefined && BUSY.has(cat.status);
+  const lead = cats.find((c) => c.role === 'orchestrator');
+  const workers = cats.filter((c) => c.role === 'worker');
+  const tasks = useMemo(
+    () => Object.values(board.tasks).sort((a, b) => b.createdAt - a.createdAt),
+    [board.tasks],
+  );
+  const activeTask = (catId: string) =>
+    tasks.find((t) => t.assigneeCatId === catId && ACTIVE_TASK.has(t.status)) ?? null;
+  const approvalOf = (catId: string) =>
+    Object.values(board.pendingApprovals).find((a) => a.catId === catId);
+  const spent = Object.values(board.usage).reduce((sum, u) => sum + (u.costUsd ?? 0), 0);
+  const estimated =
+    cats.some((c) => c.billing === 'subscription') ||
+    Object.values(board.usage).some((u) => u.costSource === 'estimated');
+
+  const notices = events
+    .filter((e): e is Extract<AgentcatsEvent, { type: 'notice' }> => e.type === 'notice')
+    .filter((e) => e.payload.level === 'warning' && !dismissed.has(e.id))
+    .slice(-3)
+    .reverse();
 
   async function run(action: () => Promise<unknown>) {
-    setActionError(null);
     try {
       await action();
     } catch (error) {
-      setActionError(error instanceof ApiRequestError ? error.message : String(error));
+      const text = error instanceof ApiRequestError ? error.message : String(error);
+      setErrors((list) => [...list.slice(-2), { id: Date.now(), text }]);
     }
   }
 
-  async function sendPrompt(text: string) {
-    const firstLine = text.split('\n', 1)[0] ?? text;
-    const title =
-      firstLine.length > TITLE_LIMIT ? `${firstLine.slice(0, TITLE_LIMIT - 1)}…` : firstLine;
-    await run(() =>
-      client.request('createTask', {}, { title, description: text === title ? '' : text }),
-    );
-  }
+  const openTaskId = drawer?.kind === 'task' ? drawer.id : null;
+  // Stable per open task, so the drawer refetches only when the task changes.
+  const loadHistory = useCallback(
+    async () =>
+      openTaskId ? (await client.request('taskEvents', { taskId: openTaskId })).events : [],
+    [client, openTaskId],
+  );
+
+  const catCard = (cat: Cat, size: 'lead' | 'worker') => (
+    <CatCard
+      key={cat.id}
+      cat={cat}
+      size={size}
+      approval={approvalOf(cat.id)}
+      usage={board.usage[cat.id]}
+      task={activeTask(cat.id)}
+      lastMessage={lastAgentMessage(events, cat.id)}
+      onApprove={(approvalId, decision) =>
+        void run(() => client.request('resolveApproval', { approvalId }, { decision }))
+      }
+      onKill={() => void run(() => client.request('killCat', { catId: cat.id }))}
+      onPause={() => void run(() => client.request('pauseCat', { catId: cat.id }))}
+      onResume={() => void run(() => client.request('resumeCat', { catId: cat.id }))}
+      onOpen={() => {
+        setDrawer({ kind: 'cat', id: cat.id });
+      }}
+    />
+  );
+
+  const openTask = drawer?.kind === 'task' ? board.tasks[drawer.id] : undefined;
+  const openCat = drawer?.kind === 'cat' ? board.cats[drawer.id] : undefined;
 
   return (
     <div className="app">
@@ -69,72 +118,148 @@ export function App({ client }: { client: BoardClient }) {
         <h1 className="app__title">
           agent<span>cats</span>
         </h1>
-        <span className={`connection connection--${view.connection}`} data-testid="connection">
-          {CONNECTION_LABEL[view.connection]}
-        </span>
+        <div className="app__header-right">
+          <span
+            className="team-spend"
+            title={estimated ? 'Includes API-equivalent estimates' : 'Reported cost'}
+          >
+            Team spend {estimated ? '≈ ' : ''}${spent.toFixed(2)}
+          </span>
+          <span className={`connection connection--${view.connection}`} data-testid="connection">
+            {CONNECTION_LABEL[view.connection]}
+          </span>
+        </div>
       </header>
 
       <main className="board">
         <div className="board__canvas">
-          {cat ? (
-            <CatCard
-              cat={cat}
-              approval={approval}
-              usage={view.board.usage[cat.id]}
-              lastMessage={lastMessage}
-              onApprove={(approvalId, decision) =>
-                void run(() => client.request('resolveApproval', { approvalId }, { decision }))
-              }
-              onKill={() => void run(() => client.request('killCat', { catId: cat.id }))}
-            />
-          ) : (
-            <p className="board__empty">
-              {view.connection === 'live' ? 'No cats yet.' : 'Waiting for the daemon…'}
-            </p>
-          )}
-        </div>
-        <div className="board__prompt">
-          <PromptBox
-            disabled={!cat || busy || view.connection !== 'live'}
-            placeholder={
-              busy ? `${cat.name} is busy…` : 'Give the cat a task, e.g. "add a hello function"'
-            }
-            onSubmit={sendPrompt}
-          />
-          {actionError && (
-            <p className="board__error" role="alert">
-              {actionError}
-            </p>
-          )}
+          <section className="board__lead" aria-label="Lead">
+            {lead ? catCard(lead, 'lead') : <p className="board__empty">Waiting for the daemon…</p>}
+          </section>
+          <section className="board__team" aria-label="Workers">
+            {workers.length === 0 ? (
+              <p className="board__empty">
+                No workers yet. They are hired when {lead?.name ?? 'the lead'} hands out tasks.
+              </p>
+            ) : (
+              workers.map((w) => {
+                const task = activeTask(w.id);
+                return (
+                  <div key={w.id} className="seat">
+                    {catCard(w, 'worker')}
+                    {task && (
+                      <TaskCard
+                        task={task}
+                        cat={w}
+                        onOpen={() => {
+                          setDrawer({ kind: 'task', id: task.id });
+                        }}
+                      />
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </section>
+          <section className="board__tasks" aria-label="Tasks">
+            <h2 className="section-title">
+              Tasks <span className="panel__count">{tasks.length}</span>
+            </h2>
+            {tasks.length === 0 ? (
+              <p className="board__empty">No tasks yet.</p>
+            ) : (
+              <div className="task-grid">
+                {tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    cat={task.assigneeCatId ? board.cats[task.assigneeCatId] : undefined}
+                    onOpen={() => {
+                      setDrawer({ kind: 'task', id: task.id });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </main>
 
       <aside className="sidebar">
-        <TaskList tasks={tasks} />
-        <EventLog events={view.events} />
+        <ChatPanel
+          cat={lead}
+          events={events}
+          live={view.connection === 'live'}
+          onSend={(text) => run(() => client.request('chat', {}, { text }))}
+        />
+        <EventLog events={events} />
       </aside>
-    </div>
-  );
-}
 
-function TaskList({ tasks }: { tasks: readonly Task[] }) {
-  return (
-    <section className="panel tasks" aria-label="Tasks">
-      <h2 className="panel__title">
-        Tasks <span className="panel__count">{tasks.length}</span>
-      </h2>
-      {tasks.length === 0 ? (
-        <p className="panel__empty">No tasks yet.</p>
-      ) : (
-        <ul className="tasks__list">
-          {tasks.map((task) => (
-            <li key={task.id} className="tasks__item">
-              <span className={`chip chip--${task.status}`}>{task.status}</span>
-              <span className="tasks__title">{task.title}</span>
-            </li>
-          ))}
-        </ul>
+      <div className="toasts" aria-live="polite">
+        {notices.map((n) => (
+          <div key={n.id} className="toast toast--warning" role="status">
+            <span>{n.payload.message}</span>
+            <button
+              type="button"
+              className="button button--ghost button--small"
+              aria-label="Dismiss"
+              onClick={() => {
+                setDismissed((set) => new Set([...set, n.id]));
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {errors.map((e) => (
+          <div key={e.id} className="toast toast--error" role="alert">
+            <span>{e.text}</span>
+            <button
+              type="button"
+              className="button button--ghost button--small"
+              aria-label="Dismiss"
+              onClick={() => {
+                setErrors((list) => list.filter((x) => x.id !== e.id));
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {openTask && (
+        <TaskDrawer
+          task={openTask}
+          cat={openTask.assigneeCatId ? board.cats[openTask.assigneeCatId] : undefined}
+          loadHistory={loadHistory}
+          onReview={(decision) =>
+            void run(() => client.request('reviewTask', { taskId: openTask.id }, { decision }))
+          }
+          onRerun={() => void run(() => client.request('rerunTask', { taskId: openTask.id }))}
+          onCancel={() => void run(() => client.request('cancelTask', { taskId: openTask.id }))}
+          onClose={() => {
+            setDrawer(null);
+          }}
+        />
       )}
-    </section>
+      {openCat && (
+        <CatDrawer
+          key={openCat.id}
+          cat={openCat}
+          usage={board.usage[openCat.id]}
+          canNudge={
+            openCat.role === 'worker' &&
+            activeTask(openCat.id) !== null &&
+            openCat.pausedReason === null
+          }
+          onSave={(patch) => run(() => client.request('updateCat', { catId: openCat.id }, patch))}
+          onNudge={() => void run(() => client.request('nudgeCat', { catId: openCat.id }, {}))}
+          onClose={() => {
+            setDrawer(null);
+          }}
+        />
+      )}
+    </div>
   );
 }

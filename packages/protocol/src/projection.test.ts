@@ -10,7 +10,7 @@ describe('applyEvent', () => {
     const board = replay();
 
     expect(BoardState.parse(board)).toEqual(board);
-    expect(board.lastSeq).toBe(14);
+    expect(board.lastSeq).toBe(15);
     expect(board.cats['cat-1']).toMatchObject({
       name: 'Mochi',
       role: 'worker',
@@ -51,8 +51,8 @@ describe('applyEvent', () => {
   it('never stores the actor of a task update on the task', () => {
     const next = applyEvent(replay(), {
       ...sampleEvents['task.updated'],
-      seq: 15,
-      ts: 15_000,
+      seq: 16,
+      ts: 16_000,
       payload: { status: 'blocked', actor: 'user', reasonCode: 'paused', statusReason: 'Paused' },
     });
     expect(next.tasks['task-1']).toMatchObject({ status: 'blocked', reasonCode: 'paused' });
@@ -64,8 +64,8 @@ describe('applyEvent', () => {
     const base = replay();
     const next = applyEvent(base, {
       ...sampleEvents['task.updated'],
-      seq: 15,
-      ts: 15_000,
+      seq: 16,
+      ts: 16_000,
       payload: { summary: 'Added hello()' },
     });
     expect(next.tasks['task-1']).toMatchObject({ status: 'running', summary: 'Added hello()' });

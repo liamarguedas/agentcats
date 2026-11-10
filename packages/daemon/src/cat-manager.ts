@@ -235,7 +235,9 @@ export class CatManager {
   async chat(text: string, catId?: string): Promise<void> {
     const agent = this.#agent(catId ?? this.#orchestratorId);
     if (agent.cat.pausedReason) throw new ApiError('conflict', `${agent.cat.name} is paused`);
+    if (agent.busy) throw new ApiError('conflict', `${agent.cat.name} is busy`);
     if (agent.cat.role === 'orchestrator' && !agent.hasSession) await this.#startOrchestrator();
+    this.o.log.append({ type: 'message.user', catId: agent.catId, payload: { text } });
     await agent.send(text);
   }
 
