@@ -281,3 +281,13 @@ Tests: `packages/adapters/claude/test/live.test.ts` and `packages/ui/e2e/live-cl
 - Each cat should get an explicit `settingSources` decision. Workers in worktrees may want `['project']` only, so a user's global allow rules cannot widen a worker's permissions.
 - `auto` permission mode on a Pro plan was **not** tested.
 - Not verified: macOS, and Linux with the real Claude CLI. CI covers Linux and Windows with the mock only.
+
+## 2026-11-10 - M1 planning answers
+
+- **Orchestrator access:** read-only (Read, Grep, Glob) plus the agentcats MCP tools. No Edit, Write or Bash. It delegates; it never edits code.
+- **Worktrees live outside the repo**, under `~/.agentcats/worktrees/<project>/<task>`, so the user's test runners and linters never see the copies. Branches (`agentcats/<cat>/<task-id>`) live in the user's repo.
+- **Permission policy:** workers edit freely inside their worktree and run the configured test and lint commands without asking. Every other non-read-only Bash command and every web fetch raises an approval. Hooks hard-deny `git push` and writes outside the worktree. Limit, to be stated in the README: on native Windows there is no OS sandbox, so code run by an allowed command can still reach the network.
+- **Storage:** Node's built-in `node:sqlite` behind a small store interface. Minimum Node becomes 22.13 (first version without the flag). Chosen over `better-sqlite3` to avoid native compilation on install.
+- **Worker model:** `sonnet` by default, orchestrator uses the user's Claude Code default. Both editable per cat.
+- **Budgets:** in dollars, as reported by the agent. Default $2 per cat and $10 overall, enforced for cats billed through an API (API key, Bedrock, Vertex). On a subscription plan the cost is shown as an API-equivalent estimate and not enforced unless the user turns it on. Warn at 80 percent, pause at 100 percent, resume only by the user. Each cat's budget, model and permission mode are editable in its properties on the board.
+- **Pause, resume, retry:** pause interrupts the turn and the task goes `blocked`. Resume continues the same agent session. An automatic retry after a crash resumes the same session in the same worktree, and starts fresh only if resuming fails.
