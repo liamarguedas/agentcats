@@ -10,15 +10,22 @@ describe('applyEvent', () => {
     const board = replay();
 
     expect(BoardState.parse(board)).toEqual(board);
-    expect(board.lastSeq).toBe(10);
+    expect(board.lastSeq).toBe(14);
     expect(board.cats['cat-1']).toMatchObject({
       name: 'Mochi',
+      role: 'worker',
       status: 'thinking',
+      billing: 'metered',
+      budget: { maxUsd: 5, maxTokens: null },
+      pausedReason: null,
       createdAt: 1_000,
     });
     expect(board.tasks['task-1']).toMatchObject({
       status: 'running',
       assigneeCatId: 'cat-1',
+      attempt: 1,
+      branch: null,
+      result: null,
       updatedAt: 4_000,
     });
     expect(board.pendingApprovals).toEqual({});
@@ -35,12 +42,30 @@ describe('applyEvent', () => {
     });
   });
 
+  it('tracks a pause until it is resumed', () => {
+    const paused = replay(sampleLog.filter((e) => e.seq <= 12));
+    expect(paused.cats['cat-1']?.pausedReason).toBe('budget');
+    expect(replay().cats['cat-1']?.pausedReason).toBeNull();
+  });
+
+  it('never stores the actor of a task update on the task', () => {
+    const next = applyEvent(replay(), {
+      ...sampleEvents['task.updated'],
+      seq: 15,
+      ts: 15_000,
+      payload: { status: 'blocked', actor: 'user', reasonCode: 'paused', statusReason: 'Paused' },
+    });
+    expect(next.tasks['task-1']).toMatchObject({ status: 'blocked', reasonCode: 'paused' });
+    expect(next.tasks['task-1']).not.toHaveProperty('actor');
+    expect(BoardState.parse(next)).toEqual(next);
+  });
+
   it('only overwrites task fields present in task.updated', () => {
     const base = replay();
     const next = applyEvent(base, {
       ...sampleEvents['task.updated'],
-      seq: 11,
-      ts: 11_000,
+      seq: 15,
+      ts: 15_000,
       payload: { summary: 'Added hello()' },
     });
     expect(next.tasks['task-1']).toMatchObject({ status: 'running', summary: 'Added hello()' });

@@ -8,8 +8,10 @@ import {
   CreateTaskResponse,
   ErrorResponse,
   ResolveApprovalRequest,
+  ReviewTaskRequest,
   routes,
   Snapshot,
+  UpdateCatRequest,
 } from './commands.js';
 import { PROTOCOL_VERSION } from './common.js';
 import { sampleLog } from './fixtures.test-util.js';
@@ -35,6 +37,12 @@ describe('command schemas', () => {
       description: '',
       status: 'queued',
       assigneeCatId: null,
+      statusReason: null,
+      reasonCode: null,
+      attempt: 1,
+      branch: null,
+      worktreePath: null,
+      result: null,
       summary: null,
       createdAt: 1,
       updatedAt: 1,
@@ -52,6 +60,19 @@ describe('command schemas', () => {
     expect(ChatRequest.safeParse({ text: 'hi' }).success).toBe(true);
     expect(ChatRequest.safeParse({ catId: 'cat-1', text: 'hi' }).success).toBe(true);
     expect(ChatRequest.safeParse({ text: '' }).success).toBe(false);
+  });
+
+  it('requires a cat edit to change something, and only known properties', () => {
+    expect(UpdateCatRequest.safeParse({}).success).toBe(false);
+    expect(UpdateCatRequest.safeParse({ budget: { maxUsd: 3, maxTokens: null } }).success).toBe(
+      true,
+    );
+    expect(UpdateCatRequest.safeParse({ role: 'orchestrator' }).success).toBe(false);
+  });
+
+  it('accepts only accept or reject as a review decision', () => {
+    expect(ReviewTaskRequest.safeParse({ decision: 'accept' }).success).toBe(true);
+    expect(ReviewTaskRequest.safeParse({ decision: 'merge' }).success).toBe(false);
   });
 
   it('validates accepted and error responses', () => {
@@ -73,11 +94,19 @@ describe('command schemas', () => {
 });
 
 describe('routes', () => {
-  it('exposes every M0 command under /api', () => {
+  it('exposes every command under /api', () => {
     expect(Object.values(routes).map((r) => `${r.method} ${r.path}`)).toEqual([
       'POST /api/tasks',
       'POST /api/approvals/:approvalId',
       'POST /api/cats/:catId/kill',
+      'PATCH /api/cats/:catId',
+      'POST /api/cats/:catId/pause',
+      'POST /api/cats/:catId/resume',
+      'POST /api/cats/:catId/nudge',
+      'POST /api/tasks/:taskId/review',
+      'POST /api/tasks/:taskId/rerun',
+      'POST /api/tasks/:taskId/cancel',
+      'GET /api/tasks/:taskId/events',
       'POST /api/chat',
       'GET /api/snapshot',
     ]);

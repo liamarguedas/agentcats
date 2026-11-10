@@ -25,6 +25,7 @@ const started: AgentEvent = {
   resumeId: 'r1',
   model: 'some-model',
   agentVersion: '1.0.0',
+  billing: 'metered',
 };
 const ended: AgentEvent = { type: 'session.ended', reason: 'killed', exitCode: null };
 

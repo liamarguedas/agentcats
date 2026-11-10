@@ -14,6 +14,44 @@ export type Timestamp = z.infer<typeof Timestamp>;
 /** Short human-readable text shown in bubbles and the event log. */
 export const ShortText = z.string().max(500);
 
+/** What a cat does. The orchestrator delegates; workers change code in worktrees. */
+export const CatRole = z.enum(['orchestrator', 'worker']);
+export type CatRole = z.infer<typeof CatRole>;
+
+/**
+ * How the agent's usage is paid for. `metered` is pay per use (API key,
+ * Bedrock, Vertex), where dollar budgets are enforced by default.
+ * `subscription` is a flat plan, where reported cost is an API-equivalent
+ * estimate.
+ */
+export const Billing = z.enum(['metered', 'subscription', 'unknown']);
+export type Billing = z.infer<typeof Billing>;
+
+/** Spending ceiling for one cat. `null` means no limit of that kind. */
+export const Budget = z.strictObject({
+  maxUsd: z.number().positive().nullable(),
+  maxTokens: z.int().positive().nullable(),
+});
+export type Budget = z.infer<typeof Budget>;
+
+/** Why a cat is paused. Only the user resumes either kind. */
+export const PauseReason = z.enum(['user', 'budget']);
+export type PauseReason = z.infer<typeof PauseReason>;
+
+/** Machine-readable cause of a task's current status, for board actions. */
+export const TaskReasonCode = z.enum([
+  'stuck',
+  'budget',
+  'paused',
+  'crashed',
+  'agent_error',
+  'spawn_failed',
+  'daemon_restarted',
+  'cancelled_by_user',
+  'cancelled_by_orchestrator',
+]);
+export type TaskReasonCode = z.infer<typeof TaskReasonCode>;
+
 /** Lifecycle of a cat as drawn on the board. */
 export const CatStatus = z.enum([
   'idle',
@@ -26,11 +64,7 @@ export const CatStatus = z.enum([
 ]);
 export type CatStatus = z.infer<typeof CatStatus>;
 
-/**
- * Task states. The full M1 set is defined now so the event log never needs a
- * breaking change; M0 only uses `queued`, `running`, `done`, `failed` and
- * `cancelled`. Allowed transitions arrive with the M1 state machine.
- */
+/** Task states. Allowed transitions are defined in `task-machine.ts`. */
 export const TaskStatus = z.enum([
   'queued',
   'running',

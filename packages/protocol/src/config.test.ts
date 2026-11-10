@@ -6,11 +6,13 @@ describe('AgentcatsConfig', () => {
   it('fills every default from an empty file', () => {
     expect(AgentcatsConfig.parse({})).toEqual({
       adapter: 'claude',
-      defaultModel: null,
-      permissionMode: 'accept_edits',
+      orchestrator: { model: null },
+      workers: { max: 3, model: 'sonnet', permissionMode: 'accept_edits', allowedCommands: [] },
+      budget: { perCatUsd: 2, globalUsd: 10, perCatTokens: null, enforce: 'metered' },
+      stuckTimeoutMs: 300_000,
       approvalTimeoutMs: 300_000,
       port: 0,
-      budget: { perCatUsd: null, globalUsd: null },
+      worktreesDir: null,
       claude: { executablePath: null },
       mock: { scenario: 'happy-path' },
     });
@@ -19,27 +21,36 @@ describe('AgentcatsConfig', () => {
   it('keeps explicit values', () => {
     const config = AgentcatsConfig.parse({
       adapter: 'mock',
-      permissionMode: 'auto',
+      workers: { permissionMode: 'auto', allowedCommands: ['npm test'] },
       mock: { scenario: 'error' },
-      budget: { perCatUsd: 2 },
+      budget: { perCatUsd: 5, globalUsd: null },
     });
     expect(config).toMatchObject({
       adapter: 'mock',
-      permissionMode: 'auto',
+      workers: { max: 3, permissionMode: 'auto', allowedCommands: ['npm test'] },
       mock: { scenario: 'error' },
-      budget: { perCatUsd: 2, globalUsd: null },
+      budget: { perCatUsd: 5, globalUsd: null, enforce: 'metered' },
     });
   });
 
   it.each(['bypassPermissions', 'bypass', 'acceptEdits'])(
     'rejects permission mode %s',
     (permissionMode) => {
-      expect(AgentcatsConfig.safeParse({ permissionMode }).success).toBe(false);
+      expect(AgentcatsConfig.safeParse({ workers: { permissionMode } }).success).toBe(false);
     },
   );
 
   it('rejects unknown keys, so typos surface', () => {
     expect(AgentcatsConfig.safeParse({ adaptor: 'mock' }).success).toBe(false);
+  });
+
+  it('rejects a worker limit outside 1 to 16', () => {
+    expect(AgentcatsConfig.safeParse({ workers: { max: 0 } }).success).toBe(false);
+    expect(AgentcatsConfig.safeParse({ workers: { max: 17 } }).success).toBe(false);
+  });
+
+  it('rejects the M0 top-level permissionMode, which moved under workers', () => {
+    expect(AgentcatsConfig.safeParse({ permissionMode: 'ask' }).success).toBe(false);
   });
 
   it('rejects an out-of-range port', () => {

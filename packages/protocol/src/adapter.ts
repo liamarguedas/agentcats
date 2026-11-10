@@ -23,6 +23,7 @@ import { z } from 'zod';
 
 import {
   ApprovalDecision,
+  Billing,
   Id,
   MessageChannel,
   PermissionMode,
@@ -46,6 +47,8 @@ export const SessionStartedEvent = z.strictObject({
   model: z.string().min(1).nullable(),
   /** Version of the agent CLI actually running, for the decisions log and board warnings. */
   agentVersion: z.string().min(1).nullable(),
+  /** How this session is paid for; decides whether dollar budgets are enforced. */
+  billing: Billing,
 });
 
 /** The agent started working on a message passed to {@link Session.send}. */

@@ -41,7 +41,8 @@ export function classifySeq(
  * Events that refer to a cat or task the state does not know are ignored
  * rather than thrown on, so a UI holding a truncated history keeps working.
  * Events that carry no board state (`tool.called`, `message.agent`,
- * `daemon.error`) only advance `lastSeq`.
+ * `notice`, `daemon.error`) only advance `lastSeq`. Transition rules are the
+ * daemon's job (`assertTransition`); the projection applies what it is given.
  */
 export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState {
   const next: BoardState = { ...state, lastSeq: event.seq };
@@ -53,12 +54,27 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
         [event.catId]: {
           id: event.catId,
           ...event.payload,
+          billing: 'unknown',
           status: 'idle',
           statusReason: null,
+          pausedReason: null,
           createdAt: event.ts,
         },
       };
       return next;
+
+    case 'cat.updated':
+    case 'cat.paused':
+    case 'cat.resumed': {
+      const cat = state.cats[event.catId];
+      if (!cat) return next;
+      const patch =
+        event.type === 'cat.updated'
+          ? definedOnly(event.payload)
+          : { pausedReason: event.type === 'cat.paused' ? event.payload.reason : null };
+      next.cats = { ...state.cats, [event.catId]: { ...cat, ...patch } };
+      return next;
+    }
 
     case 'cat.status_changed': {
       const cat = state.cats[event.catId];
@@ -76,6 +92,12 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
         [event.taskId]: {
           id: event.taskId,
           ...event.payload,
+          statusReason: null,
+          reasonCode: null,
+          attempt: 1,
+          branch: null,
+          worktreePath: null,
+          result: null,
           summary: null,
           createdAt: event.ts,
           updatedAt: event.ts,
@@ -86,16 +108,10 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
     case 'task.updated': {
       const task = state.tasks[event.taskId];
       if (!task) return next;
-      const { status, assigneeCatId, summary } = event.payload;
+      const { actor: _actor, ...changes } = event.payload;
       next.tasks = {
         ...state.tasks,
-        [event.taskId]: {
-          ...task,
-          ...(status !== undefined && { status }),
-          ...(assigneeCatId !== undefined && { assigneeCatId }),
-          ...(summary !== undefined && { summary }),
-          updatedAt: event.ts,
-        },
+        [event.taskId]: { ...task, ...definedOnly(changes), updatedAt: event.ts },
       };
       return next;
     }
@@ -127,7 +143,15 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
 
     case 'tool.called':
     case 'message.agent':
+    case 'notice':
     case 'daemon.error':
       return next;
   }
+}
+
+/** Drop `undefined` values, so an optional field that is absent never overwrites state. */
+function definedOnly<T extends object>(value: T): { [K in keyof T]?: Exclude<T[K], undefined> } {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as {
+    [K in keyof T]?: Exclude<T[K], undefined>;
+  };
 }

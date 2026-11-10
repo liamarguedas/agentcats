@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { ApprovalDecision, Id } from './common.js';
-import { Task } from './entities.js';
+import { ApprovalDecision, Budget, Id, PermissionMode } from './common.js';
+import { Cat, Task } from './entities.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
 import { API_PREFIX } from './transport.js';
@@ -9,10 +9,13 @@ import { API_PREFIX } from './transport.js';
 /** How many recent events `GET /api/snapshot` returns. */
 export const SNAPSHOT_EVENT_LIMIT = 500;
 
+/**
+ * Assign a task straight to a worker, bypassing the orchestrator. Without
+ * `catId`, the daemon picks an idle worker or hires a new one up to the limit.
+ */
 export const CreateTaskRequest = z.strictObject({
   title: z.string().min(1).max(200),
   description: z.string().max(20_000).default(''),
-  /** Cat to assign. Optional while there is only one cat. */
   catId: Id.optional(),
 });
 export type CreateTaskRequest = z.input<typeof CreateTaskRequest>;
@@ -30,11 +33,39 @@ export const ResolveApprovalResponse = z.strictObject({
 export type ResolveApprovalResponse = z.infer<typeof ResolveApprovalResponse>;
 
 export const ChatRequest = z.strictObject({
-  /** Cat to talk to. Optional while there is only one cat. */
+  /** Cat to talk to. Defaults to the orchestrator. */
   catId: Id.optional(),
   text: z.string().min(1).max(20_000),
 });
 export type ChatRequest = z.infer<typeof ChatRequest>;
+
+/** Edit a cat's properties on the board. Takes effect from its next session. */
+export const UpdateCatRequest = z
+  .strictObject({
+    model: z.string().min(1).nullable().optional(),
+    permissionMode: PermissionMode.optional(),
+    budget: Budget.optional(),
+  })
+  .refine((p) => Object.keys(p).length > 0, 'Change at least one property');
+export type UpdateCatRequest = z.infer<typeof UpdateCatRequest>;
+
+export const CatResponse = z.strictObject({ cat: Cat });
+export type CatResponse = z.infer<typeof CatResponse>;
+
+/** Poke a blocked worker. Without `text` the daemon sends a standard "report your status". */
+export const NudgeRequest = z.strictObject({ text: z.string().min(1).max(20_000).optional() });
+export type NudgeRequest = z.infer<typeof NudgeRequest>;
+
+/** The user's verdict on a worker result in `review`. */
+export const ReviewTaskRequest = z.strictObject({ decision: z.enum(['accept', 'reject']) });
+export type ReviewTaskRequest = z.infer<typeof ReviewTaskRequest>;
+
+export const TaskResponse = z.strictObject({ task: Task });
+export type TaskResponse = z.infer<typeof TaskResponse>;
+
+/** Every stored event about one task, oldest first, for the task drawer. */
+export const TaskEventsResponse = z.strictObject({ events: z.array(AgentcatsEvent) });
+export type TaskEventsResponse = z.infer<typeof TaskEventsResponse>;
 
 /** Response for commands whose effect shows up later as events. */
 export const AcceptedResponse = z.strictObject({ accepted: z.literal(true) });
@@ -65,7 +96,7 @@ export const ErrorResponse = z.strictObject({
 export type ErrorResponse = z.infer<typeof ErrorResponse>;
 
 export interface RouteSpec {
-  readonly method: 'GET' | 'POST';
+  readonly method: 'GET' | 'POST' | 'PATCH';
   /** Full path including {@link API_PREFIX}; `:name` segments are path params. */
   readonly path: string;
   readonly body: z.ZodType | null;
@@ -98,6 +129,62 @@ export const routes = {
     body: null,
     response: AcceptedResponse,
     successStatus: 202,
+  },
+  updateCat: {
+    method: 'PATCH',
+    path: `${API_PREFIX}/cats/:catId`,
+    body: UpdateCatRequest,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  pauseCat: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/pause`,
+    body: null,
+    response: AcceptedResponse,
+    successStatus: 202,
+  },
+  resumeCat: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/resume`,
+    body: null,
+    response: AcceptedResponse,
+    successStatus: 202,
+  },
+  nudgeCat: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/nudge`,
+    body: NudgeRequest,
+    response: AcceptedResponse,
+    successStatus: 202,
+  },
+  reviewTask: {
+    method: 'POST',
+    path: `${API_PREFIX}/tasks/:taskId/review`,
+    body: ReviewTaskRequest,
+    response: TaskResponse,
+    successStatus: 200,
+  },
+  rerunTask: {
+    method: 'POST',
+    path: `${API_PREFIX}/tasks/:taskId/rerun`,
+    body: null,
+    response: TaskResponse,
+    successStatus: 200,
+  },
+  cancelTask: {
+    method: 'POST',
+    path: `${API_PREFIX}/tasks/:taskId/cancel`,
+    body: null,
+    response: TaskResponse,
+    successStatus: 200,
+  },
+  taskEvents: {
+    method: 'GET',
+    path: `${API_PREFIX}/tasks/:taskId/events`,
+    body: null,
+    response: TaskEventsResponse,
+    successStatus: 200,
   },
   chat: {
     method: 'POST',

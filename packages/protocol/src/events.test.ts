@@ -4,15 +4,19 @@ import { AgentcatsEvent, EVENT_TYPES } from './events.js';
 import { sampleEvents } from './fixtures.test-util.js';
 
 describe('AgentcatsEvent', () => {
-  it('defines exactly the M0 event types', () => {
+  it('defines exactly the expected event types', () => {
     expect([...EVENT_TYPES].sort()).toEqual(
       [
         'approval.requested',
         'approval.resolved',
         'cat.created',
+        'cat.paused',
+        'cat.resumed',
         'cat.status_changed',
+        'cat.updated',
         'daemon.error',
         'message.agent',
+        'notice',
         'task.created',
         'task.updated',
         'tool.called',
@@ -60,6 +64,38 @@ describe('AgentcatsEvent', () => {
   it('rejects an invalid cat status', () => {
     const base = sampleEvents['cat.status_changed'];
     const bad = { ...base, payload: { status: 'napping', reason: null } };
+    expect(AgentcatsEvent.safeParse(bad).success).toBe(false);
+  });
+
+  it('accepts a task.updated that carries a worker result', () => {
+    const event = {
+      ...sampleEvents['task.updated'],
+      payload: {
+        status: 'review',
+        actor: 'system',
+        branch: 'agentcats/mochi/task-1',
+        result: {
+          summary: 'Added POST /login with tests.',
+          branch: 'agentcats/mochi/task-1',
+          diffStat: { files: 3, insertions: 120, deletions: 4 },
+          tests: 'passed',
+        },
+      },
+    };
+    expect(AgentcatsEvent.safeParse(event).success).toBe(true);
+  });
+
+  it('rejects an unknown reason code and an unknown pause reason', () => {
+    const task = sampleEvents['task.updated'];
+    expect(AgentcatsEvent.safeParse({ ...task, payload: { reasonCode: 'bored' } }).success).toBe(
+      false,
+    );
+    const paused = sampleEvents['cat.paused'];
+    expect(AgentcatsEvent.safeParse({ ...paused, payload: { reason: 'nap' } }).success).toBe(false);
+  });
+
+  it('rejects a cat.updated that changes nothing', () => {
+    const bad = { ...sampleEvents['cat.updated'], payload: {} };
     expect(AgentcatsEvent.safeParse(bad).success).toBe(false);
   });
 
