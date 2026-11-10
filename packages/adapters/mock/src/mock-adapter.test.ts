@@ -1,3 +1,8 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { isProcessAlive, killProcessTree } from '@agentcats/kit';
 import {
   AgentEvent,
@@ -5,13 +10,14 @@ import {
   type Session,
   type SpawnOptions,
 } from '@agentcats/protocol/adapter';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createMockAdapter, type MockAdapterOptions } from './mock-adapter.js';
 
+// Never the repo itself: a mock with realFiles commits into its cwd.
 const spawnOptions: SpawnOptions = {
   catId: 'cat-1',
-  cwd: process.cwd(),
+  cwd: tmpdir(),
   model: null,
   systemPrompt: null,
   permissionMode: 'accept_edits',
@@ -60,6 +66,7 @@ describe('mock adapter', () => {
     expect(events.filter((e) => e.type === 'tool.started').map((e) => e.kind)).toEqual([
       'read',
       'edit',
+      'execute',
     ]);
     expect(events.at(-1)).toEqual({ type: 'session.ended', reason: 'killed', exitCode: null });
   });
@@ -157,6 +164,38 @@ describe('mock adapter', () => {
       stopReason: 'end_turn',
     });
     await session.kill();
+  });
+
+  it('writes and commits in its cwd only with realFiles', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agentcats-mockrepo-'));
+    try {
+      const git = (...args: string[]) => execFileSync('git', args, { cwd: repo }).toString().trim();
+      git('init', '-q');
+      await writeFile(join(repo, 'README.md'), '# repo\n');
+      git('add', '.');
+      git('-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init');
+
+      for (const realFiles of [false, true]) {
+        const session = await createMockAdapter({ timeScale: 0, realFiles }).spawn({
+          ...spawnOptions,
+          cwd: repo,
+        });
+        const events: AgentEvent[] = [];
+        const done = (async () => {
+          for await (const e of session.events()) events.push(e);
+        })();
+        await session.send(`add a hello function ${String(realFiles)}`);
+        await vi.waitFor(() => {
+          expect(events.some((e) => e.type === 'turn.ended')).toBe(true);
+        });
+        await session.kill();
+        await done;
+      }
+      expect(git('rev-list', '--count', 'HEAD')).toBe('2');
+      expect(git('log', '-1', '--format=%s')).toBe('mock: add a hello function true');
+    } finally {
+      await rm(repo, { recursive: true, force: true, maxRetries: 5 });
+    }
   });
 
   it('allows events() only once', async () => {

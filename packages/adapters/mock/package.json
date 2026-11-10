@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@agentcats/kit": "workspace:*",
-    "@agentcats/protocol": "workspace:*"
+    "@agentcats/protocol": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.32.2"
   }
 }

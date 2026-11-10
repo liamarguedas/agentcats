@@ -1,5 +1,12 @@
-import type { ChildProcess, ChildProcessWithoutNullStreams } from 'node:child_process';
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  execFile,
+} from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { promisify } from 'node:util';
 
 import { AsyncQueue, killProcessTree, spawnGuarded } from '@agentcats/kit';
 import type { ApprovalDecision, Billing, Usage } from '@agentcats/protocol';
@@ -12,13 +19,24 @@ import {
   type SpawnOptions,
   type StopReason,
 } from '@agentcats/protocol/adapter';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-import { type Scenario, SCENARIOS, type ToolSpec, type TurnContext } from './scenarios.js';
+import {
+  type Scenario,
+  scenarioForPrompt,
+  SCENARIOS,
+  type ToolSpec,
+  type TurnContext,
+} from './scenarios.js';
+
+const execFileAsync = promisify(execFile);
 
 export interface MockAdapterOptions {
   /**
    * Scenario name from {@link SCENARIOS}, or a custom scenario. Default
-   * `happy-path`. A prompt starting with `/<name>` (for example `/approval`)
+   * `happy-path`, or `orchestrator` for a session given the agentcats MCP
+   * server. For workers, a prompt line `/<name>` (for example `/approval`)
    * plays that built-in scenario for that turn instead.
    */
   readonly scenario?: string | Scenario;
@@ -34,10 +52,16 @@ export interface MockAdapterOptions {
   readonly spawnProcess?: boolean;
   /** Billing the mock reports at session start. Default `metered`, so budgets apply. */
   readonly billing?: Billing;
+  /**
+   * Let scenarios write files and make git commits in the session's `cwd`.
+   * Off by default, so a mock never touches a directory unless asked. The
+   * daemon turns it on; its workers run in throwaway worktrees.
+   */
+  readonly realFiles?: boolean;
 }
 
 const CAPABILITIES: AdapterCapabilities = {
-  mcp: false,
+  mcp: true,
   approvals: true,
   resume: false,
   reportsCost: false,
@@ -66,7 +90,10 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
     displayName: 'Mock',
     capabilities: CAPABILITIES,
     async spawn(spawnOptions) {
-      const scenario = resolveScenario(options.scenario ?? 'happy-path');
+      const isOrchestrator = spawnOptions.mcpServers?.['agentcats'] !== undefined;
+      const scenario = resolveScenario(
+        isOrchestrator ? 'orchestrator' : (options.scenario ?? 'happy-path'),
+      );
       const child = options.spawnProcess ? await startStandInProcess(spawnOptions.cwd) : null;
       return new MockSession(
         spawnOptions,
@@ -74,6 +101,7 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
         timeScale,
         child,
         options.billing ?? 'metered',
+        options.realFiles ?? false,
       );
     },
   };
@@ -124,13 +152,16 @@ class MockSession implements Session {
   #turnCount = 0;
   #nextId = 0;
   #turn: { abort: AbortController; done: Promise<void> } | null = null;
+  readonly #state = new Map<string, unknown>();
+  #mcp: Promise<Client> | null = null;
 
   constructor(
-    options: SpawnOptions,
+    private readonly options: SpawnOptions,
     private readonly scenario: Scenario,
     private readonly timeScale: number,
     private readonly child: ChildProcess | null,
     billing: Billing,
+    private readonly realFiles: boolean,
   ) {
     this.pid = child?.pid ?? null;
     child?.once('exit', (code) => void this.#onChildExit(code));
@@ -194,7 +225,8 @@ class MockSession implements Session {
     let stopReason: StopReason;
     let crashed = false;
     try {
-      const scenario = scenarioForPrompt(prompt) ?? this.scenario;
+      // An orchestrator only delegates; scenario lines in its prompts are meant for workers.
+      const scenario = this.#hasMcp ? this.scenario : (scenarioForPrompt(prompt) ?? this.scenario);
       stopReason = await scenario.turn(this.#context(prompt, signal));
     } catch (error) {
       if (signal.aborted) {
@@ -237,10 +269,77 @@ class MockSession implements Session {
         );
       });
 
+    const tool = async (spec: ToolSpec, effect?: () => Promise<void>) => {
+      const toolCallId = this.#id('tool');
+      this.#emit({
+        type: 'tool.started',
+        toolCallId,
+        toolName: spec.toolName,
+        kind: spec.kind,
+        inputSummary: spec.inputSummary,
+      });
+      await sleep(spec.durationMs ?? 900);
+      let failed = spec.fails ?? false;
+      if (effect)
+        failed = await effect().then(
+          () => false,
+          () => true,
+        );
+      this.#emit({
+        type: 'tool.finished',
+        toolCallId,
+        status: failed ? 'error' : 'success',
+        outputSummary: failed ? 'exit code 1' : null,
+      });
+    };
+    const cwd = this.options.cwd;
+
     const ctx: TurnContext = {
       prompt,
       turn: this.#turnCount,
+      cwd,
+      state: this.#state,
+      hasMcp: this.#hasMcp,
       sleep,
+      writeFile: (relativePath, content) =>
+        tool(
+          { toolName: 'Write', kind: 'edit', inputSummary: relativePath, durationMs: 600 },
+          async () => {
+            if (!this.realFiles) return;
+            const file = join(cwd, relativePath);
+            await mkdir(dirname(file), { recursive: true });
+            await writeFile(file, content);
+          },
+        ),
+      commit: async (message) => {
+        if (!this.realFiles || !(await stat(join(cwd, '.git')).catch(() => null))) return;
+        await tool(
+          { toolName: 'Bash', kind: 'execute', inputSummary: 'git commit', durationMs: 300 },
+          async () => {
+            const git = (...args: string[]) =>
+              execFileAsync('git', args, { cwd, windowsHide: true });
+            await git('add', '-A');
+            await git(
+              '-c',
+              'user.name=agentcats mock',
+              '-c',
+              'user.email=mock@agentcats.local',
+              'commit',
+              '-q',
+              '-m',
+              message,
+            );
+          },
+        );
+      },
+      callTool: async (name, args) => {
+        const client = await this.#mcpClient();
+        const result = await client.callTool({ name, arguments: args });
+        const content = result.content as { type: string; text?: string }[];
+        const text = content.find((c) => c.type === 'text')?.text ?? 'null';
+        if (result.isError) throw new Error(`MCP tool ${name} failed: ${text}`);
+        return JSON.parse(text) as unknown;
+      },
       say: async (text, channel = 'text') => {
         const messageId = this.#id('msg');
         for (const chunk of chunkWords(text, 4)) {
@@ -248,23 +347,7 @@ class MockSession implements Session {
           this.#emit({ type: 'message.chunk', messageId, channel, text: chunk });
         }
       },
-      tool: async (spec: ToolSpec) => {
-        const toolCallId = this.#id('tool');
-        this.#emit({
-          type: 'tool.started',
-          toolCallId,
-          toolName: spec.toolName,
-          kind: spec.kind,
-          inputSummary: spec.inputSummary,
-        });
-        await sleep(spec.durationMs ?? 900);
-        this.#emit({
-          type: 'tool.finished',
-          toolCallId,
-          status: spec.fails ? 'error' : 'success',
-          outputSummary: spec.fails ? 'exit code 1' : null,
-        });
-      },
+      tool: (spec: ToolSpec) => tool(spec),
       requestApproval: (spec) => {
         const requestId = this.#id('approval');
         this.#emit({ type: 'approval.requested', requestId, toolCallId: null, ...spec });
@@ -295,11 +378,34 @@ class MockSession implements Session {
     return ctx;
   }
 
+  get #hasMcp(): boolean {
+    return this.options.mcpServers?.['agentcats'] !== undefined;
+  }
+
+  /** Connect to the agentcats MCP server on first use, like a real agent would. */
+  #mcpClient(): Promise<Client> {
+    const spec = this.options.mcpServers?.['agentcats'];
+    if (spec?.type !== 'http') {
+      return Promise.reject(new Error('This session was not given the agentcats MCP server'));
+    }
+    this.#mcp ??= (async () => {
+      const client = new Client({ name: 'agentcats-mock', version: '0.0.0' });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(spec.url), {
+          requestInit: { headers: { ...spec.headers } },
+        }),
+      );
+      return client;
+    })();
+    return this.#mcp;
+  }
+
   #end(reason: 'exited' | 'killed' | 'crashed', exitCode: number | null): void {
     if (this.#ended) return;
     this.#ended = true;
     this.#emit({ type: 'session.ended', reason, exitCode });
     this.#queue.close();
+    void this.#mcp?.then((client) => client.close()).catch(() => undefined);
   }
 
   #emit(event: AgentEvent): void {
@@ -312,12 +418,6 @@ class MockSession implements Session {
     this.#nextId += 1;
     return `${prefix}-${String(this.#nextId)}`;
   }
-}
-
-/** The built-in scenario a `/<name>` prompt asks for, if any. */
-function scenarioForPrompt(prompt: string): Scenario | undefined {
-  const match = /^\/([a-z-]+)/.exec(prompt.trim());
-  return match?.[1] === undefined ? undefined : SCENARIOS[match[1]];
 }
 
 /** Split text into chunks of `size` words, keeping the spaces. */
