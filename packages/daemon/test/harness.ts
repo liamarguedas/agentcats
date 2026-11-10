@@ -26,6 +26,7 @@ export async function tempProject(): Promise<string> {
   const repo = await tempDir();
   const git = (...args: string[]) => execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
   git('init', '-q', '-b', 'main');
+  git('config', 'core.autocrlf', 'false');
   git('config', 'user.email', 'test@agentcats.local');
   git('config', 'user.name', 'agentcats test');
   await writeFile(join(repo, 'README.md'), '# test project\n');
