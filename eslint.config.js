@@ -42,6 +42,15 @@ export default defineConfig(
       ],
     },
   },
-  { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
+  {
+    // Tests may assert presence with `!`; a wrong guess fails the test anyway.
+    files: ['**/*.test.ts'],
+    rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
+  },
+  {
+    files: ['**/*.js', '**/*.mjs'],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: { parserOptions: { projectService: false } },
+  },
   prettier,
 );

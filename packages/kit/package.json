@@ -1,0 +1,22 @@
+{
+  "name": "@agentcats/kit",
+  "version": "0.0.0",
+  "description": "Runtime helpers shared by agentcats adapters and the daemon.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentcats/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}
