@@ -1,9 +1,9 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { Snapshot, WS_PATH, WS_PROTOCOL } from '@agentcats/protocol';
 import WebSocket from 'ws';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished } from 'vitest';
 
 import {
   connectEvents,
@@ -81,7 +81,9 @@ describe('REST security', () => {
 
 describe('static UI', () => {
   it('serves the UI without a token, with a strict CSP, and no path traversal', async () => {
-    const uiDir = join(await tempProject(), 'ui');
+    const uiRoot = await tempProject();
+    onTestFinished(() => rm(uiRoot, { recursive: true, force: true, maxRetries: 5 }));
+    const uiDir = join(uiRoot, 'ui');
     await mkdir(uiDir, { recursive: true });
     await writeFile(join(uiDir, 'index.html'), '<!doctype html><title>agentcats</title>');
     await writeFile(join(uiDir, '..', 'secret.txt'), 'top secret');
