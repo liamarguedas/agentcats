@@ -198,6 +198,29 @@ Changes from the M0 sketch, all agreed in the planning round or required to make
 - `AgentEvent` is ten types: `session.started`, `turn.started`, `message.chunk`, `tool.started`, `tool.finished`, `approval.requested`, `usage`, `turn.ended`, `error`, `session.ended`. Stream guarantees are documented on `Session` and checked by `checkSessionInvariants`, which the mock tests use now and the M4 conformance suite will reuse.
 - `ToolKind` and `StopReason` mirror ACP's enums, so tool-name normalization across agents is solved in the type, not in daemon special cases.
 
+## 2026-11-10 - Orphan prevention: a guardian process per agent, plus the PID file
+
+**Changes the plan.** A PID file alone only cleans up on the *next* daemon start, so a hard-killed daemon would leave agents running until then.
+On Windows, children never die with their parent, and on POSIX a SIGKILL runs no cleanup code.
+
+**Decision:** every agent process is started through `@agentcats/kit`'s `spawnGuarded`, which runs a ~60-line plain-JS guardian (`packages/kit/bin/guardian.mjs`) between the daemon and the agent.
+The agent inherits the guardian's stdio, so the daemon still talks to the agent directly.
+The guardian polls its owner every 500 ms (and on POSIX also watches for re-parenting) and kills the agent's whole tree when the owner is gone.
+Tree kill is `taskkill /T /F` on Windows and a process-group SIGKILL on POSIX (the guardian leads its own group).
+
+The PID file `.agentcats/run/pids.json` stays as the second line of defense, for example if the guardian itself is killed.
+On startup the daemon kills recorded processes only if the OS start time matches the recorded time within 10 s, so an unrelated process that reused a PID is never killed.
+
+Tested on Windows locally and on Linux in CI: graceful shutdown, a SIGKILLed daemon (agent gone within the poll interval), and startup reaping that kills a real leftover but spares a reused PID.
+
+## 2026-11-10 - Daemon structure
+
+- `EventLog` is the single source of truth. It validates every event against the protocol schema before storing it (a daemon bug fails loudly instead of reaching the UI), projects the board with the shared `applyEvent`, then broadcasts. M1 swaps storage for SQLite behind the same methods.
+- `CatRunner` owns the one M0 cat. The cat is created at daemon start, but its agent session only starts with the first task, so starting agentcats spends nothing.
+- Adapters are injected into `startDaemon`. The daemon package depends on no adapter, so the CLI does the wiring and tests inject the mock.
+- Chat turns are not tied to a task. A task's outcome comes from the turn that the task started.
+- `tsx` 4.23.15 is a dev dependency, for `pnpm dev` and for the test that runs a daemon in a separate process. pnpm 11 blocks install scripts by default, so `pnpm-workspace.yaml` allows exactly one: esbuild's.
+
 ## M1 handoff notes
 
 To be filled in at the end of M0: chosen headless approach, MCP wiring method, and where `AgentEvent` felt too thin or too thick.

@@ -3,3 +3,7 @@ packages:
   - packages/adapters/*
 
 saveExact: true
+
+# esbuild (via tsx) verifies its platform binary in a postinstall script.
+allowBuilds:
+  esbuild: true

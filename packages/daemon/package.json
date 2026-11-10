@@ -1,0 +1,31 @@
+{
+  "name": "@agentcats/daemon",
+  "version": "0.0.0",
+  "description": "agentcats daemon: owns agent processes, event log, REST and WebSocket API.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentcats/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentcats/kit": "workspace:*",
+    "@agentcats/protocol": "workspace:*",
+    "ws": "8.22.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@agentcats/adapter-mock": "workspace:*",
+    "@types/ws": "8.18.2"
+  }
+}
