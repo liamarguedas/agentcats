@@ -1,0 +1,116 @@
+import type { AgentcatsEvent, EventType } from './events.js';
+
+/** One valid sample per event type, in a plausible order (seq 1..n). */
+export const sampleEvents = {
+  'cat.created': {
+    id: 'e1',
+    seq: 1,
+    ts: 1_000,
+    type: 'cat.created',
+    catId: 'cat-1',
+    payload: { name: 'Mochi', adapter: 'mock', model: null, permissionMode: 'accept_edits' },
+  },
+  'task.created': {
+    id: 'e2',
+    seq: 2,
+    ts: 2_000,
+    type: 'task.created',
+    taskId: 'task-1',
+    payload: {
+      title: 'Add a hello function',
+      description: 'In src/hello.ts',
+      status: 'queued',
+      assigneeCatId: 'cat-1',
+    },
+  },
+  'cat.status_changed': {
+    id: 'e3',
+    seq: 3,
+    ts: 3_000,
+    type: 'cat.status_changed',
+    catId: 'cat-1',
+    taskId: 'task-1',
+    payload: { status: 'thinking', reason: null },
+  },
+  'task.updated': {
+    id: 'e4',
+    seq: 4,
+    ts: 4_000,
+    type: 'task.updated',
+    taskId: 'task-1',
+    payload: { status: 'running' },
+  },
+  'message.agent': {
+    id: 'e5',
+    seq: 5,
+    ts: 5_000,
+    type: 'message.agent',
+    catId: 'cat-1',
+    payload: { messageId: 'm1', channel: 'text', text: 'I will add the function.' },
+  },
+  'tool.called': {
+    id: 'e6',
+    seq: 6,
+    ts: 6_000,
+    type: 'tool.called',
+    catId: 'cat-1',
+    taskId: 'task-1',
+    payload: {
+      toolCallId: 'tc1',
+      toolName: 'Write',
+      kind: 'edit',
+      inputSummary: 'src/hello.ts',
+      status: 'running',
+    },
+  },
+  'approval.requested': {
+    id: 'e7',
+    seq: 7,
+    ts: 7_000,
+    type: 'approval.requested',
+    catId: 'cat-1',
+    taskId: 'task-1',
+    payload: {
+      approvalId: 'ap1',
+      toolCallId: 'tc2',
+      toolName: 'Bash',
+      kind: 'execute',
+      inputSummary: 'npm install left-pad',
+    },
+  },
+  'approval.resolved': {
+    id: 'e8',
+    seq: 8,
+    ts: 8_000,
+    type: 'approval.resolved',
+    catId: 'cat-1',
+    payload: { approvalId: 'ap1', decision: 'deny', resolvedBy: 'user' },
+  },
+  'usage.updated': {
+    id: 'e9',
+    seq: 9,
+    ts: 9_000,
+    type: 'usage.updated',
+    catId: 'cat-1',
+    payload: {
+      inputTokens: 1200,
+      outputTokens: 300,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      costUsd: 0.01,
+      costSource: 'reported',
+    },
+  },
+  'daemon.error': {
+    id: 'e10',
+    seq: 10,
+    ts: 10_000,
+    type: 'daemon.error',
+    payload: { code: 'adapter_spawn_failed', message: 'claude not found on PATH' },
+  },
+} as const satisfies { [T in EventType]: Extract<AgentcatsEvent, { type: T }> };
+
+/** The samples as an array ordered by seq. */
+export const sampleLog: AgentcatsEvent[] = Object.values(sampleEvents).sort(
+  (a, b) => a.seq - b.seq,
+);

@@ -1,0 +1,29 @@
+{
+  "name": "@agentcats/protocol",
+  "version": "0.0.0",
+  "description": "Shared event, command, config and adapter contract for agentcats.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentcats/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./adapter": {
+      "@agentcats/source": "./src/adapter.ts",
+      "types": "./dist/adapter.d.ts",
+      "default": "./dist/adapter.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
+  }
+}
