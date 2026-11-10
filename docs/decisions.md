@@ -163,6 +163,41 @@ Whether `auto` is available on a Pro plan is unverified; it gets tested when the
 - **Repo:** https://github.com/liamarguedas/agentcats, branch `main`. Commits carry no AI co-author trailer.
 - **Housekeeping:** dropped the dangling `PLAN.md` reference from the milestones README. `POST /chat` takes `{ catId?, text }`, defaulting to the only cat in M0.
 
+## 2026-11-10 - Toolchain pins
+
+TypeScript 6.0.3, not 7.0.2: typescript-eslint 8.72.1 requires `typescript <6.1.0`, and type-aware linting is worth more than the TS 7 compiler speed.
+Revisit when typescript-eslint supports 7.x.
+Other pins: zod 4.6.7, vitest 4.1.12, vite 8.3.5, eslint 10.13.0, typescript-eslint 8.72.1, prettier 3.9.10, `@types/node` 22.20.5 (matches the Node 22 baseline).
+Every pin was at least two weeks old on 2026-11-10.
+
+## 2026-11-10 - Protocol design choices
+
+These refine the M0 plan; none changes its intent.
+
+- **REST paths live under `/api`** (`/api/tasks`, `/api/snapshot`, WebSocket `/api/events`). The daemon also serves the static UI, which must load without the token, so a prefix separates authenticated routes cleanly.
+- **The REST route table is in the protocol package** (`routes`), so the daemon router and the UI client are built from one definition.
+- **Permission modes are agent-neutral:** `ask`, `accept_edits`, `auto`. `acceptEdits` and `bypassPermissions` are Claude terms and would break the no-Claude-types rule. The Claude adapter maps them. A bypass mode does not exist in the schema.
+- **`ts` is epoch milliseconds**, `seq` starts at 1 and increases by exactly 1, so a gap is `seq !== lastSeq + 1`.
+- **Schemas are strict** (unknown fields rejected), for both commands from the network and events. `PROTOCOL_VERSION` in the snapshot is the compatibility signal.
+- **Snapshot returns the projected board, not only events.** The plan said "current cats, tasks and last N events". A truncated event window cannot rebuild state, so the snapshot carries `board` (cats, tasks, pending approvals, usage, `lastSeq`) plus the last 500 events for the log panel.
+- **One shared reducer**, `applyEvent`, in the protocol package. The daemon builds the snapshot with it and the UI applies live events with it, so both sides compute the same state.
+- **`tool.called` is emitted twice per call**, with `status: 'running'` and then a final status, correlated by `toolCallId`. This keeps the plan's single event type.
+- **Usage is cumulative per session** and carries `costSource: reported | estimated | unknown`, so the board can flag estimated or missing cost instead of showing a guess as fact.
+- **Task status enum is the full M1 set now**; M0 uses only part of it. Transitions arrive with the M1 state machine.
+- **`projectPath` is not in the config file.** It is the directory containing `.agentcats/`, passed by the CLI.
+
+## 2026-11-10 - Adapter interface
+
+The adapter contract lives in `@agentcats/protocol/adapter` (a subpath export, so the UI never imports it).
+Changes from the M0 sketch, all agreed in the planning round or required to make it implementable:
+
+- `Adapter` has `id`, `displayName` and `capabilities` (planned for M4, added now).
+- `Session` has `pid` (for orphan tracking; the Claude SDK's `spawnClaudeCodeProcess` hook makes it available) and `interrupt()`.
+- `SpawnOptions` has `permissionMode` and optional `resumeId`. `systemPrompt` is appended to the agent's own prompt, never replacing it, so built-in tool guidance survives.
+- `send()` rejects with `busy` while a turn runs. Queuing is the daemon's decision, which matches ACP's one-prompt-at-a-time model.
+- `AgentEvent` is ten types: `session.started`, `turn.started`, `message.chunk`, `tool.started`, `tool.finished`, `approval.requested`, `usage`, `turn.ended`, `error`, `session.ended`. Stream guarantees are documented on `Session` and checked by `checkSessionInvariants`, which the mock tests use now and the M4 conformance suite will reuse.
+- `ToolKind` and `StopReason` mirror ACP's enums, so tool-name normalization across agents is solved in the type, not in daemon special cases.
+
 ## M1 handoff notes
 
 To be filled in at the end of M0: chosen headless approach, MCP wiring method, and where `AgentEvent` felt too thin or too thick.
