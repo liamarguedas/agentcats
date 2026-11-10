@@ -123,6 +123,13 @@ describe('main', () => {
     expect(err[0]).toMatch(/Usage: agentcats/);
   });
 
+  it('explains a project that is not a git repository', async () => {
+    project = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
+    const { io, err } = testIo();
+    expect(await main(['--project', project, '--adapter', 'mock', '--no-open'], io)).toBe(1);
+    expect(err[0]).toMatch(/not a git repository/);
+  });
+
   it('explains an invalid config file', async () => {
     project = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
     await mkdir(join(project, '.agentcats'));

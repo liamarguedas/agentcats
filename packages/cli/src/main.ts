@@ -11,7 +11,7 @@ import {
   TESTED_CLAUDE_VERSIONS,
 } from '@agentcats/adapter-claude';
 import { createMockAdapter } from '@agentcats/adapter-mock';
-import { ConfigError, consoleLogger, loadConfig, startDaemon } from '@agentcats/daemon';
+import { ConfigError, consoleLogger, GitError, loadConfig, startDaemon } from '@agentcats/daemon';
 import type { AgentcatsConfig } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
@@ -96,6 +96,7 @@ export async function findUiDir(): Promise<string | null> {
 }
 
 async function createAdapter(config: AgentcatsConfig, io: CliIo): Promise<Adapter> {
+  // On a real project the mock only animates; it never writes files or commits.
   if (config.adapter === 'mock') return createMockAdapter();
   const executable = await resolveClaudeExecutable(config.claude.executablePath);
   if (!executable) {
@@ -166,7 +167,7 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     await daemon.close();
     return 0;
   } catch (error) {
-    if (error instanceof ConfigError) {
+    if (error instanceof ConfigError || error instanceof GitError) {
       io.err(error.message);
       return 1;
     }
