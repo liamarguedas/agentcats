@@ -2,10 +2,11 @@ import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '**/test-results/**'] },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   {
@@ -41,6 +42,11 @@ export default defineConfig(
         },
       ],
     },
+  },
+  {
+    files: ['packages/ui/src/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat.recommended],
+    languageOptions: { globals: globals.browser },
   },
   {
     // Tests may assert presence with `!`; a wrong guess fails the test anyway.

@@ -221,6 +221,18 @@ Tested on Windows locally and on Linux in CI: graceful shutdown, a SIGKILLed dae
 - Chat turns are not tied to a task. A task's outcome comes from the turn that the task started.
 - `tsx` 4.23.15 is a dev dependency, for `pnpm dev` and for the test that runs a daemon in a separate process. pnpm 11 blocks install scripts by default, so `pnpm-workspace.yaml` allows exactly one: esbuild's.
 
+## 2026-11-10 - UI
+
+- React 19.1.10 and Vite 8.3.5, no state library. `BoardClient` holds the view and React reads it with `useSyncExternalStore`. Board state comes only from the snapshot and the shared `applyEvent`, as the milestones require.
+- Sync: open the WebSocket, buffer, fetch the snapshot, apply buffered events newer than it; any `seq` gap repeats this. Browsers hide why a WebSocket upgrade failed, so a socket that closes before opening triggers one REST call to tell "token rejected" (stop, show it) from "daemon down" (retry with backoff).
+- The token is moved from the URL fragment into `sessionStorage` and removed from the address bar.
+- **Beyond M0 scope, on purpose:** the approval bubble has working Allow / Deny buttons and the cat has a Stop button. M0 asked for a display-only bubble, but with the real Claude adapter an approval would otherwise sit until the 5-minute timeout. Both call REST commands that already exist in the M0 protocol. Editing permissions and pause/resume stay in M1.
+- The prompt box always creates a task (`POST /api/tasks`), so every request shows up in the task list. `POST /api/chat` exists for API use; the board does not need it yet.
+- Failure reasons show the agent's own last error message (for example "Build failed: ..."), not a generic "turn ended".
+- The mock adapter plays the scenario named by a `/name` prompt prefix (`/approval`, `/error`, `/crash`, `/hang`), so the browser tests and demos reach every state without restarting the daemon.
+- Browser tests use Playwright 1.64.1 against the built UI served by a real daemon with the mock adapter, so the CSP, token handling and WebSocket path are the production ones. They run in a separate CI job (`pnpm test:e2e`).
+- `pnpm dev` runs a mock daemon on port 4545 and the Vite dev server on 5173. Vite proxies `/api` and rewrites `Origin` to the daemon's own, because the daemon rejects foreign origins.
+
 ## M1 handoff notes
 
 To be filled in at the end of M0: chosen headless approach, MCP wiring method, and where `AgentEvent` felt too thin or too thick.

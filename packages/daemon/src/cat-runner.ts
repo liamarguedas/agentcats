@@ -28,6 +28,8 @@ interface Turn {
   readonly taskId: string | null;
   /** Agent answer text so far, used as the task summary. */
   text: string;
+  /** Last error the agent reported in this turn, shown if the turn fails. */
+  lastError: string | null;
 }
 
 interface PendingApproval {
@@ -151,7 +153,7 @@ export class CatRunner {
 
   async #startTurn(prompt: string, taskId: string | null): Promise<void> {
     // Reserve the turn synchronously so a concurrent request gets `conflict`.
-    this.#turn = { taskId, text: '' };
+    this.#turn = { taskId, text: '', lastError: null };
     let session: Session;
     try {
       session = await this.#ensureSession();
@@ -230,7 +232,7 @@ export class CatRunner {
         return;
 
       case 'turn.started':
-        this.#turn ??= { taskId: null, text: '' };
+        this.#turn ??= { taskId: null, text: '', lastError: null };
         this.#setStatus('thinking');
         return;
 
@@ -308,6 +310,7 @@ export class CatRunner {
         return;
 
       case 'error':
+        if (this.#turn) this.#turn.lastError = event.message;
         log.append({
           type: 'daemon.error',
           ...scope,
@@ -344,10 +347,12 @@ export class CatRunner {
       case 'error':
       case 'refusal':
       case 'max_tokens':
-      case 'max_turns':
-        update({ status: 'failed', summary: `Turn ended: ${stopReason}` });
-        this.#setStatus('error', `Turn ended: ${stopReason}`);
+      case 'max_turns': {
+        const reason = turn?.lastError ?? `Turn ended: ${stopReason}`;
+        update({ status: 'failed', summary: reason });
+        this.#setStatus('error', reason);
         return;
+      }
     }
   }
 

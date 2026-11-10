@@ -145,6 +145,20 @@ describe('mock adapter', () => {
     expect(types(events).slice(-2)).toEqual(['turn.ended', 'session.ended']);
   });
 
+  it('plays the scenario a /<name> prompt asks for, then falls back to the default', async () => {
+    const { session, events, next } = await start({ scenario: 'happy-path' });
+    await session.send('/error please');
+    await next('turn.ended');
+    expect(events.find((e) => e.type === 'turn.ended')).toMatchObject({ stopReason: 'error' });
+
+    await session.send('/no-such-scenario');
+    await expect.poll(() => events.filter((e) => e.type === 'turn.ended').length).toBe(2);
+    expect(events.filter((e) => e.type === 'turn.ended').at(-1)).toMatchObject({
+      stopReason: 'end_turn',
+    });
+    await session.kill();
+  });
+
   it('allows events() only once', async () => {
     const { session } = await start({});
     expect(() => session.events()).toThrow(/once/);

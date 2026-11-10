@@ -16,7 +16,11 @@ import {
 import { type Scenario, SCENARIOS, type ToolSpec, type TurnContext } from './scenarios.js';
 
 export interface MockAdapterOptions {
-  /** Scenario name from {@link SCENARIOS}, or a custom scenario. Default `happy-path`. */
+  /**
+   * Scenario name from {@link SCENARIOS}, or a custom scenario. Default
+   * `happy-path`. A prompt starting with `/<name>` (for example `/approval`)
+   * plays that built-in scenario for that turn instead.
+   */
   readonly scenario?: string | Scenario;
   /**
    * Multiplier for every delay. `1` gives realistic pacing for UI work, `0`
@@ -180,7 +184,8 @@ class MockSession implements Session {
     let stopReason: StopReason;
     let crashed = false;
     try {
-      stopReason = await this.scenario.turn(this.#context(prompt, signal));
+      const scenario = scenarioForPrompt(prompt) ?? this.scenario;
+      stopReason = await scenario.turn(this.#context(prompt, signal));
     } catch (error) {
       if (signal.aborted) {
         stopReason = 'cancelled';
@@ -297,6 +302,12 @@ class MockSession implements Session {
     this.#nextId += 1;
     return `${prefix}-${String(this.#nextId)}`;
   }
+}
+
+/** The built-in scenario a `/<name>` prompt asks for, if any. */
+function scenarioForPrompt(prompt: string): Scenario | undefined {
+  const match = /^\/([a-z-]+)/.exec(prompt.trim());
+  return match?.[1] === undefined ? undefined : SCENARIOS[match[1]];
 }
 
 /** Split text into chunks of `size` words, keeping the spaces. */

@@ -159,7 +159,7 @@ describe('failures and kill', () => {
     const status = await stream.waitFor<EventOfType<'cat.status_changed'>>(
       isType('cat.status_changed', (e) => e.payload.status === 'error'),
     );
-    expect(status.payload.reason).toBe('Turn ended: error');
+    expect(status.payload.reason).toBe('Build failed: cannot find module "./hello"');
     expect(
       stream.events.some(isType('daemon.error', (e) => e.payload.code === 'agent_error')),
     ).toBe(true);

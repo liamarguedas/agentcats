@@ -22,3 +22,22 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v6.1.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @agentcats/ui exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e
+      - if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-results
+          path: packages/ui/test-results/
+          if-no-files-found: ignore

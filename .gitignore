@@ -5,3 +5,5 @@ coverage/
 .env
 .env.*
 .agentcats/
+test-results/
+playwright-report/
