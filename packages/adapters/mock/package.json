@@ -1,0 +1,25 @@
+{
+  "name": "@agentcats/adapter-mock",
+  "version": "0.0.0",
+  "description": "Scripted agent for agentcats: no CLI, no API key, no tokens.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "@agentcats/source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@agentcats/kit": "workspace:*",
+    "@agentcats/protocol": "workspace:*"
+  }
+}
