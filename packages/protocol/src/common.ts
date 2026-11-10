@@ -46,6 +46,7 @@ export const TaskReasonCode = z.enum([
   'crashed',
   'agent_error',
   'spawn_failed',
+  'killed',
   'daemon_restarted',
   'cancelled_by_user',
   'cancelled_by_orchestrator',

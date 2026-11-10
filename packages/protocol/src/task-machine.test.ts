@@ -27,6 +27,8 @@ describe('task state machine', () => {
     ['blocked', 'running', 'user'],
     ['running', 'queued', 'system'],
     ['running', 'failed', 'system'],
+    ['running', 'failed', 'user'],
+    ['blocked', 'failed', 'user'],
     ['review', 'done', 'user'],
     ['review', 'rejected', 'user'],
     ['failed', 'queued', 'user'],
@@ -50,6 +52,8 @@ describe('task state machine', () => {
     ['running', 'done', 'system'],
     // Only the daemon marks interruption, only on restart.
     ['running', 'interrupted', 'user'],
+    // The orchestrator cancels; it never fails a task.
+    ['running', 'failed', 'orchestrator'],
     // Re-runs are a user decision.
     ['failed', 'queued', 'system'],
     ['interrupted', 'queued', 'orchestrator'],

@@ -48,13 +48,14 @@ export const TASK_TRANSITIONS: Rules = {
     queued: SYSTEM,
     blocked: ['system', 'user'],
     review: SYSTEM,
-    failed: SYSTEM,
+    // `user`: the user killed the worker; the task stays re-runnable.
+    failed: ['system', 'user'],
     cancelled: ANYONE_CANCELS,
     interrupted: SYSTEM,
   },
   blocked: {
     running: ['system', 'user'],
-    failed: SYSTEM,
+    failed: ['system', 'user'],
     cancelled: ANYONE_CANCELS,
     interrupted: SYSTEM,
   },

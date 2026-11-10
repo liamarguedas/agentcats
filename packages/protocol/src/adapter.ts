@@ -187,6 +187,24 @@ export type McpServerSpec =
       readonly env?: Readonly<Record<string, string>>;
     };
 
+/**
+ * What the agent may do, enforced by the adapter with the agent's own
+ * permission mechanism. Agent-neutral on purpose.
+ */
+export interface AgentPolicy {
+  /**
+   * `read_only`: read and search only, plus the MCP tools in
+   * {@link SpawnOptions.mcpServers}. No edits, no shell. Used for the
+   * orchestrator. `workspace`: edit inside `cwd`, run commands subject to
+   * approval. Used for workers.
+   */
+  readonly access: 'read_only' | 'workspace';
+  /** Shell commands that run without asking, matched as a prefix (e.g. `npm test`). */
+  readonly allowedCommands: readonly string[];
+  /** Paths the agent must never write to, such as the main checkout. */
+  readonly protectedPaths: readonly string[];
+}
+
 export interface SpawnOptions {
   readonly catId: string;
   /** Working directory. The agent must not be granted writes outside it. */
@@ -200,6 +218,8 @@ export interface SpawnOptions {
   readonly mcpServers?: Readonly<Record<string, McpServerSpec>>;
   /** Continue an earlier session, from its `session.started.resumeId`. */
   readonly resumeId?: string;
+  /** Omitted means the agent's normal behavior under `permissionMode`. */
+  readonly policy?: AgentPolicy;
 }
 
 export interface Adapter {
