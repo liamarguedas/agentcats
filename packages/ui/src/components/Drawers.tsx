@@ -189,8 +189,8 @@ export function TaskDrawer({
       )}
       {task.status === 'review' && task.branch && (
         <p className="drawer__hint">
-          Review it with <code>{`git diff ...${task.branch}`}</code> (what it changed since it left your
-          current branch), merge it yourself, then accept.
+          Review it with <code>{`git diff ...${task.branch}`}</code> (what it changed since it left
+          your current branch), merge it yourself, then accept.
         </p>
       )}
 
