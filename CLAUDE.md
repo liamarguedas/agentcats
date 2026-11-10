@@ -7,15 +7,15 @@ TypeScript pnpm monorepo: `packages/protocol`, `packages/daemon`, `packages/adap
 
 Package manager is pnpm (version pinned in `package.json`). Node >= 22.
 
-| Task | Command |
-| - | - |
-| Install | `pnpm install` |
-| Dev | `pnpm dev` (added with the daemon and UI) |
-| Test | `pnpm test` (Vitest, all packages) |
-| Lint | `pnpm lint` |
-| Typecheck | `pnpm typecheck` |
-| Format | `pnpm format` |
-| Everything CI runs | `pnpm check` |
+| Task               | Command                                   |
+| ------------------ | ----------------------------------------- |
+| Install            | `pnpm install`                            |
+| Dev                | `pnpm dev` (added with the daemon and UI) |
+| Test               | `pnpm test` (Vitest, all packages)        |
+| Lint               | `pnpm lint`                               |
+| Typecheck          | `pnpm typecheck`                          |
+| Format             | `pnpm format`                             |
+| Everything CI runs | `pnpm check`                              |
 
 Packages export their TypeScript sources under the `@agentcats/source` condition, so tests and typecheck need no build.
 Pin dependencies to exact versions at least two weeks old.
