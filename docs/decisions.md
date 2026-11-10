@@ -130,7 +130,28 @@ Both read the credentials the user already set up in Claude Code (`/login`, `ANT
 
 **Consequence:** agentcats never handles, stores or prompts for Claude credentials, and never offers a login.
 How a user authenticates is configured in Claude Code itself.
-Open: whether to run the bundled or the installed binary by default, and the README wording about Anthropic's terms for subscription use.
+agentcats is software the user installs and runs locally on top of their own Claude Code, not a hosted service.
+
+## 2026-11-10 - Run the user's installed `claude`, not the SDK's bundled copy
+
+**Decision:** The Claude adapter resolves `claude` on `PATH` (overridable with `claude.executablePath` in `agentcats.config.json`) and passes it as `pathToClaudeCodeExecutable`.
+The user's own Claude Code version and setup is what runs.
+
+**Consequences:**
+
+- The installed version can be older or newer than the one the pinned SDK was built against (today: installed 2.1.302, SDK expects 2.1.321). The adapter reads `claude --version` at spawn, records it on the cat, and warns on the board when it falls outside the range listed here as tested. Only initialization has been verified across this skew so far; a streamed turn is verified when the adapter is built.
+- If `claude` is not found, the adapter fails with a clear message. The mock adapter still works without it.
+- The SDK still installs its 331 MB bundled binary as an optional dependency. Avoiding that for `npx agentcats` is an M5 packaging task.
+
+**README note:** "agentcats uses whatever auth your Claude Code is configured with. You are responsible for using it in line with Anthropic's terms. An API key works the same way."
+
+## 2026-11-10 - Permissions are per cat, set by the user
+
+Each cat has a `permissionMode` in config: `acceptEdits` or `auto`. `bypassPermissions` is rejected by the config schema.
+Anything the mode does not allow becomes an `approval.requested` event shown as a bubble on the cat.
+In M0 there is one cat, default `acceptEdits`, scoped to the scratch repo, and the mode is set in the config file.
+Editing a cat's permissions by clicking it on the board, and role presets (orchestrator, developer, QA), are M1 work.
+Whether `auto` is available on a Pro plan is unverified; it gets tested when the adapter is built.
 
 ## 2026-11-10 - Answers to the M0 planning round
 
