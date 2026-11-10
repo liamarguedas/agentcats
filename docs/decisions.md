@@ -47,8 +47,8 @@ It will be exercised with one cheap run when the Claude Code adapter is built, a
 **Caveats that matter for an MIT open source project:**
 
 - **License.** The SDK is not open source. `LICENSE.md` says "All rights reserved", and use is governed by Anthropic's Commercial Terms of Service. agentcats can depend on it, but must not vendor or redistribute it, and the README must say so.
-- **Authentication.** The SDK overview says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK. Use the API key authentication methods described in the Quickstart instead." So agentcats must document API key (or Bedrock / Vertex) auth as the supported path. This is an open product question, see "Open questions" below.
-- **Branding.** Products built on the SDK may say "Claude Agent", "Claude", or "<Name> Powered by Claude", but not "Claude Code" or "Claude Code Agent". User-visible adapter labels must follow this. The internal directory name `adapters/claude-code` is under review, see "Open questions".
+- **Authentication.** The SDK overview says: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK. Use the API key authentication methods described in the Quickstart instead." So agentcats must document API key (or Bedrock / Vertex) auth as the supported path. Resolved below in "Auth is inherited from the user's Claude Code setup".
+- **Branding.** Products built on the SDK may say "Claude Agent", "Claude", or "<Name> Powered by Claude", but not "Claude Code" or "Claude Code Agent". User-visible adapter labels must follow this. Resolved below: the adapter is `adapters/claude`, labeled "Claude".
 - **Install size.** The SDK pulls a per-platform native binary as an optional dependency. `@anthropic-ai/claude-agent-sdk-win32-x64` is 331 MB on disk. This matters for `npx agentcats` in M5. `pathToClaudeCodeExecutable` can point at a user's existing `claude` instead.
 - **Version pinning.** Pin an exact SDK version in `package.json`, chosen to be at least two weeks old at the time of pinning, and record it here. Do not use a caret range.
 
@@ -233,6 +233,51 @@ Tested on Windows locally and on Linux in CI: graceful shutdown, a SIGKILLed dae
 - Browser tests use Playwright 1.64.1 against the built UI served by a real daemon with the mock adapter, so the CSP, token handling and WebSocket path are the production ones. They run in a separate CI job (`pnpm test:e2e`).
 - `pnpm dev` runs a mock daemon on port 4545 and the Vite dev server on 5173. Vite proxies `/api` and rewrites `Origin` to the daemon's own, because the daemon rejects foreign origins.
 
+## 2026-11-10 - Step 0.1 follow-up: runtime verification with real Claude
+
+Verified live with Claude Code 2.1.302 (installed, WinGet), SDK 0.3.311, model `haiku`, on Windows 11:
+
+- **Streamed tool events:** `tool_use` / `tool_result` blocks arrive as complete assistant and user messages and map cleanly to `tool.started` / `tool.finished`.
+- **Permission callback:** `canUseTool` fires for a state-changing Bash command (`git commit ...`) and passes `toolUseID`, so the approval links to its tool call. Deny is honored and the turn continues.
+- **Resume:** a new session spawned with `resume: <sessionId>` remembered the file created in the earlier session.
+- **cwd and model:** honored.
+- **Usage:** `total_cost_usd` and `modelUsage` are running totals across turns of one `query()`, as the SDK docs say. The adapter reads, never sums, and clamps so values never decrease.
+
+Tests: `packages/adapters/claude/test/live.test.ts` and `packages/ui/e2e/live-claude.spec.ts`, both skipped unless `AGENTCATS_LIVE_CLAUDE=1`.
+
+## 2026-11-10 - Claude adapter
+
+- SDK pinned at **0.3.311** (built against Claude Code 2.1.311), the newest release at least two weeks old. It runs the user's `claude` via `pathToClaudeCodeExecutable`, and `spawnClaudeCodeProcess` starts it under the guardian. `TESTED_CLAUDE_VERSIONS` is `2.1.302`; other versions run with a warning on the board.
+- The session id is chosen by the adapter (`sessionId` option), so `session.started.resumeId` is known before the first turn.
+- `systemPrompt` is appended to the `claude_code` preset, never replacing it.
+- `strictMcpConfig: true`: only servers passed in `SpawnOptions.mcpServers` load.
+- Setting sources are the SDK default, so the user's own Claude Code settings and CLAUDE.md apply ("a layer on top of your Claude Code"). The live run showed this: Claude picked Python because of the user's global CLAUDE.md. Our explicit `permissionMode` overrides the user's `defaultMode`.
+- Messages are taken whole (`includePartialMessages` off), so text arrives per content block rather than token by token.
+- On Windows, npm's `claude.cmd` shim is followed to the script it runs. This path is unit tested but **not verified live**, because this machine has WinGet's `claude.exe`.
+
 ## M1 handoff notes
 
-To be filled in at the end of M0: chosen headless approach, MCP wiring method, and where `AgentEvent` felt too thin or too thick.
+**Headless approach.** Agent SDK in streaming input mode, one long-lived `query()` per cat session, driving the user's installed `claude` under the guardian. Works end to end (see the follow-up entry above).
+
+**MCP wiring.** Per-session config is verified (Step 0.4). Recommended for M1: an HTTP MCP endpoint on the daemon's existing 127.0.0.1 server, passed as `SpawnOptions.mcpServers` with a per-session bearer token that maps to a `catId`. The adapter already maps `McpServerSpec` (`http` and `stdio`) to the SDK. Two details for M1:
+
+- That endpoint must accept the per-session agent token, not the UI token.
+- Agents are not browsers, so it must not require an `Origin`. The Host check still applies.
+
+**Where `AgentEvent` felt too thin:**
+
+1. **Permission policy cannot rely on `canUseTool` alone.** Claude Code auto-approves commands it considers read-only before the callback runs: `node --version` ran without asking in `accept_edits` mode. M1's "always ask for network access" rule needs a stricter hook (SDK `PreToolUse` hooks), or the risk that some commands never reach the board must be accepted and documented.
+2. **No "allow always" decision.** Approvals are `allow | deny`. M1's policy work will likely want ACP's `allow_always` / `reject_always`, which the SDK supports through `updatedPermissions`.
+3. **Subagent activity is folded into the parent `Task` call.** For workers that use subagents, the board shows one long tool call. Consider a `parentToolCallId` on tool events if that hides too much.
+4. **Coarse text streaming.** Text arrives per content block. If the board needs live typing, enable `includePartialMessages`; `message.chunk` already supports it.
+5. **Tool outputs are not carried**, only status and a short error summary. That is deliberate (bubbles stay small); M1's `get_task_result` should get diffs and test results from git and the worker's summary, not from `AgentEvent`.
+
+**Where it felt right or slightly thick:** cumulative `usage` with `costSource` worked without special cases. `session.started.agentVersion` is used for the untested-version warning. Nothing in the set went unused.
+
+**Other notes for M1:**
+
+- The full task status enum is in the protocol; the M1 transition table goes next to it.
+- `EventLog` validates every event against the schema before it is stored; keep that when SQLite replaces it.
+- Each cat should get an explicit `settingSources` decision. Workers in worktrees may want `['project']` only, so a user's global allow rules cannot widen a worker's permissions.
+- `auto` permission mode on a Pro plan was **not** tested.
+- Not verified: macOS, and Linux with the real Claude CLI. CI covers Linux and Windows with the mock only.

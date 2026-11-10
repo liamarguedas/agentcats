@@ -86,12 +86,12 @@ Spawn one session in a scratch git repo, map raw events to `AgentEvent`, support
 - Pointer to `docs/milestones/` and the instruction to work on one milestone at a time.
 
 ## Acceptance criteria
-- [ ] `docs/decisions.md` answers all four verification questions.
-- [ ] Protocol package has all events and commands above, with tests that validate sample payloads.
-- [ ] UI runs fully against the mock adapter: cat changes state, approval bubble appears (display only), error state renders.
-- [ ] With the Claude Code adapter, typing "add a hello function to a scratch repo" makes the cat animate while a real file changes.
-- [ ] Daemon rejects a WebSocket connection with a wrong token and one with a foreign Origin (tested).
-- [ ] Killing the daemon leaves no orphan agent process (checked manually and with a test for the mock).
+- [x] `docs/decisions.md` answers all four verification questions.
+- [x] Protocol package has all events and commands above, with tests that validate sample payloads.
+- [x] UI runs fully against the mock adapter: cat changes state, approval bubble appears (display only), error state renders.
+- [x] With the Claude Code adapter, typing "add a hello function to a scratch repo" makes the cat animate while a real file changes.
+- [x] Daemon rejects a WebSocket connection with a wrong token and one with a foreign Origin (tested).
+- [x] Killing the daemon leaves no orphan agent process (checked manually and with a test for the mock).
 
 ## Out of scope
 Multiple cats, orchestrator, MCP tools, SQLite, worktrees, budgets, memory. Do not start these.

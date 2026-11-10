@@ -20,11 +20,11 @@ export const USAGE = `Usage: agentcats --project <path> [options]
 Starts the agentcats daemon for a project and opens the board in your browser.
 
 Options:
-  -p, --project <path>       Project the cat works in (default: current directory)
-      --adapter <claude|mock> Override the adapter from agentcats.config.json
-      --port <number>        Port on 127.0.0.1 (default: config, or a free port)
-      --no-open              Print the board URL instead of opening a browser
-  -h, --help                 Show this help
+  -p, --project <path>         Project the cat works in (default: current directory)
+      --adapter <claude|mock>  Override the adapter from agentcats.config.json
+      --port <number>          Port on 127.0.0.1 (default: config, or a free port)
+      --no-open                Print the board URL instead of opening a browser
+  -h, --help                   Show this help
 `;
 
 export interface CliIo {
