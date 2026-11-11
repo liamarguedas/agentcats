@@ -221,10 +221,13 @@ describe('BoardClient against a daemon', () => {
     });
 
     const { task } = await client.request('createTask', {}, { title: 'add a hello function' });
-    await vi.waitFor(() => {
-      const view: BoardView = client.getView();
-      expect(view.board.tasks[task.id]?.status).toBe('review');
-    });
+    await vi.waitFor(
+      () => {
+        const view: BoardView = client.getView();
+        expect(view.board.tasks[task.id]?.status).toBe('review');
+      },
+      { timeout: 10_000 },
+    ); // a real worktree and commit take longer than the 1 s default
     const worker = Object.values(client.getView().board.cats).find((c) => c.role === 'worker');
     expect(worker?.status).toBe('done');
     client.stop();

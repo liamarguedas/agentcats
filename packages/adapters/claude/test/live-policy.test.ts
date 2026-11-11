@@ -65,9 +65,9 @@ describe.runIf(LIVE)('Claude worker policy, live', () => {
     await session.kill();
     await done;
 
-    const tools = events
-      .filter((e) => e.type === 'tool.started')
-      .map((e) => (e.type === 'tool.started' ? `${e.toolName}: ${e.inputSummary}` : ''));
+    const tools = events.flatMap((e) =>
+      e.type === 'tool.started' ? [`${e.toolName}: ${e.inputSummary}`] : [],
+    );
     console.log('tools:', tools);
     console.log('approvals:', approvals);
 
