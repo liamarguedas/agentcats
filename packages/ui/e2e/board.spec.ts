@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { expect, type Page, test } from '@playwright/test';
 
-import { E2E_TOKEN } from '../playwright.config.js';
+import { E2E_STATE_FILE, E2E_TOKEN } from '../playwright.config.js';
 
 const SHOTS = 'test-results/screenshots';
 const shot = (page: Page, name: string, fullPage = false) =>
@@ -19,6 +22,18 @@ async function chat(page: Page, text: string) {
 }
 
 const lead = (page: Page) => page.getByTestId('cat-Tux');
+
+/** A cat's learnings.md in the mock daemon's project, as it is on disk now. */
+function learningsOnDisk(catName: string): string {
+  const { projectPath } = JSON.parse(readFileSync(E2E_STATE_FILE, 'utf8')) as {
+    projectPath: string;
+  };
+  try {
+    return readFileSync(join(projectPath, '.agentcats', 'cats', catName, 'learnings.md'), 'utf8');
+  } catch {
+    return '';
+  }
+}
 const tasks = (page: Page) => page.getByRole('region', { name: 'Tasks' });
 
 test.describe.configure({ mode: 'serial' });
@@ -65,6 +80,73 @@ test('a result is reviewed in the drawer and accepted', async ({ page }) => {
   await expect(drawer.locator('.chip').first()).toHaveText('Done');
   await page.keyboard.press('Escape');
   await expect(drawer).toBeHidden();
+});
+
+test('a rejection can say why', async ({ page }) => {
+  await openBoard(page);
+  await tasks(page).locator('.task-card--review').first().click();
+  const drawer = page.getByRole('dialog');
+  await drawer.getByRole('button', { name: 'Reject…' }).click();
+  await drawer
+    .getByLabel('What was wrong? (optional)')
+    .fill('The tests do not cover a wrong password');
+  await shot(page, 'reject-note');
+  await drawer.getByRole('button', { name: 'Reject', exact: true }).click();
+  await expect(drawer.locator('.chip').first()).toHaveText('Rejected');
+  await expect(drawer).toContainText('Rejected by you: The tests do not cover a wrong password');
+  await page.keyboard.press('Escape');
+});
+
+test('an accepted result earns XP; its learning can be kept, edited and deleted', async ({
+  page,
+}) => {
+  await openBoard(page);
+  await chat(
+    page,
+    'Document the API\n/single\nlearn: The API docs live in docs/api.md; update them with every route change',
+  );
+  const card = tasks(page).locator('.task-card', { hasText: 'Document the API' });
+  await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
+  await card.click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Accept' }).click();
+  await page.keyboard.press('Escape');
+
+  await expect(page.getByRole('region', { name: 'Event log' })).toContainText(
+    'XP, result accepted',
+  );
+  const toast = page.locator('.toast--info', { hasText: 'suggests 1 new learning' });
+  await expect(toast).toBeVisible({ timeout: 15_000 });
+  await shot(page, 'xp-and-suggestion');
+
+  await toast.getByRole('button').first().click();
+  const drawer = page.getByRole('dialog');
+  const name = ((await drawer.locator('.drawer__title').textContent()) ?? '').split(' · ')[0]!;
+  await expect(drawer).toContainText('Level 1');
+  const proposal = drawer.getByTestId('proposal');
+  await expect(proposal).toContainText('docs/api.md');
+  await shot(page, 'learning-proposal');
+  expect(learningsOnDisk(name)).not.toContain('docs/api.md');
+
+  await proposal.getByRole('button', { name: 'Keep' }).click();
+  const list = drawer.getByTestId('learnings');
+  await expect(list).toContainText('The API docs live in docs/api.md');
+  await expect(list).toContainText('Document the API');
+  expect(learningsOnDisk(name)).toContain('- The API docs live in docs/api.md');
+
+  await list.getByRole('button', { name: /^The API docs live/ }).click();
+  const input = drawer.getByLabel('Learning text');
+  await input.fill('API docs are in docs/api.md and change with every route');
+  await input.press('Enter');
+  await expect(list).toContainText('API docs are in docs/api.md and change with every route');
+  expect(learningsOnDisk(name)).toContain(
+    '- API docs are in docs/api.md and change with every route',
+  );
+  await shot(page, 'learnings');
+
+  await list.getByRole('button', { name: /Delete learning/ }).click();
+  await expect(drawer).toContainText('Nothing yet');
+  expect(learningsOnDisk(name)).not.toContain('docs/api.md');
+  await page.keyboard.press('Escape');
 });
 
 test('a worker asks before reaching the network; Deny blocks it', async ({ page }) => {

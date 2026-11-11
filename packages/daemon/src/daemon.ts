@@ -78,7 +78,13 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
     worktrees,
     mcpUrl: () => mcpUrl,
   });
-  manager.start();
+  try {
+    await manager.start();
+  } catch (error) {
+    await manager.close();
+    store.close();
+    throw error;
+  }
 
   const token = options.token ?? randomBytes(32).toString('base64url');
   const { server, closeSockets } = createHttpServer({

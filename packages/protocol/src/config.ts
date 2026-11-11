@@ -52,6 +52,33 @@ export const AgentcatsConfig = z.strictObject({
       enforce: z.enum(['metered', 'always', 'never']).default('metered'),
     })
     .prefault({}),
+  /** XP per outcome. Failures and timeouts earn nothing. Level thresholds are in `levels.ts`. */
+  xp: z
+    .strictObject({
+      accepted: z.int().nonnegative().default(10),
+      /** Extra when the worker reported passing tests on the first attempt. */
+      testsFirstTry: z.int().nonnegative().default(5),
+      /** Extra when the task cost less than the median of the team's recent accepted tasks. */
+      underCost: z.int().nonnegative().default(3),
+      /** Taken away when the user rejects a result. XP never goes below 0. */
+      rejectedPenalty: z.int().nonnegative().default(10),
+    })
+    .prefault({}),
+  memory: z
+    .strictObject({
+      /** Run a debrief after each reviewed task to propose learnings. */
+      debrief: z.boolean().default(true),
+      /** Model for debrief and consolidation calls; `null` is the agent's default. */
+      model: z.string().min(1).nullable().default('haiku'),
+      /** Most lines a cat's `learnings.md` may hold; going over proposes a consolidation. */
+      cap: z.int().min(5).max(200).default(30),
+      /**
+       * Accept debrief proposals without asking once a cat has this many
+       * accepted tasks. `null` always asks. Consolidations always ask.
+       */
+      autoAcceptAfter: z.int().positive().nullable().default(null),
+    })
+    .prefault({}),
   /**
    * Let agents add their own attribution to the commits and pull requests
    * they write, such as Claude Code's `Co-Authored-By` trailer. Off by default:

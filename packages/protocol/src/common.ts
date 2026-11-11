@@ -131,3 +131,41 @@ export const Usage = z.strictObject({
   costSource: CostSource,
 });
 export type Usage = z.infer<typeof Usage>;
+
+/**
+ * Why a cat's XP changed. Weights are in the config's `xp` section. Failures
+ * and timeouts earn nothing, so they have no reason of their own.
+ */
+export const XpReason = z.enum([
+  /** The user accepted the result. */
+  'accepted',
+  /** Accepted, and the worker reported passing tests on the first attempt. */
+  'tests_first_try',
+  /** Accepted, and it cost less than the team's median accepted task. */
+  'under_cost',
+  /** The user rejected the result. */
+  'rejected',
+]);
+export type XpReason = z.infer<typeof XpReason>;
+
+/** One line of a cat's `learnings.md`. */
+export const LearningText = z.string().trim().min(1).max(300);
+
+/** What changed a cat's learnings file. `external` is a hand edit of the file. */
+export const LearningsChangeReason = z.enum([
+  'added',
+  'edited',
+  'deleted',
+  'debrief',
+  'consolidation',
+  'restored',
+  'external',
+]);
+export type LearningsChangeReason = z.infer<typeof LearningsChangeReason>;
+
+/**
+ * Why learnings were proposed. `debrief` adds lines after a reviewed task;
+ * the others propose a consolidated rewrite of the whole file.
+ */
+export const ProposalTrigger = z.enum(['debrief', 'level_up', 'cap', 'user']);
+export type ProposalTrigger = z.infer<typeof ProposalTrigger>;

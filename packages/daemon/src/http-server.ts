@@ -135,8 +135,38 @@ export function createHttpServer(options: HttpServerOptions): {
       return accepted;
     },
     reviewTask: async (params, body) => {
-      const { decision } = body as z.infer<typeof routes.reviewTask.body>;
-      return { task: await manager.reviewTask(param(params, 'taskId'), decision) };
+      const { decision, note } = body as z.infer<typeof routes.reviewTask.body>;
+      return {
+        task: await manager.reviewTask(param(params, 'taskId'), decision, note || null),
+      };
+    },
+    addLearning: async (params, body) => {
+      const { text } = body as z.infer<typeof routes.addLearning.body>;
+      return { cat: await manager.addLearning(param(params, 'catId'), text) };
+    },
+    editLearning: async (params, body) => {
+      const { text } = body as z.infer<typeof routes.editLearning.body>;
+      return {
+        cat: await manager.editLearning(param(params, 'catId'), param(params, 'learningId'), text),
+      };
+    },
+    deleteLearning: async (params) => ({
+      cat: await manager.deleteLearning(param(params, 'catId'), param(params, 'learningId')),
+    }),
+    consolidateLearnings: (params) => {
+      manager.consolidateLearnings(param(params, 'catId'));
+      return Promise.resolve(accepted);
+    },
+    learningsHistory: async (params) => ({
+      versions: await manager.learningsHistory(param(params, 'catId')),
+    }),
+    restoreLearnings: async (params, body) => {
+      const { versionId } = body as z.infer<typeof routes.restoreLearnings.body>;
+      return { cat: await manager.restoreLearnings(param(params, 'catId'), versionId) };
+    },
+    resolveProposal: async (params, body) => {
+      const { decision } = body as z.infer<typeof routes.resolveProposal.body>;
+      return { cat: await manager.resolveProposal(param(params, 'proposalId'), decision) };
     },
     rerunTask: (params) => Promise.resolve({ task: manager.rerunTask(param(params, 'taskId')) }),
     cancelTask: async (params) => ({

@@ -1,5 +1,14 @@
-import type { AgentcatsEvent } from '@agentcats/protocol';
+import type { AgentcatsEvent, XpReason } from '@agentcats/protocol';
 import { useEffect, useMemo, useRef } from 'react';
+
+export const XP_REASON: Record<XpReason, string> = {
+  accepted: 'result accepted',
+  tests_first_try: 'tests passed first try',
+  under_cost: 'cheaper than usual',
+  rejected: 'result rejected',
+};
+
+export const xpText = (delta: number) => (delta > 0 ? `+${String(delta)}` : `−${String(-delta)}`);
 
 function describe(event: AgentcatsEvent): string {
   switch (event.type) {
@@ -35,6 +44,16 @@ function describe(event: AgentcatsEvent): string {
       return `${String(event.payload.inputTokens + event.payload.outputTokens)} tokens`;
     case 'daemon.error':
       return `${event.payload.code}: ${event.payload.message}`;
+    case 'xp.changed':
+      return `${xpText(event.payload.delta)} XP, ${XP_REASON[event.payload.reason]} (now ${String(event.payload.xp)})`;
+    case 'cat.level_changed':
+      return `level ${String(event.payload.from)} → ${String(event.payload.to)}`;
+    case 'learnings.proposed':
+      return `${event.payload.kind === 'add' ? 'suggests' : 'suggests a rewrite with'} ${String(event.payload.lines.length)} learning${event.payload.lines.length === 1 ? '' : 's'} (${event.payload.trigger.replace('_', ' ')})`;
+    case 'learnings.proposal_resolved':
+      return `suggestion ${event.payload.decision}${event.payload.resolvedBy === 'auto' ? ' automatically' : ''}`;
+    case 'learnings.changed':
+      return `learnings ${event.payload.reason}: ${String(event.payload.learnings.length)} line${event.payload.learnings.length === 1 ? '' : 's'}`;
   }
 }
 

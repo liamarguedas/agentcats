@@ -149,6 +149,18 @@ describe('Adapter interface', () => {
         interrupt: true,
         permissionModes: ['ask'],
       },
+      complete: () =>
+        Promise.resolve({
+          text: 'none',
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            costUsd: null,
+            costSource: 'unknown',
+          },
+        }),
       spawn: () => Promise.resolve(session),
     };
 

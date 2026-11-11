@@ -12,6 +12,7 @@ import {
   WS_PATH,
   wsProtocols,
 } from '@agentcats/protocol';
+import type { Adapter } from '@agentcats/protocol/adapter';
 import WebSocket from 'ws';
 
 import { type RunningDaemon, startDaemon } from '../src/index.js';
@@ -58,12 +59,14 @@ export async function startTestDaemon(
   mock: MockAdapterOptions = {},
   config: AgentcatsConfigInput = {},
   uiDir: string | null = null,
+  /** Wrap the mock, for example to record spawn options. */
+  wrap: (adapter: Adapter) => Adapter = (adapter) => adapter,
 ): Promise<TestDaemon> {
   const projectPath = await tempProject();
   const worktreesDir = await tempDir('agentcats-wt-');
   const daemon = await startDaemon({
     projectPath,
-    adapter: createMockAdapter({ timeScale: 0, realFiles: true, ...mock }),
+    adapter: wrap(createMockAdapter({ timeScale: 0, realFiles: true, ...mock })),
     config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir, ...config }),
     uiDir,
   });

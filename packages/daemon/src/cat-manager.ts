@@ -1,13 +1,18 @@
 import { randomBytes } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   ACTIVE_TASK_STATUSES,
   type AgentcatsConfig,
   type ApprovalDecision,
   assertTransition,
+  autonomousCommands,
   type Cat,
+  type LearningsVersion,
+  levelForXp,
   type PauseReason,
+  readablePathsFor,
+  RUNTIME_DIR_NAME,
   type Task,
   type TaskReasonCode,
   type TaskResult,
@@ -18,12 +23,16 @@ import {
 import type { Adapter, SpawnOptions } from '@agentcats/protocol/adapter';
 
 import { CatAgent, type CatAgentHooks, type TurnOutcome } from './cat-agent.js';
+import { CatMemory } from './cat-memory.js';
 import { ApiError } from './errors.js';
 import type { EventLog } from './event-log.js';
 import type { Logger } from './logger.js';
+import { loadPrompt, Memory } from './memory.js';
 import type { PidRegistry } from './pid-registry.js';
+import { readProjectCommands } from './project.js';
 import type { Store } from './store.js';
 import type { WorktreeManager } from './worktrees.js';
+import { medianCost, xpForVerdict } from './xp.js';
 
 const ORCHESTRATOR_NAME = 'Tux';
 const WORKER_NAMES = [
@@ -74,12 +83,6 @@ function clipFields(fields: TaskFields): TaskFields {
     : fields;
 }
 
-/** Prompt templates, loaded once from `packages/daemon/prompts/`. */
-function loadPrompt(name: string): string {
-  const text = readFileSync(new URL(`../prompts/${name}.md`, import.meta.url), 'utf8');
-  return text.replace(/^<!--[\s\S]*?-->\s*/, '').trim();
-}
-
 /** Read `Tests: passed|failed|not run` from a worker's structured summary. */
 export function testsFromSummary(text: string): TaskResult['tests'] {
   const match = /^[-*\s]*tests:\s*(passed|failed|not run)/im.exec(text);
@@ -120,6 +123,8 @@ export class CatManager {
   readonly #warned = new Set<string>();
   readonly #baseCommits = new Map<string, string>();
   readonly #retryNotes = new Map<string, string>();
+  /** The cat's total cost when a task first started, to get the task's own cost. */
+  readonly #costBase = new Map<string, number | null>();
   #notifications: string[] = [];
   /** Work started from agent hooks; `close()` waits for it before the store closes. */
   readonly #background = new Set<Promise<unknown>>();
@@ -141,17 +146,34 @@ export class CatManager {
     },
   };
 
-  constructor(private readonly o: CatManagerOptions) {}
+  readonly #memory: Memory;
+
+  constructor(private readonly o: CatManagerOptions) {
+    this.#memory = new Memory({
+      log: o.log,
+      adapter: o.adapter,
+      config: o.config,
+      projectPath: o.projectPath,
+      files: new CatMemory(join(o.projectPath, RUNTIME_DIR_NAME)),
+      logger: o.logger,
+      chargeUsage: (catId, usage) => {
+        this.#agents.get(catId)?.chargeUsage(usage);
+      },
+      track: (work) => {
+        this.#track(work);
+      },
+    });
+  }
 
   // -------------------------------------------------------------------------
   // Start and stop
   // -------------------------------------------------------------------------
 
   /**
-   * Restore cats from the event log, mark in-flight work `interrupted`, and
-   * make sure an orchestrator exists.
+   * Restore cats from the event log, mark in-flight work `interrupted`, make
+   * sure an orchestrator exists, and open the workers' folders.
    */
-  start(): void {
+  async start(): Promise<void> {
     const { board } = this.o.log;
     for (const cat of Object.values(board.cats)) {
       this.#agents.set(cat.id, this.#newAgent(cat.id));
@@ -174,14 +196,22 @@ export class CatManager {
       }
     }
     if (!this.#orchestratorId) this.#orchestratorId = this.#hire('orchestrator').catId;
+    await this.#memory.start();
   }
 
-  /** End every session. */
+  /**
+   * End every session and wait for background work. Repeats until quiet: a
+   * task that was already starting when `close()` began may still spawn a
+   * session, which must not outlive the store.
+   */
   async close(): Promise<void> {
     this.#closed = true;
+    this.#memory.close();
     for (const timer of this.#stuckTimers.values()) clearTimeout(timer);
-    await Promise.all([...this.#agents.values()].map((agent) => agent.endSession()));
-    while (this.#background.size > 0) await Promise.allSettled([...this.#background]);
+    do {
+      await Promise.all([...this.#agents.values()].map((agent) => agent.endSession()));
+      while (this.#background.size > 0) await Promise.allSettled([...this.#background]);
+    } while ([...this.#agents.values()].some((agent) => agent.hasSession || agent.busy));
   }
 
   /** Run hook-triggered work in the background, tracked for `close()`. */
@@ -280,6 +310,7 @@ export class CatManager {
     this.#agent(catId);
     this.o.log.append({ type: 'cat.updated', catId, payload: patch });
     this.#warned.delete(catId);
+    if (patch.model !== undefined) this.#track(this.#memory.writeProfile(catId));
     return this.#agent(catId).cat;
   }
 
@@ -389,17 +420,55 @@ export class CatManager {
     await this.#continueTask(agent, this.task(task.id), text ?? NUDGE_TEXT);
   }
 
-  /** The user's verdict on a result in review. */
-  async reviewTask(taskId: string, decision: 'accept' | 'reject'): Promise<Task> {
+  /**
+   * The user's verdict on a result in review. Awards XP, which may change the
+   * worker's level, then runs the debrief in the background.
+   */
+  async reviewTask(
+    taskId: string,
+    decision: 'accept' | 'reject',
+    note: string | null = null,
+  ): Promise<Task> {
     const task = this.task(taskId);
+    const rejected = note ? `Rejected by you: ${note}` : 'Rejected by you';
     this.#transition(taskId, decision === 'accept' ? 'done' : 'rejected', 'user', {
-      statusReason: decision === 'accept' ? 'Accepted by you' : 'Rejected by you',
+      statusReason: decision === 'accept' ? 'Accepted by you' : rejected,
     });
+    this.#costBase.delete(taskId);
+    const leveledUp = this.#awardXp(task, decision);
+    if (task.assigneeCatId) this.#track(this.#memory.writeStats(task.assigneeCatId));
+    this.#memory.afterReview(this.task(taskId), { decision, note }, leveledUp);
     await this.#removeWorktree(task);
+    const verdict = decision === 'accept' ? 'accepted' : 'rejected';
     this.#notifyOrchestrator(
-      `The user ${decision === 'accept' ? 'accepted' : 'rejected'} task "${task.title}" (${task.id}).`,
+      `The user ${verdict} task "${task.title}" (${task.id})${note ? `. Their note: ${note}` : ''}.`,
     );
     return this.task(taskId);
+  }
+
+  /** XP for a verdict, then the level that follows. Returns whether the cat leveled up. */
+  #awardXp(task: Task, decision: 'accept' | 'reject'): boolean {
+    const cat = task.assigneeCatId ? this.o.log.board.cats[task.assigneeCatId] : undefined;
+    if (cat?.role !== 'worker') return false;
+    const median = medianCost(this.tasks(), task.id);
+    let xp = cat.xp;
+    for (const award of xpForVerdict(decision, task, cat.xp, median, this.o.config.xp)) {
+      xp = Math.max(0, xp + award.delta);
+      this.o.log.append({
+        type: 'xp.changed',
+        catId: cat.id,
+        taskId: task.id,
+        payload: { delta: award.delta, reason: award.reason, xp },
+      });
+    }
+    const level = levelForXp(xp);
+    if (level === cat.level) return false;
+    this.o.log.append({
+      type: 'cat.level_changed',
+      catId: cat.id,
+      payload: { from: cat.level, to: level },
+    });
+    return level > cat.level;
   }
 
   /** Run a failed or interrupted task again. */
@@ -437,6 +506,38 @@ export class CatManager {
     await this.#removeWorktree(task);
     this.#schedule();
     return this.task(taskId);
+  }
+
+  // -------------------------------------------------------------------------
+  // Learnings
+  // -------------------------------------------------------------------------
+
+  addLearning(catId: string, text: string): Promise<Cat> {
+    return this.#memory.add(catId, text);
+  }
+
+  editLearning(catId: string, learningId: string, text: string): Promise<Cat> {
+    return this.#memory.edit(catId, learningId, text);
+  }
+
+  deleteLearning(catId: string, learningId: string): Promise<Cat> {
+    return this.#memory.delete(catId, learningId);
+  }
+
+  consolidateLearnings(catId: string): void {
+    this.#memory.consolidateNow(catId);
+  }
+
+  learningsHistory(catId: string): Promise<LearningsVersion[]> {
+    return this.#memory.history(catId);
+  }
+
+  restoreLearnings(catId: string, versionId: string): Promise<Cat> {
+    return this.#memory.restore(catId, versionId);
+  }
+
+  resolveProposal(proposalId: string, decision: 'accept' | 'discard'): Promise<Cat> {
+    return this.#memory.resolveProposal(proposalId, decision);
   }
 
   // -------------------------------------------------------------------------
@@ -483,6 +584,7 @@ export class CatManager {
       const task = this.task(taskId);
       const branch = task.branch ?? this.o.worktrees.branchFor(worker.cat.name, taskId);
       const tree = await this.o.worktrees.ensure(taskId, branch);
+      if (this.#closed) return;
       this.#baseCommits.set(taskId, tree.baseCommit);
       this.#transition(taskId, 'running', 'system', {
         branch,
@@ -491,17 +593,16 @@ export class CatManager {
         statusReason: null,
       });
       const cat = worker.cat;
+      if (!this.#costBase.has(taskId)) {
+        this.#costBase.set(taskId, this.o.log.board.usage[cat.id]?.costUsd ?? 0);
+      }
       const options: Omit<SpawnOptions, 'catId'> = {
         cwd: tree.path,
         model: cat.model,
-        systemPrompt: this.#prompts.worker,
+        systemPrompt: await this.#workerPrompt(cat, task),
         permissionMode: cat.permissionMode,
         attribution: this.o.config.attribution,
-        policy: {
-          access: 'workspace',
-          allowedCommands: [...WORKER_GIT_COMMANDS, ...this.o.config.workers.allowedCommands],
-          protectedPaths: [this.o.projectPath],
-        },
+        policy: await this.#workerPolicy(cat),
       };
       const resumeId = this.o.adapter.capabilities.resume ? this.o.store.resumeIdFor(taskId) : null;
       try {
@@ -565,6 +666,7 @@ export class CatManager {
         branch,
         diffStat,
         tests: testsFromSummary(summary),
+        costUsd: this.#taskCost(task.id, worker.catId),
       };
     } catch (error) {
       this.o.logger.warn(`Could not read the result of task ${task.id}: ${errorMessage(error)}`);
@@ -582,6 +684,7 @@ export class CatManager {
       this.#quiet.delete(worker.catId);
     }
     worker.setStatus('done');
+    this.#track(this.#memory.writeStats(worker.catId));
     this.#notifyOrchestrator(
       `Task "${task.title}" (${task.id}) is ready for review on branch ${branch}. Use get_task_result for details.`,
     );
@@ -957,7 +1060,43 @@ export class CatManager {
     });
     const agent = this.#newAgent(catId);
     this.#agents.set(catId, agent);
+    if (role === 'worker') this.#track(this.#memory.hired(catId));
     return agent;
+  }
+
+  /** The worker prompt for one task: its learnings (as many as its level loads) and persona. */
+  async #workerPrompt(cat: Cat, task: Task): Promise<string> {
+    const { learnings, persona } = await this.#memory.forPrompt(cat.id, task);
+    return this.#prompts.worker
+      .replaceAll('{{name}}', cat.name)
+      .replace('{{learnings}}', learnings)
+      .replace('{{persona}}', persona ? `\n## Your persona\n\n${persona}\n` : '');
+  }
+
+  /**
+   * What a worker may do without asking: commit, the configured commands,
+   * and what its level unlocks (`levels.ts` in the protocol).
+   */
+  async #workerPolicy(cat: Cat): Promise<NonNullable<SpawnOptions['policy']>> {
+    const project = await readProjectCommands(this.o.projectPath);
+    return {
+      access: 'workspace',
+      allowedCommands: [
+        ...WORKER_GIT_COMMANDS,
+        ...this.o.config.workers.allowedCommands,
+        ...autonomousCommands(cat.level, project),
+      ],
+      protectedPaths: [this.o.projectPath],
+      readablePaths: readablePathsFor(cat.level, this.o.projectPath),
+    };
+  }
+
+  /** What a task cost: the cat's spending since the task first started. */
+  #taskCost(taskId: string, catId: string): number | null {
+    const base = this.#costBase.get(taskId);
+    const now = this.o.log.board.usage[catId]?.costUsd;
+    if (base === undefined || base === null || now === undefined || now === null) return null;
+    return Math.max(0, now - base);
   }
 
   #agent(catId: string): CatAgent {

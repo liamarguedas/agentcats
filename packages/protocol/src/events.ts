@@ -7,9 +7,11 @@ import {
   CatRole,
   CatStatus,
   Id,
+  LearningsChangeReason,
   MessageChannel,
   PauseReason,
   PermissionMode,
+  ProposalTrigger,
   ShortText,
   TaskReasonCode,
   TaskStatus,
@@ -17,8 +19,9 @@ import {
   ToolCallStatus,
   ToolKind,
   Usage,
+  XpReason,
 } from './common.js';
-import { TaskResult } from './entities.js';
+import { Learning, LearningDraft, TaskResult } from './entities.js';
 import { TransitionActor } from './task-machine.js';
 
 /**
@@ -182,6 +185,66 @@ export const UsageUpdatedEvent = z.strictObject({
   payload: Usage,
 });
 
+/** A worker earned or lost XP. `xp` is the new total, so replaying is idempotent. */
+export const XpChangedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('xp.changed'),
+  payload: z.strictObject({
+    delta: z.int(),
+    reason: XpReason,
+    xp: z.int().nonnegative(),
+  }),
+});
+
+/** A cat moved up or down a level. What each level allows is in `levels.ts`. */
+export const CatLevelChangedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.level_changed'),
+  payload: z.strictObject({
+    from: z.int().positive(),
+    to: z.int().positive(),
+  }),
+});
+
+/**
+ * The cat's `learnings.md` changed. Carries the whole new content (the file
+ * is small and capped), so the log keeps the history of every version.
+ * `backup` names the copy in the cat's `history/` folder that undoes it.
+ */
+export const LearningsChangedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('learnings.changed'),
+  payload: z.strictObject({
+    learnings: z.array(Learning).max(500),
+    reason: LearningsChangeReason,
+    backup: z.string().min(1).max(200).nullable(),
+  }),
+});
+
+/** A debrief or consolidation suggested learnings; nothing is written until the user accepts. */
+export const LearningsProposedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('learnings.proposed'),
+  payload: z.strictObject({
+    proposalId: Id,
+    kind: z.enum(['add', 'rewrite']),
+    trigger: ProposalTrigger,
+    lines: z.array(LearningDraft).max(500),
+  }),
+});
+
+export const LearningsProposalResolvedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('learnings.proposal_resolved'),
+  payload: z.strictObject({
+    proposalId: Id,
+    /** `superseded`: a newer rewrite replaced it, or the cat is gone. */
+    decision: z.enum(['accepted', 'discarded', 'superseded']),
+    /** `auto`: accepted by the `memory.autoAcceptAfter` setting. */
+    resolvedBy: z.enum(['user', 'auto', 'system']),
+  }),
+});
+
 export const DaemonErrorEvent = z.strictObject({
   ...envelope,
   type: z.literal('daemon.error'),
@@ -220,6 +283,11 @@ export const AgentcatsEvent = z.discriminatedUnion('type', [
   MessageAgentEvent,
   MessageUserEvent,
   UsageUpdatedEvent,
+  XpChangedEvent,
+  CatLevelChangedEvent,
+  LearningsChangedEvent,
+  LearningsProposedEvent,
+  LearningsProposalResolvedEvent,
   NoticeEvent,
   DaemonErrorEvent,
 ]);

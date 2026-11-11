@@ -107,6 +107,13 @@ describe('routes', () => {
       'POST /api/tasks/:taskId/rerun',
       'POST /api/tasks/:taskId/cancel',
       'GET /api/tasks/:taskId/events',
+      'POST /api/cats/:catId/learnings',
+      'PATCH /api/cats/:catId/learnings/:learningId',
+      'DELETE /api/cats/:catId/learnings/:learningId',
+      'POST /api/cats/:catId/learnings/consolidate',
+      'GET /api/cats/:catId/learnings/history',
+      'POST /api/cats/:catId/learnings/restore',
+      'POST /api/proposals/:proposalId',
       'POST /api/chat',
       'GET /api/snapshot',
     ]);

@@ -238,3 +238,18 @@ export class Translator {
     return next;
   }
 }
+
+/** Usage of a single one-shot call, from its result message. */
+export function usageOfResult(result: SDKResultMessage): Usage {
+  const models = Object.values(result.modelUsage);
+  const sum = (pick: (m: (typeof models)[number]) => number) =>
+    models.reduce((total, m) => total + pick(m), 0);
+  return {
+    inputTokens: sum((m) => m.inputTokens),
+    outputTokens: sum((m) => m.outputTokens),
+    cacheReadTokens: sum((m) => m.cacheReadInputTokens),
+    cacheWriteTokens: sum((m) => m.cacheCreationInputTokens),
+    costUsd: result.total_cost_usd,
+    costSource: 'reported',
+  };
+}

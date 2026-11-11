@@ -6,14 +6,41 @@ import {
   CatRole,
   CatStatus,
   Id,
+  LearningText,
   PauseReason,
   PermissionMode,
+  ProposalTrigger,
   ShortText,
   TaskReasonCode,
   TaskStatus,
   Timestamp,
   ToolKind,
 } from './common.js';
+
+/**
+ * One line of a cat's `learnings.md`. `id` is derived from the line's content
+ * by the daemon, so an edit made against a stale copy of the file is refused.
+ */
+export const Learning = z.strictObject({
+  id: Id,
+  text: LearningText,
+  /** Task the learning came from; `null` for lines the user wrote. */
+  sourceTaskId: Id.nullable(),
+});
+export type Learning = z.infer<typeof Learning>;
+
+/** A learning before it is in the file. */
+export const LearningDraft = Learning.omit({ id: true });
+export type LearningDraft = z.infer<typeof LearningDraft>;
+
+/** Task outcomes per cat, counted from the log. */
+export const CatStats = z.strictObject({
+  /** Results handed in for review. */
+  completed: z.int().nonnegative(),
+  accepted: z.int().nonnegative(),
+  rejected: z.int().nonnegative(),
+});
+export type CatStats = z.infer<typeof CatStats>;
 
 export const Cat = z.strictObject({
   id: Id,
@@ -32,6 +59,13 @@ export const Cat = z.strictObject({
   statusReason: ShortText.nullable(),
   /** Set while the cat is paused; only the user resumes it. */
   pausedReason: PauseReason.nullable(),
+  /** Never below 0. Only workers earn XP. */
+  xp: z.int().nonnegative(),
+  /** Follows `xp` through the curve in `levels.ts`. */
+  level: z.int().positive(),
+  stats: CatStats,
+  /** Mirror of `.agentcats/cats/<name>/learnings.md`, which is the source of truth. */
+  learnings: z.array(Learning).max(500),
   createdAt: Timestamp,
 });
 export type Cat = z.infer<typeof Cat>;
@@ -49,6 +83,11 @@ export const TaskResult = z.strictObject({
   }),
   /** As reported by the worker. `unknown` if its summary did not say. */
   tests: z.enum(['passed', 'failed', 'not_run', 'unknown']),
+  /**
+   * What the task cost, as the agent reported it. `null` when unknown, for
+   * example after a daemon restart in the middle of the task.
+   */
+  costUsd: z.number().nonnegative().nullable().default(null),
 });
 export type TaskResult = z.infer<typeof TaskResult>;
 
@@ -86,3 +125,19 @@ export const PendingApproval = z.strictObject({
   requestedAt: Timestamp,
 });
 export type PendingApproval = z.infer<typeof PendingApproval>;
+
+/**
+ * Learnings a debrief or consolidation suggested, waiting for the user. An
+ * `add` proposal appends `lines`; a `rewrite` replaces the whole file with
+ * them.
+ */
+export const LearningProposal = z.strictObject({
+  id: Id,
+  catId: Id,
+  taskId: Id.nullable(),
+  kind: z.enum(['add', 'rewrite']),
+  trigger: ProposalTrigger,
+  lines: z.array(LearningDraft).max(500),
+  createdAt: Timestamp,
+});
+export type LearningProposal = z.infer<typeof LearningProposal>;

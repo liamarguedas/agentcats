@@ -2,6 +2,7 @@ import type { Cat, PendingApproval, Task, ToolKind, Usage } from '@agentcats/pro
 
 import { CatSprite } from './Cat.js';
 import { InlineText } from './InlineText.js';
+import { LevelBadge } from './Learnings.js';
 
 export const STATUS_LABEL: Record<Cat['status'], string> = {
   idle: 'Idle',
@@ -39,6 +40,10 @@ export interface CatCardProps {
   readonly onPause: () => void;
   readonly onResume: () => void;
   readonly onOpen: () => void;
+  /** The latest XP change, shown briefly as a pop-up. */
+  readonly xpPop: { readonly id: string; readonly text: string } | null;
+  /** Learnings waiting for the user's review. */
+  readonly pendingLearnings: number;
 }
 
 const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
@@ -56,6 +61,11 @@ export function CatCard(props: CatCardProps) {
       <div className="cat-card__stage">
         <Bubble {...props} />
         <CatSprite status={status} />
+        {props.xpPop && (
+          <span key={props.xpPop.id} className="xp-pop" aria-live="polite">
+            {props.xpPop.text}
+          </span>
+        )}
       </div>
       <div className="cat-card__meta">
         <h2 className="cat-card__name">
@@ -73,6 +83,7 @@ export function CatCard(props: CatCardProps) {
               : 'Paused'
             : STATUS_LABEL[cat.status]}
         </p>
+        {cat.role === 'worker' && <LevelBadge cat={cat} />}
         {task && size === 'worker' && <p className="cat-card__task">{task.title}</p>}
         <Spend cat={cat} usage={usage} />
         <div className="cat-card__actions">
@@ -106,6 +117,16 @@ export function CatCard(props: CatCardProps) {
           >
             ⚙
           </button>
+          {props.pendingLearnings > 0 && (
+            <button
+              type="button"
+              className="button button--small learnings-badge"
+              onClick={props.onOpen}
+              aria-label={`${String(props.pendingLearnings)} learning suggestions from ${cat.name} to review`}
+            >
+              📝 {props.pendingLearnings}
+            </button>
+          )}
         </div>
       </div>
     </section>

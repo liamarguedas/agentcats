@@ -203,6 +203,32 @@ export interface AgentPolicy {
   readonly allowedCommands: readonly string[];
   /** Paths the agent must never write to, such as the main checkout. */
   readonly protectedPaths: readonly string[];
+  /**
+   * Paths outside `cwd` the agent may read and search without asking (still
+   * never write). Omitted means none.
+   */
+  readonly readablePaths?: readonly string[];
+}
+
+/**
+ * One prompt, one answer, no tools: used for debriefs and consolidations.
+ * Runs through the same agent and login as the cats.
+ */
+export interface CompleteOptions {
+  /** Working directory for the agent process. Nothing is read from it. */
+  readonly cwd: string;
+  /** `null` uses the agent's own default. */
+  readonly model: string | null;
+  /** Replaces the agent's system prompt entirely: there are no tools to describe. */
+  readonly systemPrompt: string;
+  readonly prompt: string;
+  /** Default 120 s. */
+  readonly timeoutMs?: number;
+}
+
+export interface Completion {
+  readonly text: string;
+  readonly usage: Usage;
 }
 
 export interface SpawnOptions {
@@ -244,6 +270,14 @@ export interface Adapter {
    *   the capabilities do not cover.
    */
   spawn(options: SpawnOptions): Promise<Session>;
+
+  /**
+   * Answer one prompt without tools and without keeping a session.
+   *
+   * @throws AdapterError `spawn_failed` if the agent cannot start or does not
+   *   answer in time.
+   */
+  complete(options: CompleteOptions): Promise<Completion>;
 }
 
 /**

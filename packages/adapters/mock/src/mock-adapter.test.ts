@@ -240,3 +240,81 @@ describe('mock adapter', () => {
     });
   });
 });
+
+describe('mock policy', () => {
+  const main = join(tmpdir(), 'agentcats-main-checkout');
+
+  /** Play the routine scenario under a policy, allowing every approval; return what asked. */
+  async function approvalsUnder(allowedCommands: string[], readablePaths: string[]) {
+    const session = await createMockAdapter({ timeScale: 0, scenario: 'routine' }).spawn({
+      ...spawnOptions,
+      cwd: join(tmpdir(), 'agentcats-worktree'), // beside the main checkout, not around it
+      policy: { access: 'workspace', allowedCommands, protectedPaths: [main], readablePaths },
+    });
+    const asked: string[] = [];
+    const events: AgentEvent[] = [];
+    const done = (async () => {
+      for await (const event of session.events()) {
+        events.push(event);
+        if (event.type === 'approval.requested') {
+          asked.push(event.inputSummary);
+          void session.approve(event.requestId, 'allow');
+        }
+        if (event.type === 'turn.ended') void session.kill();
+      }
+    })();
+    await session.send('do the routine');
+    await done;
+    expectValidStream(events);
+    return asked;
+  }
+
+  it('asks for everything outside the policy, and always for network and installs', async () => {
+    const asked = await approvalsUnder([], []);
+    expect(asked).toEqual([
+      join(main, 'package.json'),
+      'pnpm test',
+      'pnpm lint',
+      'pnpm exec tsc --noEmit',
+      'vitest run src',
+      'curl -sI https://example.com',
+      'pnpm add left-pad',
+    ]);
+  });
+
+  it('runs allowed commands and readable paths without asking', async () => {
+    const asked = await approvalsUnder(
+      ['pnpm test', 'pnpm lint', 'pnpm exec tsc', 'vitest', 'pnpm add', 'curl'],
+      [main],
+    );
+    expect(asked).toEqual(['curl -sI https://example.com', 'pnpm add left-pad']);
+  });
+});
+
+describe('mock complete', () => {
+  const ask = (systemPrompt: string, prompt: string) =>
+    createMockAdapter().complete({ cwd: tmpdir(), model: null, systemPrompt, prompt });
+
+  it("proposes the worker's Learned line in a debrief", async () => {
+    const answer = await ask('# Debrief\n...', '## Summary\n- Learned: use the makeUser fixture');
+    expect(answer.text).toBe('- use the makeUser fixture');
+    expect(answer.usage.costUsd).toBeGreaterThan(0);
+    expect((await ask('# Debrief', '- Learned: nothing new')).text).toBe('NONE');
+  });
+
+  it('returns the learnings unchanged in a consolidation', async () => {
+    const answer = await ask('# Consolidation', '<learnings>\n- a (task 1)\n- b\n</learnings>');
+    expect(answer.text).toBe('- a (task 1)\n- b');
+  });
+
+  it('uses a scripted answer when given one', async () => {
+    const adapter = createMockAdapter({ complete: () => '- scripted' });
+    const answer = await adapter.complete({
+      cwd: tmpdir(),
+      model: 'haiku',
+      systemPrompt: '# Debrief',
+      prompt: 'x',
+    });
+    expect(answer.text).toBe('- scripted');
+  });
+});

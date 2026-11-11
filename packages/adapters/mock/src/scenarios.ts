@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 
 import type { ApprovalDecision, ToolKind } from '@agentcats/protocol';
 import type { AgentEvent, StopReason } from '@agentcats/protocol/adapter';
@@ -33,6 +34,20 @@ export interface TurnContext {
   commit(message: string): Promise<void>;
   /** Call a tool on the agentcats MCP server and return its JSON result. */
   callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  /**
+   * Run a shell command the way a real agent's permission flow would: a push
+   * fails, a command the policy does not allow (or that always asks) waits
+   * for an approval, an allowed one just runs. Resolves to whether it ran.
+   */
+  run(command: string): Promise<boolean>;
+  /**
+   * Read a file, absolute or relative to `cwd`. Outside `cwd` and the policy's
+   * readable paths it needs an approval, as Claude Code does. Resolves to
+   * whether it was read.
+   */
+  read(path: string): Promise<boolean>;
+  /** Paths the session must not write, from its policy (the main checkout). */
+  readonly protectedPaths: readonly string[];
   /** Ask for an approval and wait for the answer. */
   requestApproval(spec: Omit<ToolSpec, 'durationMs' | 'fails'>): Promise<ApprovalDecision>;
   /** Add to the session's cumulative usage and emit it. */
@@ -63,9 +78,14 @@ export class SimulatedCrash extends Error {
 
 const shortHash = (text: string) => createHash('sha256').update(text).digest('hex').slice(0, 8);
 
-/** The structured summary the worker prompt asks for. */
-const workerSummary = (changed: string, tests: 'passed' | 'failed' | 'not run') =>
-  `## Summary\n- Changed: ${changed}\n- Tests: ${tests}\n- Open issues: none`;
+/**
+ * The structured summary the worker prompt asks for. A prompt line
+ * `learn: <text>` becomes the `- Learned:` line, so tests can drive debriefs.
+ */
+const workerSummary = (changed: string, tests: 'passed' | 'failed' | 'not run', prompt = '') => {
+  const learned = /^learn:\s*(.+)$/im.exec(prompt)?.[1]?.trim() ?? 'nothing new';
+  return `## Summary\n- Changed: ${changed}\n- Tests: ${tests}\n- Open issues: none\n- Learned: ${learned}`;
+};
 
 const happyPath: Scenario = {
   name: 'happy-path',
@@ -84,7 +104,35 @@ const happyPath: Scenario = {
     });
     await ctx.commit(`mock: ${ctx.prompt.split('\n', 1)[0] ?? 'work'}`);
     ctx.addUsage(600, 340);
-    await ctx.say(workerSummary(file, 'passed'));
+    await ctx.say(workerSummary(file, 'passed', ctx.prompt));
+    return 'end_turn';
+  },
+};
+
+/**
+ * A routine task with the commands a real worker runs. Which of them raise an
+ * approval depends only on the session's policy, so cats of different levels
+ * can be compared on the same work.
+ */
+const routine: Scenario = {
+  name: 'routine',
+  description:
+    'Reads the main checkout, runs the project scripts and tools, then asks for the network and an install.',
+  async turn(ctx) {
+    await ctx.say('I will check how the main checkout does it, then make the change.', 'thought');
+    const main = ctx.protectedPaths[0];
+    if (main) await ctx.read(join(main, 'package.json'));
+    ctx.addUsage(1_500, 100);
+    const file = `mock-output/${shortHash(ctx.prompt)}.md`;
+    await ctx.writeFile(file, `# Work for\n\n${ctx.prompt}\n`);
+    for (const command of ['pnpm test', 'pnpm lint', 'pnpm exec tsc --noEmit', 'vitest run src']) {
+      await ctx.run(command);
+    }
+    await ctx.run('curl -sI https://example.com');
+    await ctx.run('pnpm add left-pad');
+    await ctx.commit(`mock: ${ctx.prompt.split('\n', 1)[0] ?? 'work'}`);
+    ctx.addUsage(800, 300);
+    await ctx.say(workerSummary(file, 'passed', ctx.prompt));
     return 'end_turn';
   },
 };
@@ -280,10 +328,9 @@ const orchestrator: Scenario = {
 };
 
 export const SCENARIOS: Readonly<Record<string, Scenario>> = Object.fromEntries(
-  [happyPath, approval, network, error, crash, flaky, hang, expensive, orchestrator].map((s) => [
-    s.name,
-    s,
-  ]),
+  [happyPath, routine, approval, network, error, crash, flaky, hang, expensive, orchestrator].map(
+    (s) => [s.name, s],
+  ),
 );
 
 /**

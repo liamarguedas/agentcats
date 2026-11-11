@@ -1,8 +1,9 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
 
 import { isProcessAlive, killProcessTree, processStartTime } from '@agentcats/kit';
 import { z } from 'zod';
+
+import { writeFileAtomic } from './fs-util.js';
 
 const PidRecord = z.object({
   pid: z.int().positive(),
@@ -83,36 +84,8 @@ export class PidRegistry {
     const content = JSON.stringify({ version: 1, processes: this.#records }, null, 2);
     const write = this.#writing
       .catch(() => undefined)
-      .then(async () => {
-        await mkdir(dirname(this.file), { recursive: true });
-        const temp = `${this.file}.tmp`;
-        await writeFile(temp, content);
-        await renameWithRetry(temp, this.file);
-      });
+      .then(() => writeFileAtomic(this.file, content));
     this.#writing = write;
     return write;
-  }
-}
-
-/** Codes Windows returns for a rename-over while another process has the target open. */
-const TRANSIENT = new Set(['EPERM', 'EBUSY', 'EACCES']);
-
-/**
- * `rename`, retried while the target is held open by someone else: a reader,
- * an editor, or an antivirus scan of the freshly written file, which on
- * Windows can last seconds. Same approach as npm's graceful-fs, with a
- * shorter budget.
- */
-async function renameWithRetry(from: string, to: string, budgetMs = 10_000): Promise<void> {
-  const deadline = Date.now() + budgetMs;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code ?? '';
-      if (!TRANSIENT.has(code) || Date.now() > deadline) throw error;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(100, 10 * attempt)));
-    }
   }
 }

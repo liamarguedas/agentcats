@@ -10,11 +10,15 @@ describe('AgentcatsEvent', () => {
         'approval.requested',
         'approval.resolved',
         'cat.created',
+        'cat.level_changed',
         'cat.paused',
         'cat.resumed',
         'cat.status_changed',
         'cat.updated',
         'daemon.error',
+        'learnings.changed',
+        'learnings.proposal_resolved',
+        'learnings.proposed',
         'message.agent',
         'message.user',
         'notice',
@@ -22,6 +26,7 @@ describe('AgentcatsEvent', () => {
         'task.updated',
         'tool.called',
         'usage.updated',
+        'xp.changed',
       ].sort(),
     );
   });

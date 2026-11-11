@@ -8,6 +8,8 @@ import {
   type AdapterCapabilities,
   AdapterError,
   type AgentEvent,
+  type CompleteOptions,
+  type Completion,
   type McpServerSpec,
   type Session,
   type SpawnOptions,
@@ -19,12 +21,14 @@ import {
   type PermissionResult,
   type Query,
   query,
+  type SDKResultMessage,
   type SDKUserMessage,
+  type SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 
 import { claudeVersion, resolveClaudeExecutable, TESTED_CLAUDE_VERSIONS } from './executable.js';
 import { policyOptions, sessionSettings } from './policy.js';
-import { billingOf, summarizeInput, toolKind, Translator } from './translate.js';
+import { billingOf, summarizeInput, toolKind, Translator, usageOfResult } from './translate.js';
 
 export interface ClaudeAdapterOptions {
   /** Path to `claude`. `null` or omitted resolves `claude` on PATH. */
@@ -73,22 +77,106 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Adapter
     displayName: 'Claude',
     capabilities: CAPABILITIES,
     spawn: (spawnOptions) => spawnClaudeSession(spawnOptions, options),
+    complete: (completeOptions) => completeOnce(completeOptions, options),
   };
+}
+
+async function requireExecutable(adapterOptions: ClaudeAdapterOptions): Promise<string> {
+  const executable = await resolveClaudeExecutable(adapterOptions.executablePath ?? null);
+  if (executable) return executable;
+  throw new AdapterError(
+    'spawn_failed',
+    adapterOptions.executablePath
+      ? `Claude Code not found at ${adapterOptions.executablePath}`
+      : 'Claude Code (`claude`) was not found on PATH. Install it, or set claude.executablePath in agentcats.config.json.',
+  );
+}
+
+/**
+ * Start Claude Code under the guardian, so it cannot outlive the daemon.
+ * `kill()` on the guardian alone would orphan the agent on Windows, so it
+ * kills the whole tree.
+ */
+function guardedSpawn(
+  spawn: SdkSpawnOptions,
+  onStderr: (chunk: string) => void,
+): ReturnType<typeof spawnGuarded> {
+  const guarded = spawnGuarded(spawn.command, spawn.args, {
+    ...(spawn.cwd !== undefined && { cwd: spawn.cwd }),
+    env: spawn.env,
+  });
+  guarded.stderr.setEncoding('utf8');
+  guarded.stderr.on('data', onStderr);
+  guarded.kill = () => {
+    if (guarded.pid !== undefined) void killProcessTree(guarded.pid);
+    return true;
+  };
+  spawn.signal.addEventListener('abort', () => guarded.kill(), { once: true });
+  return guarded;
+}
+
+/**
+ * One prompt, one answer: no tools, no settings files, no saved session, and
+ * a plain system prompt instead of Claude Code's own. Verified to cost a few
+ * hundred input tokens (decisions.md, Step 0 for M2).
+ */
+async function completeOnce(
+  options: CompleteOptions,
+  adapterOptions: ClaudeAdapterOptions,
+): Promise<Completion> {
+  const executable = await requireExecutable(adapterOptions);
+  let child: ChildProcess | null = null;
+  let stderr = '';
+  const q = query({
+    prompt: options.prompt,
+    options: {
+      cwd: options.cwd,
+      ...(options.model !== null && { model: options.model }),
+      systemPrompt: options.systemPrompt,
+      tools: [],
+      maxTurns: 1,
+      settingSources: [],
+      persistSession: false,
+      strictMcpConfig: true,
+      mcpServers: {},
+      pathToClaudeCodeExecutable: executable,
+      spawnClaudeCodeProcess: (spawn) => {
+        const guarded = guardedSpawn(spawn, (chunk) => {
+          stderr = (stderr + chunk).slice(-STDERR_TAIL);
+        });
+        child = guarded;
+        return guarded;
+      },
+    },
+  });
+  const answer = (async () => {
+    let result: SDKResultMessage | null = null;
+    for await (const message of q) if (message.type === 'result') result = message;
+    return result;
+  })();
+  try {
+    const result = await withTimeout(answer, options.timeoutMs ?? 120_000);
+    if (!result || result.subtype !== 'success') {
+      throw new Error(result ? `ended with ${result.subtype}` : 'no answer');
+    }
+    return { text: result.result, usage: usageOfResult(result) };
+  } catch (error) {
+    const detail = stderr.trim() || (error instanceof Error ? error.message : String(error));
+    throw new AdapterError('spawn_failed', `Claude Code did not answer: ${detail}`, {
+      cause: error,
+    });
+  } finally {
+    q.close();
+    const pid = (child as ChildProcess | null)?.pid;
+    if (pid !== undefined) await killProcessTree(pid);
+  }
 }
 
 async function spawnClaudeSession(
   options: SpawnOptions,
   adapterOptions: ClaudeAdapterOptions,
 ): Promise<Session> {
-  const executable = await resolveClaudeExecutable(adapterOptions.executablePath ?? null);
-  if (!executable) {
-    throw new AdapterError(
-      'spawn_failed',
-      adapterOptions.executablePath
-        ? `Claude Code not found at ${adapterOptions.executablePath}`
-        : 'Claude Code (`claude`) was not found on PATH. Install it, or set claude.executablePath in agentcats.config.json.',
-    );
-  }
+  const executable = await requireExecutable(adapterOptions);
   const version = await claudeVersion(executable).catch(() => null);
 
   const input = new AsyncQueue<SDKUserMessage>();
@@ -118,20 +206,9 @@ async function spawnClaudeSession(
         Object.entries(options.mcpServers ?? {}).map(([name, spec]) => [name, toClaudeMcp(spec)]),
       ),
       spawnClaudeCodeProcess: (spawn) => {
-        const guarded = spawnGuarded(spawn.command, spawn.args, {
-          ...(spawn.cwd !== undefined && { cwd: spawn.cwd }),
-          env: spawn.env,
-        });
-        guarded.stderr.setEncoding('utf8');
-        guarded.stderr.on('data', (chunk: string) => {
+        const guarded = guardedSpawn(spawn, (chunk) => {
           stderr = (stderr + chunk).slice(-STDERR_TAIL);
         });
-        // `kill()` on the guardian alone would orphan the agent on Windows.
-        guarded.kill = () => {
-          if (guarded.pid !== undefined) void killProcessTree(guarded.pid);
-          return true;
-        };
-        spawn.signal.addEventListener('abort', () => guarded.kill(), { once: true });
         child = guarded;
         return guarded;
       },

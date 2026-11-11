@@ -9,6 +9,8 @@ describe('AgentcatsConfig', () => {
       orchestrator: { model: null },
       workers: { max: 3, model: 'sonnet', permissionMode: 'accept_edits', allowedCommands: [] },
       budget: { perCatUsd: 2, globalUsd: 10, perCatTokens: null, enforce: 'metered' },
+      xp: { accepted: 10, testsFirstTry: 5, underCost: 3, rejectedPenalty: 10 },
+      memory: { debrief: true, model: 'haiku', cap: 30, autoAcceptAfter: null },
       attribution: false,
       stuckTimeoutMs: 300_000,
       approvalTimeoutMs: 300_000,

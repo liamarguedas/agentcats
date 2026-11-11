@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { Id, Usage } from './common.js';
-import { Cat, PendingApproval, Task } from './entities.js';
+import { Cat, LearningProposal, PendingApproval, Task } from './entities.js';
 import type { AgentcatsEvent } from './events.js';
 
 /**
@@ -16,11 +16,13 @@ export const BoardState = z.strictObject({
   tasks: z.record(Id, Task),
   pendingApprovals: z.record(Id, PendingApproval),
   usage: z.record(Id, Usage),
+  /** Learnings waiting for the user's accept or discard. */
+  proposals: z.record(Id, LearningProposal),
 });
 export type BoardState = z.infer<typeof BoardState>;
 
 export function emptyBoard(): BoardState {
-  return { lastSeq: 0, cats: {}, tasks: {}, pendingApprovals: {}, usage: {} };
+  return { lastSeq: 0, cats: {}, tasks: {}, pendingApprovals: {}, usage: {}, proposals: {} };
 }
 
 /**
@@ -58,6 +60,10 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
           status: 'idle',
           statusReason: null,
           pausedReason: null,
+          xp: 0,
+          level: 1,
+          stats: { completed: 0, accepted: 0, rejected: 0 },
+          learnings: [],
           createdAt: event.ts,
         },
       };
@@ -108,11 +114,53 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
     case 'task.updated': {
       const task = state.tasks[event.taskId];
       if (!task) return next;
-      const { actor: _actor, ...changes } = event.payload;
-      next.tasks = {
-        ...state.tasks,
-        [event.taskId]: { ...task, ...definedOnly(changes), updatedAt: event.ts },
+      const { actor, ...changes } = event.payload;
+      const updated = { ...task, ...definedOnly(changes), updatedAt: event.ts };
+      next.tasks = { ...state.tasks, [event.taskId]: updated };
+      const counter = statCounter(task.status, updated.status, actor);
+      const cat = updated.assigneeCatId ? state.cats[updated.assigneeCatId] : undefined;
+      if (counter && cat) {
+        next.cats = {
+          ...state.cats,
+          [cat.id]: { ...cat, stats: { ...cat.stats, [counter]: cat.stats[counter] + 1 } },
+        };
+      }
+      return next;
+    }
+
+    case 'xp.changed':
+    case 'cat.level_changed':
+    case 'learnings.changed': {
+      const cat = state.cats[event.catId];
+      if (!cat) return next;
+      const patch =
+        event.type === 'xp.changed'
+          ? { xp: event.payload.xp }
+          : event.type === 'cat.level_changed'
+            ? { level: event.payload.to }
+            : { learnings: event.payload.learnings };
+      next.cats = { ...state.cats, [event.catId]: { ...cat, ...patch } };
+      return next;
+    }
+
+    case 'learnings.proposed': {
+      const { proposalId, ...rest } = event.payload;
+      next.proposals = {
+        ...state.proposals,
+        [proposalId]: {
+          id: proposalId,
+          catId: event.catId,
+          taskId: event.taskId ?? null,
+          ...rest,
+          createdAt: event.ts,
+        },
       };
+      return next;
+    }
+
+    case 'learnings.proposal_resolved': {
+      const { [event.payload.proposalId]: _resolved, ...remaining } = state.proposals;
+      next.proposals = remaining;
       return next;
     }
 
@@ -148,6 +196,21 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
     case 'daemon.error':
       return next;
   }
+}
+
+/** Which of a cat's stats a status change counts toward, if any. */
+function statCounter(
+  from: Task['status'],
+  to: Task['status'],
+  actor: string | undefined,
+): keyof Cat['stats'] | null {
+  if (from === to) return null;
+  if (to === 'review') return 'completed';
+  if (from === 'review' && actor === 'user') {
+    if (to === 'done') return 'accepted';
+    if (to === 'rejected') return 'rejected';
+  }
+  return null;
 }
 
 /** Drop `undefined` values, so an optional field that is absent never overwrites state. */

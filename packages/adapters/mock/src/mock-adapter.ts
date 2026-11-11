@@ -5,16 +5,23 @@ import {
 } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdir, stat, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import { AsyncQueue, killProcessTree, spawnGuarded } from '@agentcats/kit';
-import type { ApprovalDecision, Billing, Usage } from '@agentcats/protocol';
+import {
+  alwaysAskReason,
+  type ApprovalDecision,
+  type Billing,
+  isPush,
+  type Usage,
+} from '@agentcats/protocol';
 import {
   type Adapter,
   type AdapterCapabilities,
   AdapterError,
   type AgentEvent,
+  type CompleteOptions,
   type Session,
   type SpawnOptions,
   type StopReason,
@@ -58,6 +65,12 @@ export interface MockAdapterOptions {
    * daemon turns it on; its workers run in throwaway worktrees.
    */
   readonly realFiles?: boolean;
+  /**
+   * Answers for {@link Adapter.complete}. Default {@link defaultCompletion}:
+   * a debrief proposes the worker's `- Learned:` line, a consolidation
+   * returns the lines unchanged.
+   */
+  readonly complete?: (options: CompleteOptions) => string | Promise<string>;
 }
 
 const CAPABILITIES: AdapterCapabilities = {
@@ -104,7 +117,40 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
         options.realFiles ?? false,
       );
     },
+    async complete(completeOptions) {
+      const text = await (options.complete ?? defaultCompletion)(completeOptions);
+      const inputTokens = Math.ceil(completeOptions.prompt.length / 4);
+      const outputTokens = Math.ceil(text.length / 4);
+      return {
+        text,
+        usage: {
+          inputTokens,
+          outputTokens,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd:
+            inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
+            outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN,
+          costSource: 'estimated',
+        },
+      };
+    },
   };
+}
+
+/**
+ * The mock's answer to a one-shot prompt, recognized by the system prompt's
+ * first line. A `# Consolidation` returns the current learnings unchanged; a
+ * `# Debrief` proposes the worker's `- Learned:` line, or nothing if it
+ * learned "nothing new".
+ */
+export function defaultCompletion(options: CompleteOptions): string {
+  if (/^#\s*Consolidation/i.test(options.systemPrompt)) {
+    const current = /<learnings>\n([\s\S]*?)<\/learnings>/.exec(options.prompt)?.[1] ?? '';
+    return current.trim() || 'NONE';
+  }
+  const learned = /^- Learned:\s*(.+)$/im.exec(options.prompt)?.[1]?.trim();
+  return learned && !/^(nothing|none)\b/i.test(learned) ? `- ${learned}` : 'NONE';
 }
 
 function resolveScenario(scenario: string | Scenario): Scenario {
@@ -348,6 +394,30 @@ class MockSession implements Session {
         }
       },
       tool: (spec: ToolSpec) => tool(spec),
+      protectedPaths: this.options.policy?.protectedPaths ?? [],
+      run: async (command) => {
+        const spec = { toolName: 'Bash', kind: 'execute' as const, inputSummary: command };
+        if (isPush(command)) {
+          await tool({ ...spec, durationMs: 50, fails: true });
+          return false;
+        }
+        if (!this.#allows(command) && (await ctx.requestApproval(spec)) === 'deny') return false;
+        await tool(spec);
+        return true;
+      },
+      read: async (path) => {
+        const spec = { toolName: 'Read', kind: 'read' as const, inputSummary: path };
+        const target = resolve(cwd, path);
+        const readable = [cwd, ...(this.options.policy?.readablePaths ?? [])];
+        if (
+          !readable.some((root) => isInside(root, target)) &&
+          (await ctx.requestApproval(spec)) === 'deny'
+        ) {
+          return false;
+        }
+        await tool(spec);
+        return true;
+      },
       requestApproval: (spec) => {
         const requestId = this.#id('approval');
         this.#emit({ type: 'approval.requested', requestId, toolCallId: null, ...spec });
@@ -376,6 +446,13 @@ class MockSession implements Session {
       },
     };
     return ctx;
+  }
+
+  /** Whether a command runs without an approval under the session's policy. */
+  #allows(command: string): boolean {
+    if (alwaysAskReason(command) !== null) return false;
+    const allowed = this.options.policy?.allowedCommands ?? [];
+    return allowed.some((prefix) => command === prefix || command.startsWith(`${prefix} `));
   }
 
   get #hasMcp(): boolean {
@@ -418,6 +495,11 @@ class MockSession implements Session {
     this.#nextId += 1;
     return `${prefix}-${String(this.#nextId)}`;
   }
+}
+
+function isInside(root: string, path: string): boolean {
+  const rel = relative(resolve(root), path);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
 /** Split text into chunks of `size` words, keeping the spaces. */

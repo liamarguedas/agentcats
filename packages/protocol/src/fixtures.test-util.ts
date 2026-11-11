@@ -155,6 +155,57 @@ export const sampleEvents = {
     catId: 'cat-1',
     payload: { level: 'warning', code: 'budget_warning', message: 'Mochi has used 80% of $5' },
   },
+  'xp.changed': {
+    id: 'e16',
+    seq: 16,
+    ts: 16_000,
+    type: 'xp.changed',
+    catId: 'cat-1',
+    taskId: 'task-1',
+    payload: { delta: 10, reason: 'accepted', xp: 10 },
+  },
+  'cat.level_changed': {
+    id: 'e17',
+    seq: 17,
+    ts: 17_000,
+    type: 'cat.level_changed',
+    catId: 'cat-1',
+    payload: { from: 1, to: 2 },
+  },
+  'learnings.proposed': {
+    id: 'e18',
+    seq: 18,
+    ts: 18_000,
+    type: 'learnings.proposed',
+    catId: 'cat-1',
+    taskId: 'task-1',
+    payload: {
+      proposalId: 'p1',
+      kind: 'add',
+      trigger: 'debrief',
+      lines: [{ text: 'Use the makeUser fixture in tests', sourceTaskId: 'task-1' }],
+    },
+  },
+  'learnings.proposal_resolved': {
+    id: 'e19',
+    seq: 19,
+    ts: 19_000,
+    type: 'learnings.proposal_resolved',
+    catId: 'cat-1',
+    payload: { proposalId: 'p1', decision: 'accepted', resolvedBy: 'user' },
+  },
+  'learnings.changed': {
+    id: 'e20',
+    seq: 20,
+    ts: 20_000,
+    type: 'learnings.changed',
+    catId: 'cat-1',
+    payload: {
+      learnings: [{ id: 'l1', text: 'Use the makeUser fixture in tests', sourceTaskId: 'task-1' }],
+      reason: 'debrief',
+      backup: null,
+    },
+  },
 } as const satisfies { [T in EventType]: Extract<AgentcatsEvent, { type: T }> };
 
 /** The samples as an array ordered by seq. */

@@ -78,7 +78,7 @@ export interface TaskDrawerProps {
   readonly task: Task;
   readonly cat: Cat | undefined;
   readonly loadHistory: () => Promise<readonly AgentcatsEvent[]>;
-  readonly onReview: (decision: 'accept' | 'reject') => void;
+  readonly onReview: (decision: 'accept' | 'reject', note?: string) => void;
   readonly onRerun: () => void;
   readonly onCancel: () => void;
   readonly onClose: () => void;
@@ -94,6 +94,8 @@ export function TaskDrawer({
   onClose,
 }: TaskDrawerProps) {
   const [history, setHistory] = useState<readonly AgentcatsEvent[] | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState('');
   useEffect(() => {
     let cancelled = false;
     loadHistory().then(
@@ -139,11 +141,12 @@ export function TaskDrawer({
             <button
               type="button"
               className="button"
+              aria-expanded={rejecting}
               onClick={() => {
-                onReview('reject');
+                setRejecting((open) => !open);
               }}
             >
-              Reject
+              Reject…
             </button>
           </>
         )}
@@ -158,6 +161,38 @@ export function TaskDrawer({
           </button>
         )}
       </div>
+
+      {task.status === 'review' && rejecting && (
+        <form
+          className="form reject-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            onReview('reject', note.trim() || undefined);
+          }}
+        >
+          <label className="form__field">
+            <span>What was wrong? (optional)</span>
+            <textarea
+              rows={3}
+              value={note}
+              maxLength={2000}
+              placeholder="For example: the handler is far too long; split it."
+              onChange={(e) => {
+                setNote(e.target.value);
+              }}
+            />
+          </label>
+          <p className="drawer__hint">
+            With a note, {cat?.name ?? 'the cat'} can learn from the rejection. Without one, it only
+            loses XP.
+          </p>
+          <div className="drawer__actions">
+            <button type="submit" className="button button--danger">
+              Reject
+            </button>
+          </div>
+        </form>
+      )}
 
       {task.branch && (
         <dl className="facts">
@@ -183,6 +218,12 @@ export function TaskDrawer({
               </dd>
               <dt>Tests</dt>
               <dd>{task.result.tests.replace('_', ' ')}</dd>
+              {task.result.costUsd !== null && (
+                <>
+                  <dt>Cost</dt>
+                  <dd>${task.result.costUsd.toFixed(3)}</dd>
+                </>
+              )}
             </>
           )}
         </dl>
@@ -246,6 +287,8 @@ export interface CatDrawerProps {
   }) => Promise<void>;
   readonly onNudge: () => void;
   readonly onClose: () => void;
+  /** Sections shown before the properties form: level and learnings, for workers. */
+  readonly children?: ReactNode;
 }
 
 const numberOrNull = (text: string) => {
@@ -253,7 +296,15 @@ const numberOrNull = (text: string) => {
   return text.trim() === '' || !Number.isFinite(value) || value <= 0 ? null : value;
 };
 
-export function CatDrawer({ cat, usage, canNudge, onSave, onNudge, onClose }: CatDrawerProps) {
+export function CatDrawer({
+  cat,
+  usage,
+  canNudge,
+  onSave,
+  onNudge,
+  onClose,
+  children,
+}: CatDrawerProps) {
   const [model, setModel] = useState(cat.model ?? '');
   const [mode, setMode] = useState<PermissionMode>(cat.permissionMode);
   const [usd, setUsd] = useState(cat.budget.maxUsd === null ? '' : String(cat.budget.maxUsd));
@@ -278,7 +329,7 @@ export function CatDrawer({ cat, usage, canNudge, onSave, onNudge, onClose }: Ca
   }
 
   return (
-    <Drawer title={`${cat.name} · properties`} onClose={onClose}>
+    <Drawer title={isLead ? `${cat.name} · lead` : `${cat.name} · worker`} onClose={onClose}>
       <dl className="facts">
         <dt>Role</dt>
         <dd>
@@ -302,6 +353,10 @@ export function CatDrawer({ cat, usage, canNudge, onSave, onNudge, onClose }: Ca
           {((usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)).toLocaleString()} tokens
         </dd>
       </dl>
+
+      {children}
+
+      {children && <h3 className="drawer__subtitle">Properties</h3>}
 
       <form className="form" onSubmit={(e) => void submit(e)}>
         <label className="form__field">

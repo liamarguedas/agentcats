@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import { ApprovalDecision, Budget, Id, PermissionMode } from './common.js';
-import { Cat, Task } from './entities.js';
+import { ApprovalDecision, Budget, Id, LearningText, PermissionMode, Timestamp } from './common.js';
+import { Cat, LearningDraft, Task } from './entities.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
 import { API_PREFIX } from './transport.js';
@@ -57,11 +57,42 @@ export const NudgeRequest = z.strictObject({ text: z.string().min(1).max(20_000)
 export type NudgeRequest = z.infer<typeof NudgeRequest>;
 
 /** The user's verdict on a worker result in `review`. */
-export const ReviewTaskRequest = z.strictObject({ decision: z.enum(['accept', 'reject']) });
+export const ReviewTaskRequest = z.strictObject({
+  decision: z.enum(['accept', 'reject']),
+  /**
+   * Why the result was rejected (or anything worth remembering about it). A
+   * rejection only turns into a learning when the user wrote a note.
+   */
+  note: z.string().trim().max(2_000).optional(),
+});
 export type ReviewTaskRequest = z.infer<typeof ReviewTaskRequest>;
 
 export const TaskResponse = z.strictObject({ task: Task });
 export type TaskResponse = z.infer<typeof TaskResponse>;
+
+/** Add a line to a cat's learnings, or replace one line's text. */
+export const LearningTextRequest = z.strictObject({ text: LearningText });
+export type LearningTextRequest = z.infer<typeof LearningTextRequest>;
+
+export const ResolveProposalRequest = z.strictObject({ decision: z.enum(['accept', 'discard']) });
+export type ResolveProposalRequest = z.infer<typeof ResolveProposalRequest>;
+
+/** A saved copy of a cat's learnings file, from before a consolidation or restore. */
+export const LearningsVersion = z.strictObject({
+  /** File name in the cat's `history/` folder. */
+  id: z.string().min(1).max(200),
+  createdAt: Timestamp,
+  lines: z.array(LearningDraft).max(500),
+});
+export type LearningsVersion = z.infer<typeof LearningsVersion>;
+
+export const LearningsHistoryResponse = z.strictObject({
+  versions: z.array(LearningsVersion),
+});
+export type LearningsHistoryResponse = z.infer<typeof LearningsHistoryResponse>;
+
+export const RestoreLearningsRequest = z.strictObject({ versionId: z.string().min(1).max(200) });
+export type RestoreLearningsRequest = z.infer<typeof RestoreLearningsRequest>;
 
 /** Every stored event about one task, oldest first, for the task drawer. */
 export const TaskEventsResponse = z.strictObject({ events: z.array(AgentcatsEvent) });
@@ -96,7 +127,7 @@ export const ErrorResponse = z.strictObject({
 export type ErrorResponse = z.infer<typeof ErrorResponse>;
 
 export interface RouteSpec {
-  readonly method: 'GET' | 'POST' | 'PATCH';
+  readonly method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   /** Full path including {@link API_PREFIX}; `:name` segments are path params. */
   readonly path: string;
   readonly body: z.ZodType | null;
@@ -184,6 +215,55 @@ export const routes = {
     path: `${API_PREFIX}/tasks/:taskId/events`,
     body: null,
     response: TaskEventsResponse,
+    successStatus: 200,
+  },
+  addLearning: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/learnings`,
+    body: LearningTextRequest,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  editLearning: {
+    method: 'PATCH',
+    path: `${API_PREFIX}/cats/:catId/learnings/:learningId`,
+    body: LearningTextRequest,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  deleteLearning: {
+    method: 'DELETE',
+    path: `${API_PREFIX}/cats/:catId/learnings/:learningId`,
+    body: null,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  consolidateLearnings: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/learnings/consolidate`,
+    body: null,
+    response: AcceptedResponse,
+    successStatus: 202,
+  },
+  learningsHistory: {
+    method: 'GET',
+    path: `${API_PREFIX}/cats/:catId/learnings/history`,
+    body: null,
+    response: LearningsHistoryResponse,
+    successStatus: 200,
+  },
+  restoreLearnings: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/learnings/restore`,
+    body: RestoreLearningsRequest,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  resolveProposal: {
+    method: 'POST',
+    path: `${API_PREFIX}/proposals/:proposalId`,
+    body: ResolveProposalRequest,
+    response: CatResponse,
     successStatus: 200,
   },
   chat: {

@@ -1,11 +1,17 @@
-import { isAbsolute, relative, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
+import { alwaysAskReason, isPush, scriptRisk } from '@agentcats/protocol';
 import type { AgentPolicy } from '@agentcats/protocol/adapter';
 import type { HookCallbackMatcher, Options } from '@anthropic-ai/claude-agent-sdk';
 
-/** A decision for one tool call: let Claude Code's normal flow decide, force a prompt, or block. */
+/**
+ * A decision for one tool call: let Claude Code's normal flow decide, allow
+ * without a prompt, force a prompt, or block.
+ */
 export type Decision =
   | { readonly kind: 'pass' }
+  | { readonly kind: 'allow'; readonly reason: string }
   | { readonly kind: 'ask'; readonly reason: string }
   | { readonly kind: 'deny'; readonly reason: string };
 
@@ -23,25 +29,6 @@ const WRITE_AND_SHELL_TOOLS = [
   'PowerShell',
 ];
 
-const PUSH = /\bgit\b[^\n;&|]*\bpush\b/i;
-/**
- * Commands that usually reach the network. They always ask, even when an
- * allow rule or Claude Code's read-only list would let them through.
- */
-const NETWORK = new RegExp(
-  [
-    String.raw`\b(curl|wget|ssh|scp|sftp|rsync|nc|ncat|telnet|ftp)\b`,
-    String.raw`\b(Invoke-WebRequest|Invoke-RestMethod|iwr|irm)\b`,
-    String.raw`\bgit\s+(clone|fetch|pull|ls-remote|submodule\s+update)\b`,
-    String.raw`\b(npm|pnpm|yarn|bun)\s+(i|install|add|ci|update|upgrade|dlx|create)\b`,
-    String.raw`\b(npx|pnpx|bunx)\b`,
-    String.raw`\bpip3?\s+(install|download)\b`,
-    String.raw`\b(uv|poetry)\s+(add|sync|install|pip\s+install)\b`,
-    String.raw`\b(cargo|go)\s+(install|get|add|fetch)\b`,
-  ].join('|'),
-  'i',
-);
-
 const sameCase = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path);
 
 /** Whether `path` is `root` or inside it. */
@@ -50,9 +37,17 @@ export function isInside(root: string, path: string): boolean {
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
-/** Decide a shell command for a worker. */
-export function decideCommand(command: string, policy: AgentPolicy): Decision {
-  if (PUSH.test(command)) {
+/**
+ * Decide a shell command for a worker. `scripts` are the `package.json`
+ * scripts in the worktree, read when the command runs: an allowed
+ * `pnpm test` still asks if the worker made its `test` script fetch or delete.
+ */
+export function decideCommand(
+  command: string,
+  policy: AgentPolicy,
+  scripts: Readonly<Record<string, string>> = {},
+): Decision {
+  if (isPush(command)) {
     return {
       kind: 'deny',
       reason: 'Pushing is not allowed in agentcats. Commit to your branch; the user merges it.',
@@ -68,8 +63,57 @@ export function decideCommand(command: string, policy: AgentPolicy): Decision {
       };
     }
   }
-  if (NETWORK.test(command)) {
-    return { kind: 'ask', reason: 'Network access or package install: needs your approval.' };
+  const ask = alwaysAskReason(command);
+  if (ask) return { kind: 'ask', reason: ASK_REASONS[ask] };
+  const risk = scriptRisk(command, scripts);
+  if (risk) {
+    return {
+      kind: 'ask',
+      reason: `The "${risk.script}" script in package.json involves ${SCRIPT_RISKS[risk.reason]}: needs your approval.`,
+    };
+  }
+  return PASS;
+}
+
+const SCRIPT_RISKS: Record<'network' | 'install' | 'destructive' | 'push', string> = {
+  network: 'network access',
+  install: 'a package install',
+  destructive: 'deleting files',
+  push: 'a git push',
+};
+
+/** `package.json` scripts in `dir`, or none if there is no readable file. */
+export function readScripts(dir: string): Record<string, string> {
+  try {
+    const json = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+      scripts?: unknown;
+    };
+    if (typeof json.scripts !== 'object' || json.scripts === null) return {};
+    return Object.fromEntries(
+      Object.entries(json.scripts).filter((e): e is [string, string] => typeof e[1] === 'string'),
+    );
+  } catch {
+    return {};
+  }
+}
+
+const ASK_REASONS: Record<NonNullable<ReturnType<typeof alwaysAskReason>>, string> = {
+  network: 'Network access: needs your approval.',
+  install: 'Package install: needs your approval.',
+  destructive: 'This can delete work: needs your approval.',
+};
+
+/**
+ * Decide a read or search for a worker. Inside its worktree Claude Code
+ * allows it anyway; inside one of the policy's `readablePaths` it is allowed
+ * without a prompt; anywhere else Claude Code asks as usual.
+ */
+export function decideRead(path: string, cwd: string, policy: AgentPolicy): Decision {
+  if (!path) return PASS;
+  const target = resolve(cwd, path);
+  if (isInside(cwd, target)) return PASS;
+  if ((policy.readablePaths ?? []).some((p) => isInside(p, target))) {
+    return { kind: 'allow', reason: 'Reading the main checkout is allowed at this level.' };
   }
   return PASS;
 }
@@ -118,7 +162,8 @@ const field = (input: unknown, name: string): string => {
  *
  * - `read_only`: edit and shell tools are removed; agentcats MCP tools need no prompt.
  * - `workspace`: allowed commands run without asking; PreToolUse hooks deny
- *   pushes and writes outside `cwd`, and force a prompt for network access.
+ *   pushes and writes outside `cwd`, force a prompt for network access,
+ *   installs and destructive commands, and allow reads in `readablePaths`.
  *   Hooks run for every call, including ones Claude Code would auto-approve.
  */
 export function policyOptions(
@@ -149,7 +194,9 @@ export function policyOptions(
       matcher: 'Bash|PowerShell',
       hooks: [
         (input) =>
-          Promise.resolve(hookOutput(decideCommand(field(toolInput(input), 'command'), policy))),
+          Promise.resolve(
+            hookOutput(decideCommand(field(toolInput(input), 'command'), policy, readScripts(cwd))),
+          ),
       ],
     },
     {
@@ -159,6 +206,16 @@ export function policyOptions(
           const args = toolInput(input);
           const path = field(args, 'file_path') || field(args, 'notebook_path');
           return Promise.resolve(path ? hookOutput(decideWrite(path, cwd, policy)) : {});
+        },
+      ],
+    },
+    {
+      matcher: 'Read|Grep|Glob|LS',
+      hooks: [
+        (input) => {
+          const args = toolInput(input);
+          const path = field(args, 'file_path') || field(args, 'path');
+          return Promise.resolve(hookOutput(decideRead(path, cwd, policy)));
         },
       ],
     },

@@ -236,6 +236,22 @@ export class CatAgent {
     }
   }
 
+  /**
+   * Add usage spent outside a session (a debrief or consolidation call) to
+   * the cat's total. Also raises the running session's base, so the
+   * session's next usage report does not overwrite it.
+   */
+  chargeUsage(usage: Usage): void {
+    const total = this.deps.log.board.usage[this.catId] ?? ZERO_USAGE;
+    this.#usageBase = addUsage(this.#usageBase, usage);
+    this.deps.log.append({
+      type: 'usage.updated',
+      catId: this.catId,
+      payload: addUsage(total, usage),
+    });
+    this.deps.hooks.usage(this);
+  }
+
   setStatus(status: CatStatus, reason: string | null = null): void {
     const cat = this.deps.log.board.cats[this.catId];
     if (cat?.status === status && cat.statusReason === reason) return;
