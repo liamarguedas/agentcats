@@ -52,6 +52,7 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
     "allowedCommands": ["npm test", "npm run lint"]
   },
   "budget": { "perCatUsd": 2, "globalUsd": 10, "perCatTokens": null, "enforce": "metered" },
+  "attribution": false,
   "stuckTimeoutMs": 300000,
   "approvalTimeoutMs": 300000,
   "worktreesDir": null,
@@ -63,6 +64,7 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 - `workers.allowedCommands`: commands workers may run without asking, usually your test and lint commands. Committing to their own branch is always allowed.
 - `workers.permissionMode`: `ask` (approve everything that changes something), `accept_edits` (file edits in the worktree run without asking), or `auto` (Claude decides what is safe). There is no bypass mode.
 - `budget`: dollar limits, from the cost Claude reports. With `"enforce": "metered"` they apply only to cats billed per use (an API key, Bedrock or Vertex). At 80 percent you get a warning; at 100 percent the cat pauses until you raise its budget and resume it. On a subscription plan the cost shown is an API-equivalent estimate and is not enforced unless you set `"enforce": "always"`.
+- `attribution`: whether agents may add their own attribution, such as Claude Code's `Co-Authored-By` trailer, to the commits they make in your repo. Off by default.
 - `stuckTimeoutMs`: a worker that shows no activity for this long is marked blocked, so you can nudge or stop it.
 - Model `null` uses your Claude Code default.
 

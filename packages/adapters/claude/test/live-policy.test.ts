@@ -76,4 +76,53 @@ describe.runIf(LIVE)('Claude worker policy, live', () => {
     expect(await readdir(main)).toEqual([]);
     expect(checkSessionInvariants(events)).toEqual([]);
   }, 240_000);
+
+  it('commits without a Co-Authored-By trailer when attribution is off', async () => {
+    const repo = await mkdtemp(join(tmpdir(), 'agentcats-attribution-'));
+    dirs.push(repo);
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: repo }).toString().trim();
+    git('init', '-q');
+    git('config', 'user.name', 'agentcats test');
+    git('config', 'user.email', 'test@agentcats.local');
+    await writeFile(join(repo, 'README.md'), '# repo\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'init');
+
+    const session = await createClaudeAdapter().spawn({
+      catId: 'live-attribution',
+      cwd: repo,
+      model: MODEL,
+      systemPrompt: null,
+      permissionMode: 'accept_edits',
+      attribution: false,
+      policy: {
+        access: 'workspace',
+        allowedCommands: ['git add', 'git commit'],
+        protectedPaths: [],
+      },
+    });
+    const events: AgentEvent[] = [];
+    const done = (async () => {
+      for await (const event of session.events()) {
+        events.push(event);
+        if (event.type === 'approval.requested') void session.approve(event.requestId, 'allow');
+      }
+    })();
+    await session.send(
+      'Create a file hello.txt containing "hi", then commit it with git, using a short commit message. Use your usual commit format.',
+    );
+    const deadline = Date.now() + 180_000;
+    while (!events.some((e) => e.type === 'turn.ended')) {
+      if (Date.now() > deadline) throw new Error('turn did not end');
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    await session.kill();
+    await done;
+
+    const message = git('log', '-1', '--format=%B');
+    console.log('commit message:', JSON.stringify(message));
+    expect(git('rev-list', '--count', 'HEAD')).toBe('2');
+    expect(message).not.toMatch(/co-authored-by/i);
+    expect(message).not.toMatch(/claude/i);
+  }, 240_000);
 });

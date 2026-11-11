@@ -23,7 +23,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk';
 
 import { claudeVersion, resolveClaudeExecutable, TESTED_CLAUDE_VERSIONS } from './executable.js';
-import { policyOptions } from './policy.js';
+import { policyOptions, sessionSettings } from './policy.js';
 import { billingOf, summarizeInput, toolKind, Translator } from './translate.js';
 
 export interface ClaudeAdapterOptions {
@@ -112,6 +112,7 @@ async function spawnClaudeSession(
       pathToClaudeCodeExecutable: executable,
       ...(options.resumeId ? { resume: options.resumeId } : { sessionId: resumeId }),
       ...policyOptions(options.policy, options.cwd),
+      ...sessionSettings(options.attribution),
       strictMcpConfig: true,
       mcpServers: Object.fromEntries(
         Object.entries(options.mcpServers ?? {}).map(([name, spec]) => [name, toClaudeMcp(spec)]),

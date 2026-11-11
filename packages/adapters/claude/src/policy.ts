@@ -87,6 +87,16 @@ export function decideWrite(filePath: string, cwd: string, policy: AgentPolicy):
   return { kind: 'deny', reason: 'Writes outside your worktree are not allowed.' };
 }
 
+/**
+ * Claude Code settings for a session. With `attribution: false` the
+ * commit and PR attribution (the `Co-Authored-By: Claude` trailer) is hidden.
+ * The object form is used because older Claude Code versions reject a bare
+ * boolean there.
+ */
+export function sessionSettings(attribution: boolean | undefined): Pick<Options, 'settings'> {
+  return attribution === false ? { settings: { attribution: { commit: '', pr: '' } } } : {};
+}
+
 function hookOutput(decision: Decision) {
   if (decision.kind === 'pass') return {};
   return {

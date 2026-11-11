@@ -220,6 +220,12 @@ export interface SpawnOptions {
   readonly resumeId?: string;
   /** Omitted means the agent's normal behavior under `permissionMode`. */
   readonly policy?: AgentPolicy;
+  /**
+   * Whether the agent may add its own attribution (for example a
+   * `Co-Authored-By` trailer) to commits and pull requests. Omitted means the
+   * agent's default.
+   */
+  readonly attribution?: boolean;
 }
 
 export interface Adapter {

@@ -353,3 +353,11 @@ Real Claude Code 2.1.302 on Windows 11, agentcats CLI from sources, a small Node
   - On native Windows nothing stops code run by an allowed command from reaching the network.
   - The chat shows only what is in the last 500 events after a reload.
   - Whether the lead splits work depends on the model.
+
+## 2026-11-11 - No agent attribution in the user's commits
+
+**Decision (the user's):** agentcats asks agents not to add their own attribution to the commits and pull requests they write in the user's project. In the first live team run, Claude Code's default put a `Co-Authored-By: Claude …` trailer on every worker commit.
+
+- Config `attribution` (default `false`) is passed to every cat as `SpawnOptions.attribution`, an agent-neutral option.
+- The Claude adapter maps `false` to the session setting `attribution: { commit: "", pr: "" }` (the object form, which older Claude Code versions also accept). `true` keeps Claude Code's default.
+- Verified live (Claude Code 2.1.302, `haiku`): a worker's commit had no trailer and no mention of Claude.

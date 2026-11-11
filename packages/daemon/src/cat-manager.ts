@@ -496,6 +496,7 @@ export class CatManager {
         model: cat.model,
         systemPrompt: this.#prompts.worker,
         permissionMode: cat.permissionMode,
+        attribution: this.o.config.attribution,
         policy: {
           access: 'workspace',
           allowedCommands: [...WORKER_GIT_COMMANDS, ...this.o.config.workers.allowedCommands],
@@ -883,6 +884,7 @@ export class CatManager {
             headers: { Authorization: `Bearer ${token}` },
           },
         },
+        attribution: this.o.config.attribution,
         policy: { access: 'read_only', allowedCommands: [], protectedPaths: [this.o.projectPath] },
       },
       null,

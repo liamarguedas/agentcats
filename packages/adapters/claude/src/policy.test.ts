@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path';
 import type { AgentPolicy } from '@agentcats/protocol/adapter';
 import { describe, expect, it } from 'vitest';
 
-import { decideCommand, decideWrite, isInside, policyOptions } from './policy.js';
+import { decideCommand, decideWrite, isInside, policyOptions, sessionSettings } from './policy.js';
 
 const main = resolve('/work/app');
 const worktree = resolve('/home/me/.agentcats/worktrees/app-1234/task-1');
@@ -119,6 +119,17 @@ describe('policyOptions', () => {
 
   it('adds nothing without a policy', () => {
     expect(policyOptions(undefined, worktree)).toEqual({});
+  });
+});
+
+describe('sessionSettings', () => {
+  it('hides commit and PR attribution when attribution is off', () => {
+    expect(sessionSettings(false)).toEqual({ settings: { attribution: { commit: '', pr: '' } } });
+  });
+
+  it("keeps Claude Code's default when attribution is on or unspecified", () => {
+    expect(sessionSettings(true)).toEqual({});
+    expect(sessionSettings(undefined)).toEqual({});
   });
 });
 

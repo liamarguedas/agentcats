@@ -52,6 +52,12 @@ export const AgentcatsConfig = z.strictObject({
       enforce: z.enum(['metered', 'always', 'never']).default('metered'),
     })
     .prefault({}),
+  /**
+   * Let agents add their own attribution to the commits and pull requests
+   * they write, such as Claude Code's `Co-Authored-By` trailer. Off by default:
+   * the commits are the user's.
+   */
+  attribution: z.boolean().default(false),
   /** A worker with no events for this long is marked `blocked`. */
   stuckTimeoutMs: z
     .int()

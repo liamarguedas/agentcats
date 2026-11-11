@@ -9,6 +9,7 @@ describe('AgentcatsConfig', () => {
       orchestrator: { model: null },
       workers: { max: 3, model: 'sonnet', permissionMode: 'accept_edits', allowedCommands: [] },
       budget: { perCatUsd: 2, globalUsd: 10, perCatTokens: null, enforce: 'metered' },
+      attribution: false,
       stuckTimeoutMs: 300_000,
       approvalTimeoutMs: 300_000,
       port: 0,
