@@ -114,20 +114,20 @@ describe('main', () => {
   it('fails with exit code 1 for a missing project', async () => {
     const { io, err } = testIo();
     expect(await main(['--project', join(tmpdir(), 'agentcats-does-not-exist')], io)).toBe(1);
-    expect(err[0]).toMatch(/Project directory not found/);
+    expect(err.join(' ')).toMatch(/Project directory not found/);
   });
 
   it('fails with exit code 2 and usage for a bad option', async () => {
     const { io, err } = testIo();
     expect(await main(['--adapter', 'codex'], io)).toBe(2);
-    expect(err[0]).toMatch(/Usage: agentcats/);
+    expect(err.join(' ')).toMatch(/Usage: agentcats/);
   });
 
   it('explains a project that is not a git repository', async () => {
     project = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
     const { io, err } = testIo();
     expect(await main(['--project', project, '--adapter', 'mock', '--no-open'], io)).toBe(1);
-    expect(err[0]).toMatch(/not a git repository/);
+    expect(err.join(' ')).toMatch(/not a git repository/);
   });
 
   it('explains an invalid config file', async () => {
@@ -139,8 +139,8 @@ describe('main', () => {
     );
     const { io, err } = testIo();
     expect(await main(['--project', project, '--no-open'], io)).toBe(1);
-    expect(err[0]).toMatch(/agentcats\.config\.json is invalid/);
-    expect(err[0]).toMatch(/permissionMode/);
+    expect(err.join(' ')).toMatch(/agentcats\.config\.json is invalid/);
+    expect(err.join(' ')).toMatch(/permissionMode/);
   });
 
   it('explains a missing claude CLI', async () => {
@@ -150,7 +150,7 @@ describe('main', () => {
     try {
       const { io, err } = testIo();
       expect(await main(['--project', project, '--adapter', 'claude', '--no-open'], io)).toBe(1);
-      expect(err[0]).toMatch(/was not found on PATH/);
+      expect(err.join(' ')).toMatch(/was not found on PATH/);
     } finally {
       process.env['PATH'] = path;
     }

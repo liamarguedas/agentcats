@@ -148,7 +148,6 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     };
     const adapter = await createAdapter(config, io);
     const uiDir = await findUiDir();
-    if (!uiDir) io.err('Warning: the UI is not built. Run `pnpm build` to get the board.');
 
     const daemon = await startDaemon({
       projectPath: args.project,
@@ -157,6 +156,8 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
       uiDir,
       logger: consoleLogger,
     });
+    // Warn only once the daemon is up, so a real error (no git repo, bad config) comes first.
+    if (!uiDir) io.err('Warning: the UI is not built. Run `pnpm build` to get the board.');
     io.out(`agentcats is running for ${args.project}`);
     io.out(`Board: ${daemon.uiUrl}`);
     io.out('Press Ctrl+C to stop.');
