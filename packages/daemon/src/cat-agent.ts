@@ -141,7 +141,15 @@ export class CatAgent {
     this.#spawning = this.deps.adapter.spawn({ ...options, catId: this.catId });
     try {
       const session = await this.#spawning;
-      if (session.pid !== null) await this.deps.pids.add(session.pid, this.catId);
+      if (session.pid !== null) {
+        // The guardian already ties the agent to the daemon; the PID file is
+        // the backup. Failing to write it is worth a warning, not a failed task.
+        await this.deps.pids.add(session.pid, this.catId).catch((error: unknown) => {
+          this.deps.logger.warn(
+            `Could not record agent pid ${String(session.pid)}: ${String(error)}`,
+          );
+        });
+      }
       this.#session = session;
       this.#expectedEnd = false;
       this.#pump = this.#consume(session);

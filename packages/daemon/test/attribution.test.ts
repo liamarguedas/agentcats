@@ -39,9 +39,12 @@ async function runOnce(config: AgentcatsConfigInput): Promise<SpawnOptions[]> {
     body: JSON.stringify({ text: 'Add a login endpoint\n/single' }),
   });
   expect(res.status).toBe(202);
-  await vi.waitFor(() => {
-    expect(spawns.length).toBe(2); // the lead, then one worker
-  });
+  await vi.waitFor(
+    () => {
+      expect(spawns.length).toBe(2); // the lead, then one worker (after its worktree)
+    },
+    { timeout: 15_000 },
+  );
   await daemon.close();
   await rm(projectPath, { recursive: true, force: true, maxRetries: 5 });
   await rm(worktreesDir, { recursive: true, force: true, maxRetries: 5 });

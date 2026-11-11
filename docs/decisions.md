@@ -361,3 +361,10 @@ Real Claude Code 2.1.302 on Windows 11, agentcats CLI from sources, a small Node
 - Config `attribution` (default `false`) is passed to every cat as `SpawnOptions.attribution`, an agent-neutral option.
 - The Claude adapter maps `false` to the session setting `attribution: { commit: "", pr: "" }` (the object form, which older Claude Code versions also accept). `true` keeps Claude Code's default.
 - Verified live (Claude Code 2.1.302, `haiku`): a worker's commit had no trailer and no mention of Claude.
+
+## 2026-11-11 - PID file writes on Windows
+
+**Bug found by CI.** Replacing `pids.json` with a write-then-rename failed with `EPERM` on Windows whenever another process had the file open: a reader, an editor, or an antivirus scan of the freshly written file, which can hold it for seconds. One failed write also blocked every later write, so a worker's PID could go unrecorded.
+
+- **Fix:** the rename is retried on `EPERM`, `EBUSY` and `EACCES` for up to 10 s with backoff (the same approach as npm's graceful-fs). A failed write no longer blocks later ones. If a PID still cannot be recorded, the cat logs a warning and keeps working; the guardian process is the primary orphan protection, the PID file is the backup.
+- **Tests:** a stress test that writes 90 times while another task reads the file every 10 ms. It failed 3 out of 3 before the fix and passed 20 out of 20 after.

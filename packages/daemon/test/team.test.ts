@@ -111,13 +111,16 @@ describe('orchestration', () => {
     expect(peak).toBe(2);
 
     // The orchestrator was told and reported back.
-    await vi.waitFor(() => {
-      const text = stream.events
-        .filter((e) => e.type === 'message.agent' && e.catId === orchestrator.id)
-        .map((e) => (e.type === 'message.agent' ? e.payload.text : ''))
-        .join('');
-      expect(text).toContain('ready for review');
-    });
+    await vi.waitFor(
+      () => {
+        const text = stream.events
+          .filter((e) => e.type === 'message.agent' && e.catId === orchestrator.id)
+          .map((e) => (e.type === 'message.agent' ? e.payload.text : ''))
+          .join('');
+        expect(text).toContain('ready for review');
+      },
+      { timeout: 10_000 },
+    );
   });
 
   it('accepts a result: done, worktree removed, branch kept', async () => {

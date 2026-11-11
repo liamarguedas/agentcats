@@ -76,9 +76,12 @@ describe('main', () => {
     const { io, out, stop } = testIo();
     const running = main(['--project', project, '--adapter', 'mock', '--no-open'], io);
 
-    await vi.waitFor(() => {
-      expect(out.some((l) => l.startsWith('Board: '))).toBe(true);
-    });
+    await vi.waitFor(
+      () => {
+        expect(out.some((l) => l.startsWith('Board: '))).toBe(true);
+      },
+      { timeout: 15_000 },
+    ); // startup checks the git repo, which is slow on CI
     const url = new URL(out.find((l) => l.startsWith('Board: '))!.slice('Board: '.length));
     const token = new URLSearchParams(url.hash.slice(1)).get('token')!;
     expect(url.hostname).toBe('127.0.0.1');
@@ -102,11 +105,14 @@ describe('main', () => {
     project = await gitProject();
     const { io, stop } = testIo();
     const running = main(['--project', project, '--adapter', 'mock'], io);
-    await vi.waitFor(() => {
-      expect(io.open).toHaveBeenCalledWith(
-        expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#token=/),
-      );
-    });
+    await vi.waitFor(
+      () => {
+        expect(io.open).toHaveBeenCalledWith(
+          expect.stringMatching(/^http:\/\/127\.0\.0\.1:\d+\/#token=/),
+        );
+      },
+      { timeout: 15_000 },
+    );
     stop();
     expect(await running).toBe(0);
   });

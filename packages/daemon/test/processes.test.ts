@@ -24,15 +24,18 @@ async function recordedPids(projectPath: string): Promise<number[]> {
   return file.processes.map((p) => p.pid);
 }
 
+/**
+ * Real processes, git worktrees and (for the hard-kill test) a daemon compiled
+ * by tsx in a child process: slow on CI's Windows runners, so waits are generous.
+ */
+const SLOW = { timeout: 30_000, interval: 50 };
+
 async function waitForPid(projectPath: string): Promise<number> {
   let pid = 0;
-  await vi.waitFor(
-    async () => {
-      [pid = 0] = await recordedPids(projectPath);
-      expect(pid).toBeGreaterThan(0);
-    },
-    { timeout: 10_000, interval: 50 },
-  );
+  await vi.waitFor(async () => {
+    [pid = 0] = await recordedPids(projectPath);
+    expect(pid).toBeGreaterThan(0);
+  }, SLOW);
   return pid;
 }
 
@@ -118,7 +121,7 @@ describe('agent process cleanup', () => {
     await vi.waitFor(async () => {
       const snap = Snapshot.parse((await api('GET', '/api/snapshot')).body);
       expect(snap.board.tasks[created.task.id]?.status).toBe('running');
-    });
+    }, SLOW);
     const before = Snapshot.parse((await api('GET', '/api/snapshot')).body);
 
     process.kill(child.pid!, 'SIGKILL'); // no shutdown code runs
@@ -144,17 +147,14 @@ describe('agent process cleanup', () => {
     // The user can re-run it, in the same worktree.
     const rerun = (await api2('POST', `/api/tasks/${task.id}/rerun`)).body as { task: Task };
     expect(rerun.task).toMatchObject({ status: 'queued', attempt: 2 });
-    await vi.waitFor(
-      async () => {
-        const snap = Snapshot.parse((await api2('GET', '/api/snapshot')).body);
-        expect(snap.board.tasks[task.id]?.status).toBe('review');
-      },
-      { timeout: 10_000 },
-    );
+    await vi.waitFor(async () => {
+      const snap = Snapshot.parse((await api2('GET', '/api/snapshot')).body);
+      expect(snap.board.tasks[task.id]?.status).toBe('review');
+    }, SLOW);
 
     await restarted.close();
     await cleanup(projectPath, worktreesDir);
-  }, 60_000);
+  }, 120_000);
 
   it('reaps a recorded leftover on startup, but spares a reused pid', async () => {
     const projectPath = await tempProject();
