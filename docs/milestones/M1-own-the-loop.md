@@ -73,13 +73,13 @@ Workers commit to their branch. The orchestrator reports the branch and diff sum
 - One end-to-end test on a small sample repo with the real Claude Code adapter, run manually and documented (not in CI).
 
 ## Acceptance criteria
-- [ ] "Add a login endpoint and write tests for it" produces two workers running in parallel worktrees and a branch you can review and merge.
-- [ ] A forced worker crash retries once, then shows `failed` on the board.
-- [ ] A stuck worker is flagged after the timeout.
-- [ ] Hitting the budget pauses the cat and resumes only on user action.
-- [ ] Killing and restarting the daemon mid-task leaves tasks `interrupted`, no orphan processes, and no data loss.
-- [ ] A worker attempting a network call raises an approval on the board; deny blocks it.
-- [ ] All integration tests green on the mock adapter.
+- [x] "Add a login endpoint and write tests for it" produces two workers running in parallel worktrees and a branch you can review and merge.
+- [x] A forced worker crash retries once, then shows `failed` on the board.
+- [x] A stuck worker is flagged after the timeout.
+- [x] Hitting the budget pauses the cat and resumes only on user action.
+- [x] Killing and restarting the daemon mid-task leaves tasks `interrupted`, no orphan processes, and no data loss.
+- [x] A worker attempting a network call raises an approval on the board; deny blocks it.
+- [x] All integration tests green on the mock adapter.
 
 ## Out of scope
 Learnings, XP, levels, hiring, retirement, second adapter.
