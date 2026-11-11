@@ -291,3 +291,65 @@ Tests: `packages/adapters/claude/test/live.test.ts` and `packages/ui/e2e/live-cl
 - **Worker model:** `sonnet` by default, orchestrator uses the user's Claude Code default. Both editable per cat.
 - **Budgets:** in dollars, as reported by the agent. Default $2 per cat and $10 overall, enforced for cats billed through an API (API key, Bedrock, Vertex). On a subscription plan the cost is shown as an API-equivalent estimate and not enforced unless the user turns it on. Warn at 80 percent, pause at 100 percent, resume only by the user. Each cat's budget, model and permission mode are editable in its properties on the board.
 - **Pause, resume, retry:** pause interrupts the turn and the task goes `blocked`. Resume continues the same agent session. An automatic retry after a crash resumes the same session in the same worktree, and starts fresh only if resuming fails.
+
+## 2026-11-11 - Merge strategy
+
+Workers commit to their own branch, `agentcats/<cat>/<task>`, in a worktree outside the repo.
+The orchestrator reports each branch with its diff stat and the worker's summary.
+The user reviews and merges; agentcats never merges, rebases or pushes, and the worker policy blocks `git push`.
+Accepting or rejecting a task on the board only records the user's verdict (it feeds XP in M2) and removes the worktree if it has no uncommitted work. The branch always stays.
+
+## 2026-11-11 - M1 implementation decisions
+
+- **Task state machine** in `packages/protocol/src/task-machine.ts`: one table of allowed transitions and who may make each. The daemon checks every status change against it; an illegal request is a 409. Killing a worker is the user's action and makes its task `failed` (re-runnable, reason `killed`); cancelling makes it `cancelled` (final).
+- **Storage:** the event log in SQLite (`.agentcats/agentcats.db`, `node:sqlite`, WAL) is the only source of truth; the board is rebuilt by replaying it on start. One more table keeps each task's agent session id for resuming. Every event is written before it is broadcast.
+- **Restart recovery:** on start, queued, running and blocked tasks become `interrupted` (`daemon_restarted`), pending approvals are resolved as `session_ended`, and cats go idle. Worktrees are kept, so a re-run continues in the same one.
+- **Worktrees** are created from the main checkout's HEAD at the time the task starts. They are removed when a task is accepted, rejected or cancelled, never while they have uncommitted work (a warning notice is shown instead), and kept during review so the user can try the branch in place.
+- **Scheduling:** a task goes to a free worker, or a new worker is hired up to `workers.max` (default 3). Workers keep their identity across tasks; each task gets a fresh agent session in its own worktree.
+- **Retry:** one automatic retry after a crash, spawn failure or failed turn, resuming the agent session when the adapter supports it, with a note in the prompt that the previous attempt stopped. A turn that ends on a fatal agent error is treated as a crash.
+- **Stuck watchdog:** no agent event for `stuckTimeoutMs` (default 5 min) while running moves the task to `blocked` (`stuck`) with a warning notice; waiting for an approval does not count. Any later activity moves it back to running. Nudge interrupts the turn and asks for a status report.
+- **Budgets:** a cat's usage is cumulative across its sessions. Enforced per `budget.enforce` (default `metered`: only cats billed per use). 80 percent gives one warning notice, 100 percent pauses the cat and blocks its task; resume is refused while still over budget. Reaching the team budget pauses every busy enforced cat.
+- **MCP link (final):** stateless Streamable HTTP at `/mcp` on the daemon's own server, using the official MCP SDK 1.32.2. Each orchestrator session gets its own bearer token, which is never the UI token; a foreign `Origin` is rejected.
+- **Orchestrator notifications:** when a task reaches review or fails, or the user accepts or rejects one, the daemon sends the lead a message starting with `[agentcats]`, right away if it is idle, otherwise after its turn. Nothing is sent before the user has talked to the lead.
+- **Worker permissions:** `git add` and `git commit` run without asking, plus `workers.allowedCommands`. A PreToolUse hook denies `git push` and writes outside the worktree or into the main checkout, and forces an approval for web fetches and network-style commands (curl, installs, git fetch and so on), even where Claude Code would otherwise auto-approve. The lead has no edit or shell tools; a hook approves its agentcats tools.
+- **Protocol additions during M1:** `message.user` (the chat is a projection of the log too), reason `killed`, and `AgentPolicy` in `SpawnOptions`.
+- **Names:** the lead is Tux; workers are Mochi, Miso, Tofu, Nori and so on, in hiring order.
+- **The mock adapter's real file writes are opt-in** (`realFiles`). A test once ran a mock with the agentcats repo as its working directory and committed into it; the commits were local, were undone, and the option now defaults to off. `--adapter mock` on a real project never writes.
+
+## 2026-11-11 - M1 live verification
+
+Real Claude Code 2.1.302 on Windows 11, agentcats CLI from sources, a small Node sample repo, request typed in the browser.
+
+- **Acceptance run** (`packages/ui/e2e/live-team.spec.ts`, models `sonnet`): "Add a login endpoint and write tests for it" became two tasks, implementation and tests, run by two workers at the same time in separate worktrees. Both reached review with one commit each (3 files +80/-4, and 1 file +112). The main checkout stayed clean. The lead reported both branches, the merge order and the open issues. The run took 54 s and cost about $0.34 (API-equivalent estimate, Pro plan).
+- **Worker policy** (`packages/adapters/claude/test/live-policy.test.ts`, `haiku`): `curl` raised an approval and the deny held; `git push` and a write into the protected checkout were blocked without asking. This confirms a hook's `ask` reaches the board's approval flow.
+- **Lead MCP approval by hook**, smoke run on `haiku`: every agentcats tool call ran without an approval prompt, and the SDK's shadowing warning no longer appears. On `haiku` the lead put implementation and tests into one task, so the split depends on the model.
+
+## M2 handoff notes
+
+**Prompts that changed most during real runs.** Both moved to version 2 after the first live run; each file's header has the changelog.
+
+- Worker: it appended to `README.md` with a shell heredoc, which needed an approval. v2 says to edit files with the file tools, and that committing needs no approval.
+- Orchestrator: it offered to "run the combined suite", which it cannot do. v2 says plainly that it cannot run commands, and that the user should merge the implementation before the tests.
+
+**What worker summaries look like.** Workers follow the requested shape reliably:
+
+```
+## Summary
+
+- Changed: `src/app.js` (handle takes a body and routes POST /login; ...), new `src/users.js` (...), and a README section.
+- Tests: passed (`npm test`, 1 test; I added none because `test/` belongs to the other worker). ...
+- Open issues: none. A request body on a route other than `/login` is still parsed, ...
+```
+
+- Real summaries run 500 to 900 characters, and the three fields often carry reasoning, not just facts.
+- `Tests:` is parsed into `passed`, `failed`, `not_run` or `unknown`. A tests-only branch honestly reports `not run`, because its tests need the implementation branch.
+- For the M2 debrief, parse these three fields rather than free text, and consider asking for a fourth line, for example `- Learned: ...`, instead of mining open issues.
+
+**Other notes for M2:**
+
+- The user's accept or reject decisions are in the log as `task.updated` with `actor: 'user'` and status `done` or `rejected`: the XP signal M2 needs, with history kept in SQLite.
+- Cats keep their identity across tasks and sessions, and usage is cumulative per cat, so per-cat stats can be built from the log.
+- Known limits:
+  - On native Windows nothing stops code run by an allowed command from reaching the network.
+  - The chat shows only what is in the last 500 events after a reload.
+  - Whether the lead splits work depends on the model.

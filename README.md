@@ -1,15 +1,16 @@
 # agentcats
 
 A local whiteboard where coding agents are cats.
-You give a cat a task, and you watch it think, work, ask for permission and finish, while a real agent edits your project.
+You tell the lead cat what you want built. It splits the work and hands it to worker cats, who each code on their own git branch, in parallel. You watch them think, work and ask for permission, then you review their branches and merge what you like.
 
-Status: **milestone M0**.
-One cat, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
-Orchestration, parallel workers, memory and hiring arrive in M1 to M5 (see `docs/milestones/`).
+Status: **milestone M1**.
+A lead cat and up to three workers, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
+Memory, levels and hiring arrive in M2 to M5 (see `docs/milestones/`).
 
 ## Requirements
 
 - Node.js 22.13 or newer, and pnpm 11.
+- Your project must be a git repository with at least one commit. Workers branch from it.
 - For real runs: [Claude Code](https://code.claude.com) installed and logged in (`claude` on your PATH).
 
 ## Quick start
@@ -21,10 +22,20 @@ pnpm agentcats --project /path/to/your/repo
 ```
 
 The board opens in your browser.
-Type a task such as "add a hello function" and press Enter.
+Tell Tux, the lead cat, what you want in the chat, for example "Add a login endpoint and write tests for it".
+
+What happens next:
+
+1. Tux reads your project and splits the request into independent tasks.
+2. Each task goes to a worker cat, which works in its own git worktree on a branch called `agentcats/<cat>/<task>`. The worktrees live outside your repo, under `~/.agentcats/worktrees/`, so your checkout is never touched.
+3. When a worker needs permission (network access, installing packages, any other command), an approval bubble appears on the cat. Allow or Deny it.
+4. Finished work goes to **review**. Open the task card to see the worker's summary, the diff stat and the branch. Review the branch with git, merge it yourself if you like it, then Accept or Reject it on the board. agentcats never merges or pushes.
+
+Each cat has Pause, Resume and Stop buttons, and a ⚙ panel to change its model, permission mode and budget.
+A task that failed or was interrupted can be re-run from its card.
 
 To try it without Claude Code, add `--adapter mock`.
-In mock mode, a prompt starting with `/approval`, `/error`, `/crash` or `/hang` plays that scenario.
+In mock mode nothing is written to your repo; the cats only act it out.
 
 ## Configuration
 
@@ -33,16 +44,36 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 ```json
 {
   "adapter": "claude",
-  "defaultModel": null,
-  "permissionMode": "accept_edits",
+  "orchestrator": { "model": null },
+  "workers": {
+    "max": 3,
+    "model": "sonnet",
+    "permissionMode": "accept_edits",
+    "allowedCommands": ["npm test", "npm run lint"]
+  },
+  "budget": { "perCatUsd": 2, "globalUsd": 10, "perCatTokens": null, "enforce": "metered" },
+  "stuckTimeoutMs": 300000,
   "approvalTimeoutMs": 300000,
+  "worktreesDir": null,
   "port": 0,
   "claude": { "executablePath": null }
 }
 ```
 
-- `permissionMode`: `ask` (approve everything that changes something), `accept_edits` (file edits in the project run without asking), or `auto` (Claude decides what is safe). Anything not allowed shows up as an approval bubble on the cat. There is no bypass mode.
-- `defaultModel`: `null` uses your Claude Code default; any Claude model name or alias (for example `haiku`) works.
+- `workers.allowedCommands`: commands workers may run without asking, usually your test and lint commands. Committing to their own branch is always allowed.
+- `workers.permissionMode`: `ask` (approve everything that changes something), `accept_edits` (file edits in the worktree run without asking), or `auto` (Claude decides what is safe). There is no bypass mode.
+- `budget`: dollar limits, from the cost Claude reports. With `"enforce": "metered"` they apply only to cats billed per use (an API key, Bedrock or Vertex). At 80 percent you get a warning; at 100 percent the cat pauses until you raise its budget and resume it. On a subscription plan the cost shown is an API-equivalent estimate and is not enforced unless you set `"enforce": "always"`.
+- `stuckTimeoutMs`: a worker that shows no activity for this long is marked blocked, so you can nudge or stop it.
+- Model `null` uses your Claude Code default.
+
+## What workers may and may not do
+
+- Without asking: read the project, edit files in their own worktree, commit to their own branch, and run `workers.allowedCommands`.
+- Only with your approval: any other command, web fetches, and anything that looks like network access or a package install.
+- Never: push, or write outside their worktree (including your main checkout).
+- The lead cat only reads and delegates. It has no edit or shell tools.
+
+**Limit on Windows:** there is no operating-system sandbox on native Windows, so code that a worker runs through an allowed command (your tests, for example) can still reach the network. On macOS and Linux a sandbox option may close this gap in a later version.
 
 ## Authentication and terms
 
@@ -60,7 +91,9 @@ agentcats itself is MIT licensed and does not redistribute the SDK; your package
 - A random token is generated at every start and passed to the browser in the URL fragment, which never reaches server logs. The UI then removes it from the address bar.
 - Every API call needs the token. The WebSocket must also come from the daemon's own origin.
 - Requests with a foreign `Host` header are rejected (DNS rebinding protection).
+- The lead cat reaches the daemon through an MCP endpoint with its own per-session token, separate from the browser's.
 - Agents run under a small guardian process, so they die with the daemon, even if the daemon is killed hard.
+- History is kept in `.agentcats/agentcats.db`. After a crash or restart, unfinished tasks show as interrupted and can be re-run.
 
 ## Development
 
@@ -72,15 +105,15 @@ pnpm test:e2e   # browser tests against the mock
 
 See `CLAUDE.md` for all commands and repository rules, and `docs/decisions.md` for every technical decision and why it was made.
 
-| Package                    | What it is                                                      |
-| -------------------------- | --------------------------------------------------------------- |
-| `packages/protocol`        | The contract: event, command, config and adapter types (zod).   |
-| `packages/kit`             | Process helpers: guarded spawn, process tree kill, async queue. |
-| `packages/daemon`          | Owns agents, the event log, REST and WebSocket API, security.   |
-| `packages/adapters/mock`   | Scripted agent for development and tests.                       |
-| `packages/adapters/claude` | Claude through the Agent SDK, running your installed `claude`.  |
-| `packages/ui`              | React whiteboard, served by the daemon.                         |
-| `packages/cli`             | The `agentcats` command.                                        |
+| Package                    | What it is                                                                 |
+| -------------------------- | -------------------------------------------------------------------------- |
+| `packages/protocol`        | The contract: events, commands, config, task state machine, adapter types. |
+| `packages/kit`             | Process helpers: guarded spawn, process tree kill, async queue.            |
+| `packages/daemon`          | The team: cat manager, worktrees, SQLite log, REST, WebSocket and MCP.     |
+| `packages/adapters/mock`   | Scripted agent for development and tests.                                  |
+| `packages/adapters/claude` | Claude through the Agent SDK, running your installed `claude`.             |
+| `packages/ui`              | React whiteboard, served by the daemon.                                    |
+| `packages/cli`             | The `agentcats` command.                                                   |
 
 ## License
 
