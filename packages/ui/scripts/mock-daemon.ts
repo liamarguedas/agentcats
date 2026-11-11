@@ -4,17 +4,36 @@
 //
 // Env: AGENTCATS_PORT (default 4545), AGENTCATS_TOKEN (default random),
 // AGENTCATS_TIME_SCALE (default 1), AGENTCATS_UI_DIR (default: serve no UI;
-// set it to packages/ui/dist to serve the built UI).
+// set it to packages/ui/dist to serve the built UI), AGENTCATS_STATE_FILE
+// (default none: where to note the temp folders, see below).
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createMockAdapter } from '@agentcats/adapter-mock';
 import { consoleLogger, startDaemon } from '@agentcats/daemon';
 import { AgentcatsConfig } from '@agentcats/protocol';
 
 const env = process.env;
+
+// On Windows the browser test runner stops this process without a signal, so
+// the cleanup below never runs. The state file names the temp folders: the
+// next run deletes the previous run's, and the browser tests read files there.
+const stateFile = env['AGENTCATS_STATE_FILE'];
+if (stateFile) {
+  let previous: { projectPath?: string; worktreesDir?: string } = {};
+  try {
+    previous = JSON.parse(await readFile(stateFile, 'utf8')) as typeof previous;
+  } catch {
+    // First run, or an unreadable file: nothing to clean up.
+  }
+  for (const dir of [previous.projectPath, previous.worktreesDir]) {
+    if (dir?.includes('agentcats-mock-'))
+      await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
 const projectPath = await mkdtemp(join(tmpdir(), 'agentcats-mock-'));
 const worktreesDir = await mkdtemp(join(tmpdir(), 'agentcats-mock-wt-'));
 const git = (...args: string[]) => execFileSync('git', args, { cwd: projectPath, stdio: 'pipe' });
@@ -32,6 +51,11 @@ git(
   '-m',
   'init',
 );
+
+if (stateFile) {
+  await mkdir(dirname(stateFile), { recursive: true });
+  await writeFile(stateFile, JSON.stringify({ projectPath, worktreesDir }));
+}
 
 const daemon = await startDaemon({
   projectPath,

@@ -2,6 +2,8 @@ import { defineConfig } from '@playwright/test';
 
 export const E2E_PORT = 4599;
 export const E2E_TOKEN = 'e2e-token-0123456789abcdefghijklmnopqrstuvwxyz';
+/** Where the mock daemon notes its temp project, so tests can read files in it. */
+export const E2E_STATE_FILE = '.e2e-state.json';
 
 /**
  * Browser tests against the built UI served by a real daemon running the mock
@@ -27,6 +29,7 @@ export default defineConfig({
       AGENTCATS_TOKEN: E2E_TOKEN,
       AGENTCATS_TIME_SCALE: '0.15',
       AGENTCATS_UI_DIR: 'dist',
+      AGENTCATS_STATE_FILE: E2E_STATE_FILE,
     },
     reuseExistingServer: false,
     timeout: 60_000,

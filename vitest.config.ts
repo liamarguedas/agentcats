@@ -10,5 +10,9 @@ export default defineConfig({
   ssr: { resolve: { conditions: [SOURCE_CONDITION, ...defaultServerConditions] } },
   test: {
     include: ['packages/**/src/**/*.test.ts', 'packages/**/test/**/*.test.ts'],
+    // Daemon tests run real git, worktrees and mock agents through HTTP. On a
+    // loaded machine (the whole suite in parallel, CI) they outgrow the 5 s
+    // default; their own waits have explicit, shorter limits.
+    testTimeout: 30_000,
   },
 });
