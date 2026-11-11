@@ -44,6 +44,12 @@ const WORKER_NAMES = [
   'Toast',
   'Waffle',
 ];
+/**
+ * Commands every worker may run without asking: committing to its own branch
+ * is part of the job. Every other git operation still asks (or, for push, is
+ * blocked by the adapter's policy).
+ */
+const WORKER_GIT_COMMANDS = ['git add', 'git commit'];
 const NUDGE_TEXT =
   'You have been quiet for a while. In one or two sentences, report where you are, then continue the task.';
 const CONTINUE_TEXT = 'Continue the task where you left off.';
@@ -492,7 +498,7 @@ export class CatManager {
         permissionMode: cat.permissionMode,
         policy: {
           access: 'workspace',
-          allowedCommands: this.o.config.workers.allowedCommands,
+          allowedCommands: [...WORKER_GIT_COMMANDS, ...this.o.config.workers.allowedCommands],
           protectedPaths: [this.o.projectPath],
         },
       };

@@ -80,8 +80,9 @@ describe('policyOptions', () => {
       main,
     );
     expect(options.disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'Bash']));
-    expect(options.allowedTools).toEqual(['mcp__agentcats__*']);
-    expect(options.hooks).toBeUndefined();
+    expect(options.allowedTools).toBeUndefined();
+    const [matcher] = options.hooks?.PreToolUse ?? [];
+    expect(matcher?.matcher).toBe('^mcp__agentcats__');
   });
 
   it('allows configured commands and installs guard hooks for workers', async () => {

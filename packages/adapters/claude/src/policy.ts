@@ -117,7 +117,22 @@ export function policyOptions(
 ): Pick<Options, 'allowedTools' | 'disallowedTools' | 'hooks'> {
   if (!policy) return {};
   if (policy.access === 'read_only') {
-    return { disallowedTools: WRITE_AND_SHELL_TOOLS, allowedTools: ['mcp__agentcats__*'] };
+    // A hook approves the agentcats tools. An allow rule would too, but the SDK
+    // warns that it shadows canUseTool, and that warning reaches the user's terminal.
+    const allowAgentcats: HookCallbackMatcher = {
+      matcher: '^mcp__agentcats__',
+      hooks: [
+        () =>
+          Promise.resolve({
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse' as const,
+              permissionDecision: 'allow' as const,
+              permissionDecisionReason: 'agentcats team tool',
+            },
+          }),
+      ],
+    };
+    return { disallowedTools: WRITE_AND_SHELL_TOOLS, hooks: { PreToolUse: [allowAgentcats] } };
   }
   const pre: HookCallbackMatcher[] = [
     {

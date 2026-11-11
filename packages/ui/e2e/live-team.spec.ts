@@ -14,6 +14,14 @@ import { createInterface } from 'node:readline';
 import { expect, test } from '@playwright/test';
 
 const LIVE = process.env['AGENTCATS_LIVE_CLAUDE'] === '1';
+/** Model for every cat. `sonnet` is the product default for workers; `haiku` makes a cheap smoke run. */
+const MODEL = process.env['AGENTCATS_LIVE_MODEL'] ?? 'sonnet';
+/** `mock` dry-runs this test's own logic without spending tokens. */
+const ADAPTER = process.env['AGENTCATS_LIVE_ADAPTER'] === 'mock' ? 'mock' : 'claude';
+const REQUEST =
+  ADAPTER === 'mock'
+    ? 'Add a login endpoint and write tests for it\n/approval'
+    : 'Add a login endpoint and write tests for it';
 const SHOTS = 'test-results/screenshots';
 const NETWORK =
   /\b(curl|wget|npm (i|install|add)|pnpm (add|install)|npx|pip|git (fetch|pull|clone|push))\b|WebFetch|WebSearch/i;
@@ -96,9 +104,9 @@ async function sampleRepo(): Promise<string> {
   await writeFile(
     join(repo, '.agentcats', 'agentcats.config.json'),
     JSON.stringify({
-      adapter: 'claude',
-      orchestrator: { model: 'sonnet' },
-      workers: { model: 'sonnet', allowedCommands: ['npm test', 'node --test'] },
+      adapter: ADAPTER,
+      orchestrator: { model: MODEL },
+      workers: { model: MODEL, allowedCommands: ['npm test', 'node --test'] },
       worktreesDir: join(repo, '..', `${repo.split(/[\\/]/).pop() ?? 'sample'}-worktrees`),
     }),
   );
@@ -167,13 +175,14 @@ test.describe('live Claude team', () => {
     await page.goto(boardUrl);
     await expect(page.getByTestId('connection')).toHaveText('Live');
     const input = page.getByLabel('Task for the cat');
-    await input.fill('Add a login endpoint and write tests for it');
+    await input.fill(REQUEST);
     await input.press('Enter');
 
     const approvals: { tool: string; decision: string }[] = [];
     const deadline = Date.now() + 20 * 60_000;
     let shotWorking = false;
     let settledAt = 0;
+    let lastLog = 0;
     for (;;) {
       if (Date.now() > deadline) throw new Error('the team did not finish in 20 minutes');
       const bubble = page.getByRole('alertdialog').first();
@@ -181,13 +190,24 @@ test.describe('live Claude team', () => {
         const text = (await bubble.textContent()) ?? '';
         const decision = NETWORK.test(text) ? 'Deny' : 'Allow';
         approvals.push({ tool: text.replace(/\s+/g, ' ').trim().slice(0, 200), decision });
+        console.log(`[test] ${decision}: ${text.replace(/\s+/g, ' ').slice(0, 120)}`);
         await bubble
           .getByRole('button', { name: decision })
-          .click()
-          .catch(() => undefined);
+          .click({ timeout: 5_000 })
+          .catch((error: unknown) => {
+            console.log(`[test] click failed: ${String(error).slice(0, 200)}`);
+          });
+        await page.waitForTimeout(500);
         continue;
       }
       const state = await snapshot();
+      if (Date.now() - lastLog > 30_000) {
+        lastLog = Date.now();
+        const summary = Object.values(state.board.tasks)
+          .map((t) => t.status)
+          .join(', ');
+        console.log(`[test] tasks: ${summary || 'none'}`);
+      }
       const tasks = Object.values(state.board.tasks);
       const busy = tasks.some((t) => ['queued', 'running', 'blocked'].includes(t.status));
       if (!shotWorking && tasks.filter((t) => t.status === 'running').length >= 2) {
@@ -203,7 +223,10 @@ test.describe('live Claude team', () => {
           !['thinking', 'working'].includes(
             (state.board.cats[lead.id] as { status?: string }).status ?? '',
           );
-        if (leadIdle && Date.now() - settledAt > 15_000) break;
+        if (leadIdle && Date.now() - settledAt > 15_000) {
+          console.log('[test] settled');
+          break;
+        }
       } else {
         settledAt = 0;
       }
