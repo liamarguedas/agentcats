@@ -184,6 +184,7 @@ export const sampleEvents = {
       kind: 'add',
       trigger: 'debrief',
       lines: [{ text: 'Use the makeUser fixture in tests', sourceTaskId: 'task-1' }],
+      base: [],
     },
   },
   'learnings.proposal_resolved': {

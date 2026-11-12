@@ -209,6 +209,20 @@ const error: Scenario = {
   },
 };
 
+const limit: Scenario = {
+  name: 'limit',
+  description: "The agent reports that the user's plan limit is reached.",
+  async turn(ctx) {
+    await ctx.say('Starting work.', 'thought');
+    ctx.emit({
+      type: 'error',
+      message: "You've hit your session limit · resets 10pm",
+      fatal: false,
+    });
+    return 'error';
+  },
+};
+
 const crash: Scenario = {
   name: 'crash',
   description: 'The agent process dies in the middle of a tool call, every time.',
@@ -328,9 +342,19 @@ const orchestrator: Scenario = {
 };
 
 export const SCENARIOS: Readonly<Record<string, Scenario>> = Object.fromEntries(
-  [happyPath, routine, approval, network, error, crash, flaky, hang, expensive, orchestrator].map(
-    (s) => [s.name, s],
-  ),
+  [
+    happyPath,
+    routine,
+    approval,
+    network,
+    error,
+    limit,
+    crash,
+    flaky,
+    hang,
+    expensive,
+    orchestrator,
+  ].map((s) => [s.name, s]),
 );
 
 /**

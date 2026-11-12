@@ -229,8 +229,10 @@ export class Memory {
   // -------------------------------------------------------------------------
 
   /**
-   * Run the debrief for a task the user just reviewed, then a consolidation
-   * if the cat leveled up. Runs in the background; failures become notices.
+   * Run the debrief for a task the user just reviewed, and turn its lines
+   * into exactly one proposal: a consolidation that includes them if the cat
+   * leveled up or the new lines do not fit under the cap, an `add` otherwise.
+   * Runs in the background; failures become notices.
    *
    * Accepted tasks are always debriefed. A rejection only teaches something
    * when the user wrote a note saying why.
@@ -240,20 +242,24 @@ export class Memory {
     if (!catId || this.o.log.board.cats[catId]?.role !== 'worker') return;
     this.o.track(
       (async () => {
-        let consolidated = false;
+        let fresh: LearningDraft[] = [];
         if (this.o.config.memory.debrief && (verdict.decision === 'accept' || verdict.note)) {
-          consolidated = await this.#debrief(catId, task, verdict);
+          fresh = await this.#debrief(catId, task, verdict);
         }
-        // One consolidation per review: a debrief over the cap already ran one.
-        if (leveledUp && !consolidated && this.#cat(catId).learnings.length >= 2) {
-          await this.#consolidate(catId, 'level_up', [], null);
+        const total = this.#cat(catId).learnings.length + fresh.length;
+        if (fresh.length > 0 && total > this.o.config.memory.cap) {
+          await this.#consolidate(catId, 'cap', fresh, task.id);
+        } else if (leveledUp && total >= 2) {
+          await this.#consolidate(catId, 'level_up', fresh, task.id);
+        } else if (fresh.length > 0) {
+          await this.#proposeAdd(catId, task.id, fresh);
         }
       })(),
     );
   }
 
-  /** Returns whether it ran a consolidation because the new lines did not fit. */
-  async #debrief(catId: string, task: Task, verdict: Verdict): Promise<boolean> {
+  /** New, deduplicated lines the debrief suggests; none if it failed or found nothing. */
+  async #debrief(catId: string, task: Task, verdict: Verdict): Promise<LearningDraft[]> {
     const cat = this.#cat(catId);
     const current = await this.sync(catId);
     let answer: string;
@@ -267,7 +273,7 @@ export class Memory {
         'debrief_failed',
         `${cat.name}'s debrief failed: ${message(error)}`,
       );
-      return false;
+      return [];
     }
     const fresh = dedupe(parseProposal(answer, task.id, DEBRIEF_LIMIT), current);
     if (fresh.length === 0) {
@@ -278,21 +284,20 @@ export class Memory {
         'debrief_empty',
         `${cat.name} found nothing new to learn from "${task.title}"`,
       );
-      return false;
     }
-    if (current.length + fresh.length > this.o.config.memory.cap) {
-      // Over the cap: fold the new lines into a consolidated rewrite instead.
-      await this.#consolidate(catId, 'cap', fresh, task.id);
-      return true;
-    }
-    const proposal = this.#propose(catId, task.id, 'add', 'debrief', fresh);
+    return fresh;
+  }
+
+  async #proposeAdd(catId: string, taskId: string, lines: LearningDraft[]): Promise<void> {
+    const proposal = this.#propose(catId, taskId, 'add', 'debrief', lines, []);
     const threshold = this.o.config.memory.autoAcceptAfter;
     if (threshold !== null && this.#cat(catId).stats.accepted >= threshold) {
       await this.#locked(catId, () => this.#apply(proposal, 'auto')).catch((error: unknown) => {
-        this.o.logger.warn(`Could not auto-accept learnings for ${cat.name}: ${message(error)}`);
+        this.o.logger.warn(
+          `Could not auto-accept learnings for ${this.#cat(catId).name}: ${message(error)}`,
+        );
       });
     }
-    return false;
   }
 
   /**
@@ -333,6 +338,16 @@ export class Memory {
         return;
       }
       const lines = dedupe(parseProposal(answer, null, Number.POSITIVE_INFINITY), []);
+      if (extra.length === 0 && sameTexts(lines, current)) {
+        this.#notice(
+          catId,
+          taskId,
+          'info',
+          'consolidation_unchanged',
+          `${cat.name}'s learnings are already tidy; nothing to change.`,
+        );
+        return;
+      }
       if (lines.length === 0 || lines.length > cap) {
         this.#notice(
           catId,
@@ -347,7 +362,14 @@ export class Memory {
         if (old.catId === catId && old.kind === 'rewrite')
           this.#resolved(old, 'superseded', 'system');
       }
-      this.#propose(catId, taskId, 'rewrite', trigger, lines);
+      this.#propose(
+        catId,
+        taskId,
+        'rewrite',
+        trigger,
+        lines,
+        current.map((l) => l.id),
+      );
     } finally {
       this.#consolidating.delete(catId);
     }
@@ -364,8 +386,12 @@ export class Memory {
       const written = await this.o.files.writeLearnings(cat.name, [...drafts, ...fresh]);
       this.#changed(proposal.catId, written, 'debrief', null);
     } else {
+      // Keep what was added to the file after the rewrite was proposed.
+      const base = new Set(proposal.base);
+      const since = base.size === 0 ? [] : drafts.filter((_, i) => !base.has(current[i]?.id ?? ''));
+      const lines = [...proposal.lines, ...dedupe(since, proposal.lines)];
       const backup = await this.o.files.backup(cat.name);
-      const written = await this.o.files.writeLearnings(cat.name, proposal.lines);
+      const written = await this.o.files.writeLearnings(cat.name, lines);
       this.#changed(proposal.catId, written, 'consolidation', backup);
     }
     this.#resolved(proposal, 'accepted', by);
@@ -435,13 +461,14 @@ export class Memory {
     kind: 'add' | 'rewrite',
     trigger: ProposalTrigger,
     lines: LearningDraft[],
+    base: string[],
   ): LearningProposal {
     const proposalId = randomBytes(8).toString('hex');
     this.o.log.append({
       type: 'learnings.proposed',
       catId,
       ...(taskId !== null && { taskId }),
-      payload: { proposalId, kind, trigger, lines },
+      payload: { proposalId, kind, trigger, lines, base },
     });
     return this.#proposal(proposalId);
   }
@@ -530,6 +557,10 @@ export function consolidationPrompt(lines: readonly LearningDraft[]): string {
     .map((l) => `- ${l.text}${l.sourceTaskId ? ` (task ${l.sourceTaskId})` : ''}`)
     .join('\n');
   return `<learnings>\n${body}\n</learnings>`;
+}
+
+function sameTexts(a: readonly LearningDraft[], b: readonly LearningDraft[]): boolean {
+  return a.length === b.length && a.every((l, i) => l.text === b[i]?.text);
 }
 
 function sameLines(a: readonly Learning[], b: readonly Learning[]): boolean {

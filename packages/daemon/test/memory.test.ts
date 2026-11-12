@@ -389,6 +389,25 @@ describe('consolidation', () => {
     expect(after.versions).toHaveLength(2); // the consolidated version was saved too: redo is possible
   });
 
+  it('keeps lines added after the rewrite was proposed', async () => {
+    await setup({}, (options) =>
+      options.systemPrompt.startsWith('# Consolidation')
+        ? '- Tests use the makeUser fixture and live in test/'
+        : defaultCompletion(options),
+    );
+    await taskInReview('Seed');
+    const cat = await worker();
+    await addLearnings(cat.id, ['Tests use the makeUser fixture', 'Test files live in test/']);
+    await t.api('POST', `/api/cats/${cat.id}/learnings/consolidate`);
+    const rewrite = await proposal((p) => p.kind === 'rewrite');
+    await addLearnings(cat.id, ['Added while the rewrite was pending']);
+    expect((await resolve(rewrite.id, 'accept')).status).toBe(200);
+    expect((await worker()).learnings.map((l) => l.text)).toEqual([
+      'Tests use the makeUser fixture and live in test/',
+      'Added while the rewrite was pending',
+    ]);
+  });
+
   it('refuses a version id that points outside the history folder', async () => {
     await setup();
     await taskInReview('Seed');
@@ -442,9 +461,13 @@ describe('XP and levels', () => {
     expect(task.result?.costUsd).toBeGreaterThan(0);
   });
 
-  it('proposes a consolidation when a cat with learnings levels up', async () => {
-    await setup({ xp: { accepted: 30 } });
-    const task = await taskInReview('Seed', 'nothing new');
+  it("folds a level-up's new learnings into one consolidation proposal", async () => {
+    await setup({ xp: { accepted: 30 } }, (options) =>
+      options.systemPrompt.startsWith('# Consolidation')
+        ? `- Tests use the makeUser fixture; routes are registered in handle()\n- ${FIXTURE}`
+        : defaultCompletion(options),
+    );
+    const task = await taskInReview('Seed', FIXTURE);
     const cat = await worker();
     await addLearnings(cat.id, [
       'Tests use the makeUser fixture',
@@ -453,6 +476,26 @@ describe('XP and levels', () => {
     await review(task.id, 'accept');
     const rewrite = await proposal((p) => p.kind === 'rewrite');
     expect(rewrite.trigger).toBe('level_up');
+    const consolidation = completions.find((o) => o.systemPrompt.startsWith('# Consolidation'))!;
+    expect(consolidation.prompt).toContain(`- ${FIXTURE} (task ${task.id})`);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(Object.values((await board()).proposals)).toHaveLength(1); // no separate add
+  });
+
+  it('proposes nothing when a consolidation would change nothing', async () => {
+    await setup({ xp: { accepted: 30 } }); // the mock returns the list unchanged
+    const task = await taskInReview('Seed', 'nothing new');
+    const cat = await worker();
+    await addLearnings(cat.id, [
+      'Tests use the makeUser fixture',
+      'Routes are registered in handle()',
+    ]);
+    await review(task.id, 'accept');
+    await stream.waitFor(
+      isType('notice', (e) => e.payload.code === 'consolidation_unchanged'),
+      10_000,
+    );
+    expect((await board()).proposals).toEqual({});
   });
 });
 

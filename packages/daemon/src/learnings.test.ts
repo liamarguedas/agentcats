@@ -112,6 +112,18 @@ describe('parseProposal', () => {
     expect(parseProposal('- none\n- too short', TASK, 3)).toEqual([]);
   });
 
+  it('drops lines that comment on learnings instead of stating one', () => {
+    // Both from the first live run.
+    const answer = [
+      "- The worker's `resetStore()` note (it also resets `nextId`) is a repository fact that would change a future worker's choice, so it is worth keeping.",
+      "- Its `deleteAllNotes()` addition is already a description of this task's change and should not be kept.",
+      '- resetStore() also resets nextId, so bulk deletes that must keep ids increasing need their own store function.',
+    ].join('\n');
+    expect(parseProposal(answer, TASK, 3).map((d) => d.text)).toEqual([
+      'resetStore() also resets nextId, so bulk deletes that must keep ids increasing need their own store function.',
+    ]);
+  });
+
   it('keeps the sources a consolidation wrote', () => {
     const drafts = parseProposal(`- Merged line about the test fixtures (task ${TASK})`, null, 10);
     expect(drafts).toEqual([{ text: 'Merged line about the test fixtures', sourceTaskId: TASK }]);

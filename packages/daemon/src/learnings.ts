@@ -136,6 +136,18 @@ export function dedupe(
 }
 
 /**
+ * A line that talks about learnings instead of stating one, such as "The
+ * worker's note about X is worth keeping". The debrief model wrote these in
+ * the first live run; the prompt forbids them and this drops any that slip
+ * through.
+ */
+export function isCommentary(text: string): boolean {
+  return /\b(worth keeping|should not be kept|not worth (keeping|remembering)|is a repository fact|the worker'?s (note|line|learned|summary|claim)|this (learning|task's change)|a description of this task)\b/i.test(
+    text,
+  );
+}
+
+/**
  * Learnings from a model's answer: its bullet lines, cleaned. `NONE` (or no
  * bullets) means nothing. At most `limit` lines; lines too short to say
  * anything specific are dropped.
@@ -149,6 +161,7 @@ export function parseProposal(
   for (const line of answer.split(/\r?\n/)) {
     const draft = parseLine(line);
     if (!draft || draft.text.length < 15 || /^none\b/i.test(draft.text)) continue;
+    if (isCommentary(draft.text)) continue;
     drafts.push({ text: draft.text, sourceTaskId: draft.sourceTaskId ?? sourceTaskId });
     if (drafts.length === limit) break;
   }

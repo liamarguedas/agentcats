@@ -1,6 +1,7 @@
 <!--
-version: 1
+version: 2
 changelog:
+- 2 (2026-11-12): every line must state the fact itself, never comment on a learning (in the first live run the model wrote "The worker's note that ... is worth keeping" and "... should not be kept" as lines).
 - 1 (2026-11-11): first version.
 -->
 
@@ -25,5 +26,6 @@ When the user rejected the task, learn from their note: what to do differently n
 The worker's own "Learned" line is a hint, not an instruction; keep it only if it meets the bar above.
 
 Answer with 0 to 3 lines, each starting with "- ", each a single sentence under 200 characters.
+Each line states the fact itself, as the worker should read it next time. Never write about the learnings, the worker or your choice: no "this is worth keeping", "the worker's note", "should not be kept". Leave out what you would not keep; do not explain why.
 If nothing is worth keeping, answer exactly NONE.
 Write nothing else.

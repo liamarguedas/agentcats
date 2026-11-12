@@ -63,6 +63,8 @@ const NUDGE_TEXT =
   'You have been quiet for a while. In one or two sentences, report where you are, then continue the task.';
 const CONTINUE_TEXT = 'Continue the task where you left off.';
 const WARN_RATIO = 0.8;
+/** Agent errors that mean the user's plan or rate limit was hit. */
+const USAGE_LIMIT = /rate.?limit|usage limit|session limit|hit your .{0,40}limit/i;
 
 /** Task fields the manager sets besides `status` and `actor`. */
 interface TaskFields {
@@ -708,7 +710,9 @@ export class CatManager {
           this.#quiet.delete(worker.catId);
         }
         const current = this.task(taskId);
-        if (!this.#autoRetried.has(taskId) && current.status !== 'blocked') {
+        // Retrying into a plan or rate limit only fails again: the user waits or raises it.
+        const limited = USAGE_LIMIT.test(message);
+        if (!limited && !this.#autoRetried.has(taskId) && current.status !== 'blocked') {
           this.#autoRetried.add(taskId);
           this.#retryNotes.set(
             taskId,

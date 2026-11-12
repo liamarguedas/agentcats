@@ -55,6 +55,7 @@ describe('applyEvent', () => {
       kind: 'add',
       trigger: 'debrief',
       lines: [{ text: 'Use the makeUser fixture in tests', sourceTaskId: 'task-1' }],
+      base: [],
       createdAt: 18_000,
     });
     expect(BoardState.parse(proposed)).toEqual(proposed);

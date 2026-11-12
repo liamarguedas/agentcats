@@ -230,6 +230,8 @@ export const LearningsProposedEvent = z.strictObject({
     kind: z.enum(['add', 'rewrite']),
     trigger: ProposalTrigger,
     lines: z.array(LearningDraft).max(500),
+    /** For a rewrite, the ids of the learnings it was made from; empty for an add. */
+    base: z.array(Id).max(500).default([]),
   }),
 });
 

@@ -138,6 +138,11 @@ export const LearningProposal = z.strictObject({
   kind: z.enum(['add', 'rewrite']),
   trigger: ProposalTrigger,
   lines: z.array(LearningDraft).max(500),
+  /**
+   * For a rewrite: ids of the learnings it was made from. Lines added to the
+   * file after it was proposed are kept when it is applied.
+   */
+  base: z.array(Id).max(500),
   createdAt: Timestamp,
 });
 export type LearningProposal = z.infer<typeof LearningProposal>;

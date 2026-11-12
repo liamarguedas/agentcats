@@ -219,6 +219,16 @@ describe('failures', () => {
   });
 });
 
+describe('usage limits', () => {
+  it('does not retry into a plan or rate limit', async () => {
+    await setup();
+    const task = await createTask('limited', '/limit');
+    const failed = await waitForStatus(task.id, 'failed');
+    expect(failed).toMatchObject({ attempt: 1, reasonCode: 'agent_error' });
+    expect(failed.statusReason).toContain('session limit');
+  });
+});
+
 describe('budgets and pause', () => {
   it('pauses a metered cat at its budget and resumes only after the user raises it', async () => {
     // Each step of /expensive costs about $0.09: a warning at 80%, then a pause.
