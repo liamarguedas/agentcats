@@ -461,3 +461,11 @@ The runs are `packages/cli/test/live-m2.test.ts`, on a small notes API the test 
 ## 2026-11-12 - M2 accepted
 
 The user read the learnings file from the second live run and accepted it: all five M2 acceptance criteria are met.
+
+## 2026-11-12 - M3 planning answers
+
+- **Quick hires stay.** A worker is still hired automatically when a task waits and there is room (it starts at level 1 with no learnings); `workers.autoHire` (default `true`) turns that off. Interviews are how the user picks a better cat.
+- **The daemon runs the checks itself.** After a candidate finishes, the daemon copies the interview's hidden tests in and runs its check, lint and typecheck commands in the candidate's throwaway worktree, with a time limit and without an approval prompt. The user confirmed the interview first. This runs agent-written code unsandboxed (on Windows), the same risk class as allowed commands; the README says so. It also gives M3 a verified test result, which the M2 handoff notes asked for.
+- **Interview defaults:** 2 candidates on the balanced tier (`sonnet` for Claude), and $3 per interview, enforced like the other budgets (`budget.enforce`).
+- **Archive path:** retired cats go to `.agentcats/retired/<name>-<id8>/`, not `retired/<name>/` as the plan says, because a retired name can be reused by a new hire and two retired cats with the same name would collide.
+- **Model tiers** (`fast`, `balanced`, `best`) are mapped to model names by each adapter, so hiring stays agent-neutral for M4.
