@@ -432,3 +432,28 @@ The mock also learned the policy: `run` and `read` steps raise an approval exact
 - Closing the daemon while a task was starting could spawn a session after all sessions had been ended; that session then wrote to the closed database. `close()` now repeats until no session is left, and a starting task stops once the manager is closed.
 - Daemon integration tests outgrew Vitest's 5 s default under full-suite load (one M1 test waited 15 s inside a 5 s test). The suite timeout is now 30 s; individual waits keep their own shorter limits.
 - The e2e mock daemon never cleaned its temp folders on Windows (Playwright stops it without a signal). It now records them and removes the previous run's on start.
+
+## 2026-11-12 - M2 live verification
+
+Real Claude Code 2.1.302 on the user's Pro login, Windows 11, workers on `sonnet`, debriefs on `haiku`.
+The runs are `packages/cli/test/live-m2.test.ts`, on a small notes API the test creates (routes table, `makeNote` test fixture, a lint script that checks `docs/API.md`).
+
+- **First learning run** (worker v3, debrief v1): 9 of 10 tasks accepted, then the plan's session limit stopped task 10. It found three problems, all fixed and covered by mock tests: commentary lines from the debrief, a level-up rewrite that deleted three newer lines, and a retry into the usage limit.
+- **First level comparison:** 4 approvals at level 1 against 3 at level 4. The test and lint prompts disappeared at level 4 as designed, but the worker kept writing files through `python` heredocs and `cat >`, each of which asks. Worker prompt v4 fixed that.
+- **Second level comparison** (worker v4): **3 approvals at level 1, 1 at level 4** on the same two tasks. The one left at level 4 is the `curl`, which asks at every level. No shell writes.
+- **Second learning run** (worker v4, debrief v2): 10 of 10 accepted in about 5 minutes of agent time, $1.09 API-equivalent (plan usage, not billed). Level 4 at task 10 (156 XP). Approvals per task went from 1 to 2 at levels 1 and 2 to 0 at levels 3 and 4. The final `learnings.md` has 11 lines, each tied to a task. One debrief still produced a commentary line and a `Learned:` label; a consolidation merged them away, and the filter now catches both.
+
+## M3 handoff notes
+
+**When learnings felt useful.** After the first task the file already held the three things a newcomer needs (where routes go, how tests call the app, run lint separately). From task 4 or 5 it held facts that are not in the docs and that changed later work: `query` is a `URLSearchParams`, filters go before pagination, `/notes/search` must come before `/notes/:id`, the store hands out live objects. So: one task to be helpful, about five to be worth more than the README.
+
+**XP weights.**
+- With the defaults, ten good tasks take a cat to level 4 (156 XP), level 3 at task 6. That pace felt right; no weight needed tuning in these runs.
+- `tests_first_try` fired on every task, because it trusts the worker's own summary. As a signal it adds almost nothing. M3's interview scoring runs the tests itself; reuse that to verify this bonus.
+- `under_cost` needs five accepted tasks before it can fire and fired once in ten. Keep it small.
+- The rejection penalty and level-down were only exercised with the mock; no live task was rejected.
+
+**For M3's lifecycle code:**
+- A cat's identity on disk is its name (`.agentcats/cats/<name>/`). Retiring should move that folder; resurrecting under a different name must rename it and regenerate `profile.md` and the file header.
+- XP, level and stats are projected from the log (`xp.changed`, `cat.level_changed`, `task.updated`). `stats.json` is only a copy, so a resurrected cat needs either its events or a seeding event; do not trust `stats.json` as the source.
+- Pending proposals belong to a cat; retiring one should resolve them as `superseded`.

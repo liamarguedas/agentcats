@@ -66,10 +66,10 @@ When a cat levels up or learnings exceed the cap, run a consolidation call that 
 
 ## Acceptance criteria
 - [ ] After 10 real tasks, a worker's learnings file is visibly useful when you read it, and none of the lines are junk you would not keep.
-- [ ] A higher-level cat raises fewer approval prompts than a new cat on the same sample tasks, and still asks for network and installs.
-- [ ] You can edit or delete a learning from the UI and the file changes.
-- [ ] Consolidation produces a diff, requires approval, and can be undone.
-- [ ] XP events appear on the board with their reason.
+- [x] A higher-level cat raises fewer approval prompts than a new cat on the same sample tasks, and still asks for network and installs.
+- [x] You can edit or delete a learning from the UI and the file changes.
+- [x] Consolidation produces a diff, requires approval, and can be undone.
+- [x] XP events appear on the board with their reason.
 
 ## Out of scope
 Hiring flow, retirement, new adapters.
