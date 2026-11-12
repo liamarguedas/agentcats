@@ -30,6 +30,8 @@ Pin dependencies to exact versions at least two weeks old.
 - No Claude-specific types outside `packages/adapters/claude`. ESLint blocks `@anthropic-ai/*` imports elsewhere. The adapter contract is `@agentcats/protocol/adapter`.
 - New behavior needs a test that uses the mock adapter. Tests never need an API key or spend tokens, except the live tests gated by `AGENTCATS_LIVE_CLAUDE=1`.
 - Agent processes are always started with `spawnGuarded` from `@agentcats/kit`, so they cannot outlive the daemon.
+- Everything a level changes, and the rules that ask at every level (network, installs, destructive commands, pushes), lives in `packages/protocol/src/levels.ts`. Adapters enforce it; nobody redefines it.
+- Prompts in `packages/daemon/prompts/` carry a version and a changelog in their header comment. Bump both on any change.
 - Run `pnpm check` before every commit and read its exit status; never hide it behind a pipe. CI runs on a fresh checkout where the UI is not built, so a test must not depend on local build output. After pushing, confirm CI went green.
 - Any decision that changes the plan gets a dated entry in `docs/decisions.md`. Do not deviate silently.
 - Commits carry no AI co-author trailer.

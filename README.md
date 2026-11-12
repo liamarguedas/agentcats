@@ -3,9 +3,10 @@
 A local whiteboard where coding agents are cats.
 You tell the lead cat what you want built. It splits the work and hands it to worker cats, who each code on their own git branch, in parallel. You watch them think, work and ask for permission, then you review their branches and merge what you like.
 
-Status: **milestone M1**.
+Status: **milestone M2**.
 A lead cat and up to three workers, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
-Memory, levels and hiring arrive in M2 to M5 (see `docs/milestones/`).
+Workers remember what they learn in your repo, earn XP from your reviews, and get more autonomy as they level up.
+Hiring, firing and more agents arrive in M3 to M5 (see `docs/milestones/`).
 
 ## Requirements
 
@@ -31,11 +32,40 @@ What happens next:
 3. When a worker needs permission (network access, installing packages, any other command), an approval bubble appears on the cat. Allow or Deny it.
 4. Finished work goes to **review**. Open the task card to see the worker's summary, the diff stat and the branch. Review the branch with git, merge it yourself if you like it, then Accept or Reject it on the board. agentcats never merges or pushes.
 
-Each cat has Pause, Resume and Stop buttons, and a ⚙ panel to change its model, permission mode and budget.
+Each cat has Pause, Resume and Stop buttons, and a ⚙ panel with its level, its learnings and its properties (model, permission mode, budget).
 A task that failed or was interrupted can be re-run from its card.
 
 To try it without Claude Code, add `--adapter mock`.
 In mock mode nothing is written to your repo; the cats only act it out.
+
+## Memory and levels
+
+Every worker has a folder, `.agentcats/cats/<name>/`:
+
+- `learnings.md`: what the cat has learned about your repo, one line each, with the task it came from. This file is the source of truth. Edit it on the board or in your editor; the board picks up either.
+- `profile.md`: role, model and creation date, plus a **Persona** section you may write in. Anything you write there goes into the cat's prompt.
+- `stats.json`: XP, level and task counts.
+- `history/`: earlier versions of `learnings.md`, for undo.
+
+`.agentcats/.gitignore` is written once so that only `learnings.md`, `profile.md` and the config can be committed; the rest is local state.
+
+**Debrief.** After you accept a task, a short call to a cheap model (`haiku` by default) proposes up to three learnings from the task, the worker's summary and your verdict. After a rejection, it only runs if you wrote a note saying why. Duplicates of what the cat already knows are dropped. Nothing is written until you click **Keep** on the suggestion in the cat's panel.
+
+**Consolidation.** When a cat levels up, or its learnings would go over the limit (30 lines), a second call proposes a merged, shorter list. You see it as a diff and apply or discard it. The old version is saved in `history/`, and **Undo last change** puts it back.
+
+**XP** comes from your verdicts only: +10 for an accepted result, +5 more if the worker reported passing tests on its first attempt, +3 more if it cost less than the team's recent median, and -10 for a rejection. Failures earn nothing. XP never goes below 0, and the level always follows the XP, down as well as up.
+
+**Levels** change two things, defined in one file, `packages/protocol/src/levels.ts`:
+
+| Level | XP  | Learnings in the prompt | Runs without asking, on top of the defaults                                                                                  |
+| ----- | --- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1     | 0   | the 5 most relevant     | nothing more                                                                                                                 |
+| 2     | 30  | the 10 most relevant    | nothing more                                                                                                                 |
+| 3     | 80  | all                     | your `package.json` scripts (`npm test`, `pnpm lint`, ...), except ones that fetch, install or delete                        |
+| 4     | 150 | all                     | also local tools run directly (`tsc`, `vitest`, `jest`, `eslint`, `prettier`, `pytest`, ...), and reading your main checkout |
+
+"Most relevant" means the lines that share the most words with the task, newer lines first on a tie.
+At every level, network access, package installs and destructive commands (`rm -rf`, `git reset --hard`, `git clean`, ...) ask for your approval, and pushing is refused.
 
 ## Configuration
 
@@ -52,6 +82,8 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
     "allowedCommands": ["npm test", "npm run lint"]
   },
   "budget": { "perCatUsd": 2, "globalUsd": 10, "perCatTokens": null, "enforce": "metered" },
+  "xp": { "accepted": 10, "testsFirstTry": 5, "underCost": 3, "rejectedPenalty": 10 },
+  "memory": { "debrief": true, "model": "haiku", "cap": 30, "autoAcceptAfter": null },
   "attribution": false,
   "stuckTimeoutMs": 300000,
   "approvalTimeoutMs": 300000,
@@ -64,18 +96,20 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 - `workers.allowedCommands`: commands workers may run without asking, usually your test and lint commands. Committing to their own branch is always allowed.
 - `workers.permissionMode`: `ask` (approve everything that changes something), `accept_edits` (file edits in the worktree run without asking), or `auto` (Claude decides what is safe). There is no bypass mode.
 - `budget`: dollar limits, from the cost Claude reports. With `"enforce": "metered"` they apply only to cats billed per use (an API key, Bedrock or Vertex). At 80 percent you get a warning; at 100 percent the cat pauses until you raise its budget and resume it. On a subscription plan the cost shown is an API-equivalent estimate and is not enforced unless you set `"enforce": "always"`.
+- `xp`: XP per outcome. The level thresholds are fixed in `levels.ts`.
+- `memory.debrief`: turn the debrief off. `memory.model`: the model for debriefs and consolidations. `memory.cap`: the most lines a learnings file may hold. `memory.autoAcceptAfter`: keep a cat's suggestions without asking once it has this many accepted tasks (`null`, the default, always asks; consolidations always ask).
 - `attribution`: whether agents may add their own attribution, such as Claude Code's `Co-Authored-By` trailer, to the commits they make in your repo. Off by default.
 - `stuckTimeoutMs`: a worker that shows no activity for this long is marked blocked, so you can nudge or stop it.
 - Model `null` uses your Claude Code default.
 
 ## What workers may and may not do
 
-- Without asking: read the project, edit files in their own worktree, commit to their own branch, and run `workers.allowedCommands`.
-- Only with your approval: any other command, web fetches, and anything that looks like network access or a package install.
+- Without asking: read the project, edit files in their own worktree, commit to their own branch, run `workers.allowedCommands`, and whatever their level unlocks (see the table above).
+- Only with your approval: any other command, web fetches, and, at every level, anything that looks like network access, a package install or a destructive command. An allowed script still asks if its body in the worker's `package.json` does one of those things.
 - Never: push, or write outside their worktree (including your main checkout).
 - The lead cat only reads and delegates. It has no edit or shell tools.
 
-**Limit on Windows:** there is no operating-system sandbox on native Windows, so code that a worker runs through an allowed command (your tests, for example) can still reach the network. On macOS and Linux a sandbox option may close this gap in a later version.
+**Limit: allowed commands run code the worker can change.** A worker can edit the tests or source files that `npm test` runs, and from level 3 it runs your scripts without asking. The checks above catch a script whose own text fetches, installs or deletes, but not code those scripts call. On native Windows there is no operating-system sandbox to stop such code from reaching the network. On macOS and Linux a sandbox option may close this gap in a later version. If that matters for a project, keep `workers.allowedCommands` empty and do not let cats level past 2 (set `"xp": { "accepted": 0, ... }`).
 
 ## Authentication and terms
 

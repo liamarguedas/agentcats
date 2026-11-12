@@ -368,3 +368,67 @@ Real Claude Code 2.1.302 on Windows 11, agentcats CLI from sources, a small Node
 
 - **Fix:** the rename is retried on `EPERM`, `EBUSY` and `EACCES` for up to 10 s with backoff (the same approach as npm's graceful-fs). A failed write no longer blocks later ones. If a PID still cannot be recorded, the cat logs a warning and keeps working; the guardian process is the primary orphan protection, the PID file is the backup.
 - **Tests:** a stress test that writes 90 times while another task reads the file every 10 ms. It failed 3 out of 3 before the fix and passed 20 out of 20 after.
+
+## 2026-11-11 - M2 planning answers
+
+- **Cost bonus:** the XP bonus for a cheap task compares the task's cost with the median of the team's last 20 accepted tasks, and is skipped until there are 5 of them. M1 tasks have no cost estimate, and an estimate written by the lead would be noise. Known bias: small tasks get the bonus more often, so its weight stays small.
+- **Levels follow XP both ways.** A cat that keeps getting rejected loses levels and the autonomy that came with them. The event is `cat.level_changed` with `from` and `to` (the plan's `cat.leveled_up` is the upward case).
+- **Gate ladder as proposed:** level 3 runs the project's own scripts without asking, level 4 also runs local dev tools directly and reads outside the worktree. Network, installs and destructive commands ask at every level.
+- **Live runs on the user's Pro login, not an API key.** agentcats only drives the installed `claude`, which is signed in to the user's plan. Dollar figures on a plan are Claude Code's API-equivalent estimates and count against plan limits, not money.
+- **"Tests passed on first attempt" is self-reported** by the worker's summary, so it can be claimed without being true. Its bonus stays small; M3's interview scoring runs tests itself, and M2 can reuse that later.
+
+## 2026-11-11 - Step 0 for M2: one-shot calls and reads outside the worktree
+
+Verified against Claude Code 2.1.302 on the user's Pro login, model `haiku`.
+
+- **One-shot calls work through the CLI.** `query()` with a string prompt, `tools: []`, `maxTurns: 1`, `settingSources: []`, a plain string system prompt and `persistSession: false` answered in 1.5 s for an estimated $0.0003 (589 input tokens). Without the Claude Code preset prompt and tools there is almost no overhead, so the debrief and consolidation calls go through the user's own `claude` like everything else. The adapter contract gets an agent-neutral `complete()` for them.
+- **Claude Code asks before reading outside the working directory**, even in `acceptEdits` mode: both `Read` and `Grep` on a sibling folder reached `canUseTool`. So the level 4 read gate is an explicit allow (a hook), not the default. It is scoped to the project's main checkout (`AgentPolicy.readablePaths`), because "anywhere outside the worktree" would include `~/.ssh` and other secrets.
+
+## 2026-11-11 - M2 implementation decisions
+
+**Learnings are files first.** `.agentcats/cats/<name>/learnings.md` is the source of truth.
+Every change is written to the file first and then logged as `learnings.changed` carrying the whole new list, so SQLite keeps the history of every version without owning the content.
+Hand edits are picked up by a file watcher and by a re-read before every use (prompt, edit, debrief).
+A line's id is a hash of its text and source, so an edit made against a stale copy of the file finds nothing and is refused (409) instead of changing the wrong line.
+The file format is a Markdown bullet per learning, `- text (task <id>)`; headings, comments and prose are ignored, so the user can annotate the file.
+Only workers have folders; the lead earns no XP.
+`.agentcats/.gitignore` is written once, if missing: `learnings.md`, `profile.md` and the config may be committed, everything else is local.
+
+**Debrief.**
+- Runs after the user accepts a task, or rejects one with a note (a new optional field on the review request and a note box in the UI). Never on an unreviewed outcome.
+- One `Adapter.complete()` call with the debrief prompt (v1). It sees the task, the outcome and note, the diff stat, tests and attempt, the worker's summary, and the current learnings.
+- Up to 3 lines of at least 15 characters. A line is a duplicate if it matches an existing line after normalizing case and punctuation, shares at least 70 percent of its keywords (Jaccard), or all of its keywords (at least three) appear in another line.
+- What is left becomes an `add` proposal. When it would go over the cap (30), it becomes a consolidation that includes the new lines instead, and the level-up consolidation is skipped for that review, so one review never runs two.
+- `memory.autoAcceptAfter` (default off) accepts `add` proposals once the cat has that many accepted tasks. Consolidations always need the user.
+- The call's cost is charged to the cat's usage, so it counts against its budget.
+
+**Consolidation.** Triggered by a level-up (when the cat has at least two learnings), by the cap, or by the user.
+The answer must have 1 to `cap` lines, or nothing is proposed and a notice says why.
+A new rewrite supersedes a pending one.
+Applying it saves the current file to `history/` first; the event carries that backup's id, and **Undo** restores it. A restore also saves the current file first, so it can itself be undone.
+History file names are checked against a pattern, so a restore request cannot read outside `history/`.
+
+**XP.** Pure function, table-tested (`packages/daemon/src/xp.ts`).
+Accepted +10, tests reported passing on attempt 1 +5, cheaper than the median of the team's last 20 accepted tasks (needs 5) +3, rejected -10, never below 0.
+A task's cost is the cat's spending since the task first started; after a daemon restart in the middle of a task it is unknown, and that task gets no cost bonus.
+`xp.changed` carries the new total, so replaying is idempotent; `cat.level_changed` fires in both directions.
+
+**Levels and gates** are in `packages/protocol/src/levels.ts`, agent-neutral, so M4's adapter reuses them:
+- The curve (0, 30, 80, 150 XP), the memory limit per level, and the selection rule (most shared keywords with the task, newer first on a tie, file order kept).
+- Autonomy per level: `package.json` scripts at level 3 (lifecycle scripts and scripts whose body fetches, installs, deletes or pushes are left out), local dev tools at level 4. Tools that can download on their own (`npx`, `npm exec`, `go test`, `cargo test`) are never on the list.
+- The always-ask rules: network, installs, and destructive commands (new in M2: `rm -r`/`-f`, `git reset --hard`, `git clean`, `git checkout --`, `git restore`, `git branch -D`, `find -delete`, ...). `git push` stays refused.
+- The daemon turns the level into `AgentPolicy.allowedCommands` and the new `AgentPolicy.readablePaths` (the main checkout at level 4) when a task starts.
+- The Claude adapter checks the always-ask rules in its PreToolUse hook before any allow rule. It also reads the worktree's `package.json` when a script runs, because the worker can edit it: an allowed `npm test` still asks if the `test` script now fetches or deletes. Code those scripts call is not checked; the README says so next to the Windows sandbox limit, and how to keep cats below level 3.
+
+**Adapter contract.** `Adapter.complete(options)` is new and required: one prompt, one answer, no tools, no session.
+The Claude adapter runs it through the user's `claude` with `tools: []`, `maxTurns: 1`, `settingSources: []`, a plain system prompt and `persistSession: false`, under the guardian.
+The mock answers from a script: a debrief proposes the worker's `- Learned:` line, a consolidation returns the list unchanged, and tests can pass their own answers.
+The mock also learned the policy: `run` and `read` steps raise an approval exactly when a real agent's policy would, and a `routine` scenario runs the same commands at any level, for the gating tests.
+
+**Prompts.** Worker v3: a "What you have learned" section, the cat's name, an optional persona, and a `- Learned:` line in the summary, which the debrief treats as a hint. Debrief v1 and consolidation v1 are new.
+
+**Fixes found during M2:**
+- The push rule matched any git command containing the word "push", so a worker could not commit with a message like "Add push notifications". Only the push subcommand counts now, after any git global options.
+- Closing the daemon while a task was starting could spawn a session after all sessions had been ended; that session then wrote to the closed database. `close()` now repeats until no session is left, and a starting task stops once the manager is closed.
+- Daemon integration tests outgrew Vitest's 5 s default under full-suite load (one M1 test waited 15 s inside a 5 s test). The suite timeout is now 30 s; individual waits keep their own shorter limits.
+- The e2e mock daemon never cleaned its temp folders on Windows (Playwright stops it without a signal). It now records them and removes the previous run's on start.
