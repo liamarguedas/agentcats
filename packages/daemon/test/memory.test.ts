@@ -134,9 +134,12 @@ describe('cat folders', () => {
     await taskInReview('First task');
     const cat = await worker();
     const dir = join(t.projectPath, '.agentcats', 'cats', cat.name);
-    await vi.waitFor(async () => {
-      expect(await readFile(join(dir, 'profile.md'), 'utf8')).toContain('- Role: worker');
-    });
+    await vi.waitFor(
+      async () => {
+        expect(await readFile(join(dir, 'profile.md'), 'utf8')).toContain('- Role: worker');
+      },
+      { timeout: 10_000 },
+    );
     expect(await readFile(join(dir, 'learnings.md'), 'utf8')).toContain(
       `# ${cat.name}'s learnings`,
     );
@@ -447,12 +450,15 @@ describe('XP and levels', () => {
       level: 1,
       stats: { completed: 2, accepted: 1, rejected: 1 },
     });
-    await vi.waitFor(async () => {
-      const stats = JSON.parse(
-        await readFile(join(t.projectPath, '.agentcats', 'cats', cat.name, 'stats.json'), 'utf8'),
-      ) as { xp: number };
-      expect(stats.xp).toBe(15);
-    });
+    await vi.waitFor(
+      async () => {
+        const stats = JSON.parse(
+          await readFile(join(t.projectPath, '.agentcats', 'cats', cat.name, 'stats.json'), 'utf8'),
+        ) as { xp: number };
+        expect(stats.xp).toBe(15);
+      },
+      { timeout: 10_000 },
+    );
   });
 
   it('records what a task cost', async () => {

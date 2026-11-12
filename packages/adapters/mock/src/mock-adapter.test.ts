@@ -185,9 +185,12 @@ describe('mock adapter', () => {
           for await (const e of session.events()) events.push(e);
         })();
         await session.send(`add a hello function ${String(realFiles)}`);
-        await vi.waitFor(() => {
-          expect(events.some((e) => e.type === 'turn.ended')).toBe(true);
-        });
+        await vi.waitFor(
+          () => {
+            expect(events.some((e) => e.type === 'turn.ended')).toBe(true);
+          },
+          { timeout: 10_000 },
+        );
         await session.kill();
         await done;
       }

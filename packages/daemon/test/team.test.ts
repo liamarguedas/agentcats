@@ -282,6 +282,35 @@ describe('budgets and pause', () => {
   });
 });
 
+describe('pause while starting', () => {
+  it('holds the task until resume when the cat is paused before its session is up', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await setup({ scenario: 'hang' }, {}, null, (adapter) => ({
+      ...adapter,
+      spawn: async (options) => {
+        await gate;
+        return adapter.spawn(options);
+      },
+    }));
+    const task = await createTask('long job');
+    await waitForStatus(task.id, 'running');
+    const catId = await workerOf(task.id);
+
+    expect((await t.api('POST', `/api/cats/${catId}/pause`)).status).toBe(202);
+    release();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(stream.events.some((e) => e.type === 'tool.called' && e.catId === catId)).toBe(false);
+
+    expect((await t.api('POST', `/api/cats/${catId}/resume`)).status).toBe(202);
+    await stream.waitFor(
+      isType('tool.called', (e) => e.catId === catId),
+      10_000,
+    );
+    expect((await board()).tasks[task.id]?.status).toBe('running');
+  });
+});
+
 describe('approvals', () => {
   it('raises a network approval on the board; deny blocks the fetch', async () => {
     await setup();

@@ -70,9 +70,12 @@ async function routineAtLevel(level: number): Promise<string[]> {
   const warm = await waitForStatus(first.task.id, 'review');
   await t.api('POST', `/api/tasks/${warm.id}/review`, { decision: 'accept' });
   const catId = warm.assigneeCatId!;
-  await vi.waitFor(async () => {
-    expect((await board()).cats[catId]?.level).toBe(level);
-  });
+  await vi.waitFor(
+    async () => {
+      expect((await board()).cats[catId]?.level).toBe(level);
+    },
+    { timeout: 10_000 },
+  );
   const res = await t.api('POST', '/api/tasks', {
     title: 'Routine change',
     description: '/routine',

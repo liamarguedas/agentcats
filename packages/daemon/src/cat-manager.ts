@@ -125,6 +125,8 @@ export class CatManager {
   readonly #warned = new Set<string>();
   readonly #baseCommits = new Map<string, string>();
   readonly #retryNotes = new Map<string, string>();
+  /** Task prompts not sent yet because the cat was paused while its session started. */
+  readonly #heldPrompts = new Map<string, string>();
   /** The cat's total cost when a task first started, to get the task's own cost. */
   readonly #costBase = new Map<string, number | null>();
   #notifications: string[] = [];
@@ -618,6 +620,12 @@ export class CatManager {
       const note = this.#retryNotes.get(taskId);
       this.#retryNotes.delete(taskId);
       const prompt = [note, task.title, task.description].filter(Boolean).join('\n\n');
+      // Paused (or stopped) while the session was starting: there was no turn
+      // to interrupt then, so hold the prompt until the user resumes.
+      if (worker.cat.pausedReason || this.task(taskId).status !== 'running') {
+        this.#heldPrompts.set(taskId, prompt);
+        return;
+      }
       await worker.send(prompt);
       this.#armStuck(worker);
     } catch (error) {
@@ -634,8 +642,15 @@ export class CatManager {
 
   /** Continue a task on its worker, restarting the session (resumed) if it is gone. */
   async #continueTask(agent: CatAgent, task: Task, text: string): Promise<void> {
+    const held = this.#heldPrompts.get(task.id);
+    this.#heldPrompts.delete(task.id);
     if (agent.taskId === task.id && agent.hasSession) {
-      await agent.send(text);
+      await agent.send(held ?? text);
+    } else if (held) {
+      this.#retryNotes.delete(task.id); // the held prompt already carries any note
+      this.#transition(task.id, 'queued', 'system', { statusReason: 'Restarting the worker' });
+      this.#schedule();
+      return;
     } else {
       this.#retryNotes.set(task.id, text);
       this.#transition(task.id, 'queued', 'system', { statusReason: 'Restarting the worker' });
