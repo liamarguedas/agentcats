@@ -713,6 +713,7 @@ export class CatManager {
 
   async pickCandidate(interviewId: string, catId: string): Promise<Interview> {
     const interview = await this.#interviews.pick(interviewId, catId);
+    this.#agent(catId).setStatus('idle'); // a fresh start, not its interview's "done"
     this.#notifyOrchestrator(`${this.#agent(catId).cat.name} was hired after an interview.`);
     this.#schedule();
     return interview;

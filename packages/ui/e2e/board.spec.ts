@@ -187,6 +187,62 @@ test('cat properties can be edited', async ({ page }) => {
   await expect(page.getByTestId('cat-Mochi')).toContainText('/ $5.00');
 });
 
+test('hiring runs an interview after the estimate is confirmed, and only a passing candidate can win', async ({
+  page,
+}) => {
+  await openBoard(page);
+  await page.getByRole('button', { name: 'Hire a cat' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Hire a cat' });
+  await dialog.getByLabel('What is the new cat for?').fill('Writes small, careful changes');
+  await dialog.getByLabel('Interview task').selectOption({ label: 'Answer the question (yours)' });
+  await dialog.getByLabel('Candidates').selectOption('3');
+  await dialog.getByRole('button', { name: 'Get an estimate' }).click();
+  await expect(dialog.getByTestId('estimate')).toHaveText('Estimated cost: about $0.75');
+  // Nothing runs before the confirmation.
+  await expect(page.getByRole('region', { name: /^Interview:/ })).toContainText(
+    'Waiting for you to start it',
+  );
+  await shot(page, 'hire-estimate');
+  await dialog.getByRole('button', { name: /Start interview/ }).click();
+  await expect(dialog).toBeHidden();
+
+  const panel = page.getByRole('region', { name: /^Interview:/ });
+  await expect(panel).toContainText('Scored: pick one to hire', { timeout: 30_000 });
+  const scores = panel.getByTestId('scores');
+  await expect(scores.locator('tr', { hasText: '✗ fail' })).toContainText('not hireable');
+  await expect(scores.getByRole('button', { name: /^Hire / })).toHaveCount(2);
+  await panel.screenshot({ path: `${SHOTS}/interview-scored.png`, animations: 'disabled' });
+
+  const hire = scores.getByRole('button', { name: /^Hire / }).first();
+  const winner = ((await hire.textContent()) ?? '').replace('Hire ', '');
+  await hire.click();
+  await expect(page.locator('.toast--info', { hasText: `${winner} is hired!` })).toBeVisible();
+  await expect(page.getByRole('region', { name: /^Interview:/ })).toHaveCount(0);
+  await expect(page.getByTestId(`cat-${winner}`)).toContainText('Worker');
+  await shot(page, 'hired');
+});
+
+test('a cat can be retired and brought back with its XP', async ({ page }) => {
+  await openBoard(page);
+  await page.getByRole('button', { name: 'Properties of Miso' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Retire…' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Retire Miso?' });
+  await expect(dialog).toContainText('you can bring it back later');
+  await dialog.getByLabel('Reason').fill('Taking a nap');
+  await shot(page, 'retire-dialog');
+  await dialog.getByRole('button', { name: 'Retire Miso' }).click();
+  await expect(page.getByTestId('cat-Miso')).toHaveCount(0);
+
+  const retired = page.getByRole('region', { name: 'Retired cats' });
+  await retired.locator('summary').click();
+  await expect(retired).toContainText('Miso');
+  await expect(retired).toContainText('Taking a nap');
+  await shot(page, 'retired-list');
+  await retired.getByRole('button', { name: 'Bring back' }).click();
+  await expect(page.getByTestId('cat-Miso')).toContainText(/\d+ XP/);
+  await expect(retired).toHaveCount(0);
+});
+
 test('the board resyncs after a reload', async ({ page }) => {
   await openBoard(page);
   await page.reload();

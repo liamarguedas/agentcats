@@ -6,6 +6,13 @@ import { CatCard } from './components/CatCard.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { CatDrawer, TaskDrawer } from './components/Drawers.js';
 import { EventLog, xpText } from './components/EventLog.js';
+import {
+  HireDialog,
+  InterviewPanel,
+  hireAnnouncement,
+  RetiredList,
+  RetireDialog,
+} from './components/Hiring.js';
 import { LearningsSection, LevelSection, levelPerks } from './components/Learnings.js';
 import { TaskCard } from './components/TaskCard.js';
 
@@ -81,6 +88,8 @@ function undoVersionOf(events: readonly AgentcatsEvent[], catId: string): string
 export function App({ client }: { client: BoardClient }) {
   const view = useSyncExternalStore(client.subscribe, client.getView);
   const [drawer, setDrawer] = useState<Drawer>(null);
+  const [hiring, setHiring] = useState(false);
+  const [retiring, setRetiring] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<readonly { id: number; text: string }[]>([]);
   const { board, events } = view;
@@ -110,13 +119,20 @@ export function App({ client }: { client: BoardClient }) {
     .slice(-3)
     .reverse();
 
+  /** A candidate's name, also after it left the board, from its `cat.created` event. */
+  const candidateName = (catId: string) => {
+    const created = events.find((e) => e.type === 'cat.created' && e.catId === catId);
+    return board.cats[catId]?.name ?? (created?.type === 'cat.created' ? created.payload.name : '');
+  };
   // Recent good news: level changes and new learning suggestions, for a few seconds.
   const now = useNow(events.at(-1)?.ts ?? 0);
   const recent = events.filter((e) => now - e.ts < FLASH_MS);
   const infoToasts = recent
     .flatMap((e) => {
-      const name = e.catId ? board.cats[e.catId]?.name : undefined;
-      if (!name || dismissed.has(e.id)) return [];
+      const name = e.catId
+        ? (board.cats[e.catId]?.name ?? board.retired[e.catId]?.cat.name)
+        : undefined;
+      if (!name || !e.catId || dismissed.has(e.id)) return [];
       if (e.type === 'cat.level_changed') {
         const up = e.payload.to > e.payload.from;
         const perks = levelPerks(levelSpec(e.payload.to)).join('; ').toLowerCase();
@@ -127,6 +143,23 @@ export function App({ client }: { client: BoardClient }) {
             text: up
               ? `${name} reached level ${String(e.payload.to)}: ${perks}.`
               : `${name} dropped to level ${String(e.payload.to)}.`,
+          },
+        ];
+      }
+      if (e.type === 'cat.retired') {
+        return [{ id: e.id, catId: e.catId, text: `📦 ${name} retired: ${e.payload.reason}` }];
+      }
+      if (e.type === 'cat.hired') {
+        const interview = board.interviews[e.payload.interviewId];
+        const losers = (interview?.candidates ?? [])
+          .filter((c) => c.catId !== e.catId)
+          .map((c) => candidateName(c.catId))
+          .filter(Boolean);
+        return [
+          {
+            id: e.id,
+            catId: e.catId,
+            text: hireAnnouncement(name, losers),
           },
         ];
       }
@@ -154,6 +187,12 @@ export function App({ client }: { client: BoardClient }) {
       .reduce((sum, e) => sum + (e.type === 'xp.changed' ? e.payload.delta : 0), 0);
     return { id: xp.id, text: `${xpText(total)} XP` };
   };
+  const interviews = Object.values(board.interviews)
+    .filter((i) => ['proposed', 'running', 'deciding'].includes(i.status))
+    .sort((a, b) => a.createdAt - b.createdAt);
+  const retiredCats = Object.values(board.retired).sort(
+    (a, b) => b.retired.retiredAt - a.retired.retiredAt,
+  );
   const proposalsOf = (catId: string) =>
     Object.values(board.proposals)
       .filter((p) => p.catId === catId)
@@ -167,6 +206,15 @@ export function App({ client }: { client: BoardClient }) {
       setErrors((list) => [...list.slice(-2), { id: Date.now(), text }]);
     }
   }
+
+  const loadSamples = useCallback(
+    async () => (await client.request('interviewSamples')).samples,
+    [client],
+  );
+  const loadRetireCheck = useCallback(
+    () => client.request('retireCheck', { catId: retiring ?? '' }),
+    [client, retiring],
+  );
 
   const openTaskId = drawer?.kind === 'task' ? drawer.id : null;
   // Stable per open task, so the drawer refetches only when the task changes.
@@ -196,6 +244,11 @@ export function App({ client }: { client: BoardClient }) {
       }}
       xpPop={xpPopOf(cat.id)}
       pendingLearnings={proposalsOf(cat.id).length}
+      retireSuggestion={board.retireProposals[cat.id]?.reason ?? null}
+      onReviewRetire={() => {
+        setRetiring(cat.id);
+      }}
+      onDismissRetire={() => void run(() => client.request('dismissRetire', { catId: cat.id }))}
     />
   );
 
@@ -212,6 +265,7 @@ export function App({ client }: { client: BoardClient }) {
   }
 
   const openTask = drawer?.kind === 'task' ? board.tasks[drawer.id] : undefined;
+  const retiringCat = retiring ? board.cats[retiring] : undefined;
   const openCat = drawer?.kind === 'cat' ? board.cats[drawer.id] : undefined;
 
   return (
@@ -221,6 +275,15 @@ export function App({ client }: { client: BoardClient }) {
           agent<span>cats</span>
         </h1>
         <div className="app__header-right">
+          <button
+            type="button"
+            className="button button--small"
+            onClick={() => {
+              setHiring(true);
+            }}
+          >
+            Hire a cat
+          </button>
           <span
             className="team-spend"
             title={estimated ? 'Includes API-equivalent estimates' : 'Reported cost'}
@@ -263,6 +326,25 @@ export function App({ client }: { client: BoardClient }) {
               })
             )}
           </section>
+          {interviews.map((interview) => (
+            <InterviewPanel
+              key={interview.id}
+              interview={interview}
+              cats={board.cats}
+              renderCandidate={(cat) => catCard(cat, 'worker')}
+              onStart={() =>
+                void run(() => client.request('startInterview', { interviewId: interview.id }))
+              }
+              onCancel={() =>
+                void run(() => client.request('cancelInterview', { interviewId: interview.id }))
+              }
+              onPick={(catId) =>
+                void run(() =>
+                  client.request('pickCandidate', { interviewId: interview.id }, { catId }),
+                )
+              }
+            />
+          ))}
           <section className="board__tasks" aria-label="Tasks">
             <h2 className="section-title">
               Tasks <span className="panel__count">{tasks.length}</span>
@@ -284,6 +366,10 @@ export function App({ client }: { client: BoardClient }) {
               </div>
             )}
           </section>
+          <RetiredList
+            retired={retiredCats}
+            onResurrect={(catId) => void run(() => client.request('resurrectCat', { catId }))}
+          />
         </div>
       </main>
 
@@ -354,6 +440,46 @@ export function App({ client }: { client: BoardClient }) {
         ))}
       </div>
 
+      {hiring && (
+        <HireDialog
+          defaultCandidates={2}
+          loadSamples={loadSamples}
+          onPropose={async (role, sampleId, candidates) => {
+            let planned = null;
+            await attempt(async () => {
+              planned = (
+                await client.request('proposeInterview', {}, { role, sampleId, candidates })
+              ).interview;
+            });
+            return planned;
+          }}
+          onStart={(interviewId) =>
+            attempt(() => client.request('startInterview', { interviewId }))
+          }
+          onCancel={(interviewId) =>
+            void run(() => client.request('cancelInterview', { interviewId }))
+          }
+          onClose={() => {
+            setHiring(false);
+          }}
+        />
+      )}
+      {retiringCat && (
+        <RetireDialog
+          key={retiringCat.id}
+          cat={retiringCat}
+          suggestedReason={board.retireProposals[retiringCat.id]?.reason ?? ''}
+          loadCheck={loadRetireCheck}
+          onRetire={(reason, openTask) =>
+            attempt(() =>
+              client.request('retireCat', { catId: retiringCat.id }, { reason, openTask }),
+            )
+          }
+          onClose={() => {
+            setRetiring(null);
+          }}
+        />
+      )}
       {openTask && (
         <TaskDrawer
           task={openTask}
@@ -387,6 +513,12 @@ export function App({ client }: { client: BoardClient }) {
           }
           onSave={(patch) => run(() => client.request('updateCat', { catId: openCat.id }, patch))}
           onNudge={() => void run(() => client.request('nudgeCat', { catId: openCat.id }, {}))}
+          {...(openCat.role === 'worker' && {
+            onRetire: () => {
+              setDrawer(null);
+              setRetiring(openCat.id);
+            },
+          })}
           onClose={() => {
             setDrawer(null);
           }}

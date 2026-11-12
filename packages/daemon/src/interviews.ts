@@ -399,7 +399,13 @@ export class Interviews {
         typecheckClean: typecheck ? typecheck.ok : null,
         failure: check.ok
           ? null
-          : short(check.timedOut ? 'The check timed out' : `The check failed: ${check.tail}`),
+          : short(
+              check.timedOut
+                ? 'The check timed out'
+                : check.tail
+                  ? `The check failed: ${check.tail}`
+                  : 'The check failed without output',
+            ),
       };
     } catch (error) {
       return {

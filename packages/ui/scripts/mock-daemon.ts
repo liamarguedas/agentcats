@@ -40,6 +40,18 @@ const git = (...args: string[]) => execFileSync('git', args, { cwd: projectPath,
 git('init', '-q', '-b', 'main');
 await writeFile(join(projectPath, 'README.md'), '# mock project\n');
 await writeFile(join(projectPath, '.gitignore'), '.agentcats/\n');
+// A quick interview sample the mock candidates can pass: answer.txt must say 42.
+const interviews = join(projectPath, '.agentcats', 'interviews');
+await mkdir(join(interviews, 'answer', 'hidden'), { recursive: true });
+await writeFile(
+  join(interviews, 'answer.md'),
+  '---\ntitle: Answer the question\nrepo: fixture\ncheck: node check.cjs\nlint: node scripts/lint.js\n---\n\nWrite the answer to answer.txt and commit it.\n',
+);
+await writeFile(
+  join(interviews, 'answer', 'hidden', 'check.cjs'),
+  "process.exit(require('node:fs').readFileSync('answer.txt', 'utf8').trim() === '42' ? 0 : 1);\n",
+);
+let candidates = 0;
 git('add', '.');
 git(
   '-c',
@@ -62,6 +74,12 @@ const daemon = await startDaemon({
   adapter: createMockAdapter({
     timeScale: Number(env['AGENTCATS_TIME_SCALE'] ?? 1),
     realFiles: true,
+    // Interview candidates (their models are the tier names) take turns at
+    // passing, passing with a big diff, and failing the "answer" sample.
+    scenarioFor: (options) =>
+      options.model?.startsWith('mock-')
+        ? ['interview-pass', 'interview-verbose', 'interview-fail'][candidates++ % 3]
+        : undefined,
   }),
   config: AgentcatsConfig.parse({
     adapter: 'mock',

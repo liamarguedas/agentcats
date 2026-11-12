@@ -286,6 +286,8 @@ export interface CatDrawerProps {
     budget: { maxUsd: number | null; maxTokens: number | null };
   }) => Promise<void>;
   readonly onNudge: () => void;
+  /** Open the retire dialog; workers only. */
+  readonly onRetire?: () => void;
   readonly onClose: () => void;
   /** Sections shown before the properties form: level and learnings, for workers. */
   readonly children?: ReactNode;
@@ -302,6 +304,7 @@ export function CatDrawer({
   canNudge,
   onSave,
   onNudge,
+  onRetire,
   onClose,
   children,
 }: CatDrawerProps) {
@@ -426,6 +429,11 @@ export function CatDrawer({
           {canNudge && (
             <button type="button" className="button" onClick={onNudge}>
               Nudge
+            </button>
+          )}
+          {onRetire && (
+            <button type="button" className="button button--ghost" onClick={onRetire}>
+              Retire…
             </button>
           )}
         </div>

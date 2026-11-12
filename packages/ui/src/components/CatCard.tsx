@@ -14,6 +14,12 @@ export const STATUS_LABEL: Record<Cat['status'], string> = {
   error: 'Error',
 };
 
+const ROLE_LABEL: Record<Cat['role'], string> = {
+  orchestrator: 'Lead',
+  worker: 'Worker',
+  candidate: 'Candidate',
+};
+
 export const KIND_ICON: Record<ToolKind, string> = {
   read: '📖',
   edit: '✏️',
@@ -44,6 +50,10 @@ export interface CatCardProps {
   readonly xpPop: { readonly id: string; readonly text: string } | null;
   /** Learnings waiting for the user's review. */
   readonly pendingLearnings: number;
+  /** Why the lead suggests retiring this cat, if it does. */
+  readonly retireSuggestion: string | null;
+  readonly onReviewRetire: () => void;
+  readonly onDismissRetire: () => void;
 }
 
 const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
@@ -67,10 +77,29 @@ export function CatCard(props: CatCardProps) {
           </span>
         )}
       </div>
+      {props.retireSuggestion && (
+        <div className="retire-suggestion" role="status">
+          <p>
+            The lead suggests retiring {cat.name}: {props.retireSuggestion}
+          </p>
+          <div className="drawer__actions">
+            <button
+              type="button"
+              className="button button--small button--danger"
+              onClick={props.onReviewRetire}
+            >
+              Retire…
+            </button>
+            <button type="button" className="button button--small" onClick={props.onDismissRetire}>
+              Keep
+            </button>
+          </div>
+        </div>
+      )}
       <div className="cat-card__meta">
         <h2 className="cat-card__name">
           {cat.name}
-          <span className="role-tag">{cat.role === 'orchestrator' ? 'Lead' : 'Worker'}</span>
+          <span className="role-tag">{ROLE_LABEL[cat.role]}</span>
         </h2>
         <p
           className={`status-pill status-pill--${status}`}
@@ -201,6 +230,13 @@ function Bubble({ cat, approval, lastMessage, onApprove }: CatCardProps) {
         </div>
       );
     case 'done':
+      if (cat.role === 'candidate') {
+        return (
+          <div className="bubble bubble--done" data-testid="bubble">
+            <p className="bubble__text">Finished. Waiting for the scores.</p>
+          </div>
+        );
+      }
       if (cat.role === 'worker') {
         return (
           <div className="bubble bubble--done" data-testid="bubble">

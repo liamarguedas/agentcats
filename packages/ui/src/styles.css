@@ -1672,3 +1672,221 @@ code {
   text-transform: uppercase;
   color: var(--ink-2);
 }
+
+/* Dialogs */
+
+.dialog-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 520px);
+  max-height: calc(100% - 32px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: bubble-in 160ms ease-out;
+}
+
+.dialog .drawer__body {
+  overflow: auto;
+}
+
+.hire-confirm p {
+  margin: 0 0 10px;
+}
+
+.hire-confirm__estimate {
+  font-size: 20px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.warning-box {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 50%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+  font-size: 13px;
+}
+
+.warning-box legend {
+  padding: 0 4px;
+  font-weight: 650;
+}
+
+.warning-box p,
+.warning-box ul {
+  margin: 0;
+}
+
+.warning-box code {
+  overflow-wrap: anywhere;
+}
+
+.radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+/* Interviews */
+
+.interview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--info) 35%, var(--line));
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--info) 4%, var(--surface));
+}
+
+.interview__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.interview__header .section-title {
+  margin: 0;
+}
+
+.interview__header p {
+  margin: 2px 0 0;
+}
+
+.interview__candidates {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+}
+
+.chip--interview-proposed,
+.chip--interview-deciding {
+  min-width: 0;
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+}
+
+.chip--interview-running {
+  min-width: 0;
+  background: color-mix(in srgb, var(--info) 16%, transparent);
+  color: var(--info);
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.scores {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scores th,
+.scores td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scores thead th {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ink-2);
+}
+
+.scores__part {
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.scores__total {
+  font-weight: 700;
+}
+
+.scores__row--failed {
+  color: var(--ink-2);
+}
+
+.scores__row--failed .scores__total {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.interview__failures {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.interview__failures code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Retiring */
+
+.retire-suggestion {
+  max-width: 260px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--line));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface));
+  font-size: 12px;
+}
+
+.retire-suggestion p {
+  margin: 0 0 6px;
+}
+
+.retired summary {
+  cursor: pointer;
+}
+
+.retired__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.retired__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.retired__name {
+  font-weight: 650;
+}
+
+.retired__item .button {
+  margin-left: auto;
+}
