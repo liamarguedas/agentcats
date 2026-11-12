@@ -457,3 +457,7 @@ The runs are `packages/cli/test/live-m2.test.ts`, on a small notes API the test 
 - A cat's identity on disk is its name (`.agentcats/cats/<name>/`). Retiring should move that folder; resurrecting under a different name must rename it and regenerate `profile.md` and the file header.
 - XP, level and stats are projected from the log (`xp.changed`, `cat.level_changed`, `task.updated`). `stats.json` is only a copy, so a resurrected cat needs either its events or a seeding event; do not trust `stats.json` as the source.
 - Pending proposals belong to a cat; retiring one should resolve them as `superseded`.
+
+## 2026-11-12 - M2 accepted
+
+The user read the learnings file from the second live run and accepted it: all five M2 acceptance criteria are met.
