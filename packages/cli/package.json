@@ -21,5 +21,8 @@
     "@agentcats/daemon": "workspace:*",
     "@agentcats/protocol": "workspace:*",
     "@agentcats/ui": "workspace:*"
+  },
+  "devDependencies": {
+    "@agentcats/kit": "workspace:*"
   }
 }

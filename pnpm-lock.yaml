@@ -86,6 +86,10 @@ importers:
       '@agentcats/ui':
         specifier: workspace:*
         version: link:../ui
+    devDependencies:
+      '@agentcats/kit':
+        specifier: workspace:*
+        version: link:../kit
 
   packages/daemon:
     dependencies:
