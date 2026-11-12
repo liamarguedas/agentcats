@@ -10,7 +10,7 @@ describe('applyEvent', () => {
     const board = replay();
 
     expect(BoardState.parse(board)).toEqual(board);
-    expect(board.lastSeq).toBe(20);
+    expect(board.lastSeq).toBe(29);
     expect(board.cats['cat-1']).toMatchObject({
       name: 'Mochi',
       role: 'worker',
@@ -81,6 +81,85 @@ describe('applyEvent', () => {
       update('task-2', 'rejected', 'user'),
     ].reduce(applyEvent, replay());
     expect(board.cats['cat-1']?.stats).toEqual({ completed: 2, accepted: 1, rejected: 1 });
+  });
+
+  it('retires a cat whole and brings it back as it was', () => {
+    const base = replay();
+    const before = base.cats['cat-1']!;
+    const retired = applyEvent(base, {
+      ...sampleEvents['cat.retired'],
+      seq: 30,
+      catId: 'cat-1',
+    });
+    expect(retired.cats['cat-1']).toBeUndefined();
+    expect(retired.retired['cat-1']?.retired).toMatchObject({
+      name: 'Mochi',
+      level: before.level,
+      xp: before.xp,
+      archive: 'Nori-cat9cat9',
+    });
+    const back = applyEvent(retired, {
+      ...sampleEvents['cat.resurrected'],
+      seq: 31,
+      catId: 'cat-1',
+      payload: { name: 'Mochi' },
+    });
+    expect(back.retired).toEqual({});
+    expect(back.cats['cat-1']).toMatchObject({
+      xp: before.xp,
+      level: before.level,
+      learnings: before.learnings,
+      stats: before.stats,
+      status: 'idle',
+    });
+    expect(BoardState.parse(back)).toEqual(back);
+  });
+
+  it('runs an interview: candidates are scored, then the losers leave the board', () => {
+    const candidate = (catId: string, name: string, seq: number) =>
+      ({
+        ...sampleEvents['cat.created'],
+        id: `c${String(seq)}`,
+        seq,
+        catId,
+        payload: { ...sampleEvents['cat.created'].payload, name, role: 'candidate' },
+      }) as const;
+    const scored = (catId: string, seq: number, total: number | null) =>
+      ({
+        ...sampleEvents['interview.candidate_scored'],
+        id: `s${String(seq)}`,
+        seq,
+        catId,
+        payload: {
+          ...sampleEvents['interview.candidate_scored'].payload,
+          score: total === null ? null : { total, diff: 0, cost: 0, time: 0, quality: 0 },
+        },
+      }) as const;
+    let board = [
+      sampleEvents['interview.proposed'],
+      candidate('a', 'Pixel', 101),
+      candidate('b', 'Biscuit', 102),
+      {
+        ...sampleEvents['interview.started'],
+        seq: 103,
+        payload: { interviewId: 'i1', candidateCatIds: ['a', 'b'] },
+      },
+      scored('a', 104, null),
+    ].reduce(applyEvent, emptyBoard());
+    expect(board.interviews['i1']?.status).toBe('running');
+    board = [scored('a', 105, 80), scored('b', 106, 60)].reduce(applyEvent, board);
+    expect(board.interviews['i1']?.status).toBe('deciding');
+    board = [
+      { ...sampleEvents['cat.hired'], seq: 107, catId: 'a' },
+      {
+        ...sampleEvents['interview.completed'],
+        seq: 108,
+        payload: { interviewId: 'i1', winnerCatId: 'a', outcome: 'hired' as const },
+      },
+    ].reduce<BoardState>(applyEvent, board);
+    expect(board.interviews['i1']).toMatchObject({ status: 'completed', winnerCatId: 'a' });
+    expect(Object.values(board.cats).map((c) => [c.name, c.role])).toEqual([['Pixel', 'worker']]);
+    expect(BoardState.parse(board)).toEqual(board);
   });
 
   it('tracks a pause until it is resumed', () => {

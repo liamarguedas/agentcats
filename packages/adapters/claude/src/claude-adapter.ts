@@ -76,6 +76,7 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Adapter
     id: 'claude',
     displayName: 'Claude',
     capabilities: CAPABILITIES,
+    modelTiers: { fast: 'haiku', balanced: 'sonnet', best: 'opus' },
     spawn: (spawnOptions) => spawnClaudeSession(spawnOptions, options),
     complete: (completeOptions) => completeOnce(completeOptions, options),
   };

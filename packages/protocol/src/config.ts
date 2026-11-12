@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { PermissionMode } from './common.js';
+import { ModelTier } from './hiring.js';
 
 /** File name of the project config, inside the project's `.agentcats/` directory. */
 export const CONFIG_FILE_NAME = 'agentcats.config.json';
@@ -37,6 +38,41 @@ export const AgentcatsConfig = z.strictObject({
        * and lint commands, e.g. `"npm test"`. Matched as a prefix.
        */
       allowedCommands: z.array(z.string().min(1)).default([]),
+      /**
+       * Hire a new worker automatically when a task waits and there is room.
+       * `false` leaves hiring to interviews.
+       */
+      autoHire: z.boolean().default(true),
+    })
+    .prefault({}),
+  interviews: z
+    .strictObject({
+      /** Candidates per interview, 1 to 3. */
+      candidates: z.int().min(1).max(3).default(2),
+      tier: ModelTier.default('balanced'),
+      /** API-equivalent dollars one interview may spend, enforced like `budget`. */
+      budgetUsd: z.number().positive().nullable().default(3),
+      /** How long a candidate may work before it is stopped and fails. */
+      candidateTimeoutMs: z
+        .int()
+        .positive()
+        .default(15 * 60_000),
+      /** How long the daemon lets one check, lint or typecheck command run. */
+      checkTimeoutMs: z.int().positive().default(120_000),
+      /**
+       * The check for interviews that re-run a task on the project. `null`
+       * uses the `package.json` test script.
+       */
+      projectCheck: z.string().min(1).nullable().default(null),
+      /** Weights of the score parts. Passing the check is a gate, not a weight. */
+      weights: z
+        .strictObject({
+          diff: z.number().nonnegative().default(0.4),
+          cost: z.number().nonnegative().default(0.25),
+          time: z.number().nonnegative().default(0.15),
+          quality: z.number().nonnegative().default(0.2),
+        })
+        .prefault({}),
     })
     .prefault({}),
   budget: z

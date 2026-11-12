@@ -85,6 +85,59 @@ export class Memory {
     await this.#open(this.#cat(catId));
   }
 
+  /**
+   * An interview winner joined: give it a folder, its role as persona, and
+   * the role's starting learnings.
+   */
+  async hiredFor(catId: string, persona: string, learnings: readonly string[]): Promise<void> {
+    await this.#open(this.#cat(catId));
+    await this.o.files.writeProfile(this.#cat(catId), persona);
+    if (learnings.length > 0) {
+      await this.#edit(catId, (lines) => {
+        const drafts = learnings
+          .map((text) => ({ text: cleanText(text), sourceTaskId: null }))
+          .filter((l) => l.text);
+        const kept = lines.map(({ text, sourceTaskId }) => ({ text, sourceTaskId }));
+        return { lines: [...kept, ...dedupe(drafts, lines)], reason: 'added' };
+      });
+    }
+  }
+
+  /**
+   * A cat is retiring: drop its pending suggestions and move its folder to
+   * the archive. Call before `cat.retired`, while it is still on the board.
+   */
+  async retire(catId: string, archive: string, reason: string): Promise<void> {
+    await this.#locked(catId, async () => {
+      const cat = this.#cat(catId);
+      for (const proposal of Object.values(this.o.log.board.proposals)) {
+        if (proposal.catId === catId) this.#resolved(proposal, 'superseded', 'system');
+      }
+      await this.o.files.archive(cat.name, archive, {
+        id: cat.id,
+        name: cat.name,
+        reason,
+        level: cat.level,
+        xp: cat.xp,
+        stats: cat.stats,
+        retiredAt: new Date().toISOString(),
+      });
+    });
+  }
+
+  /** Move an archived folder back under the cat's (possibly new) name. Call before `cat.resurrected`. */
+  async unarchive(archive: string, name: string): Promise<void> {
+    await this.o.files.unarchive(archive, name);
+  }
+
+  /** A resurrected cat is on the board again: rename its files to its name and watch them. */
+  async resurrected(catId: string): Promise<void> {
+    const cat = this.#cat(catId);
+    const lines = (await this.o.files.readLearnings(cat.name)) ?? cat.learnings;
+    await this.o.files.writeLearnings(cat.name, lines);
+    await this.#open(cat);
+  }
+
   async #open(cat: Cat): Promise<void> {
     await this.o.files.ensure(cat, cat.learnings);
     await this.sync(cat.id);

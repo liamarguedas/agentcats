@@ -8,6 +8,9 @@ import {
   assertTransition,
   autonomousCommands,
   type Cat,
+  type HireRole,
+  type Interview,
+  type InterviewSample,
   type LearningsVersion,
   levelForXp,
   type PauseReason,
@@ -24,6 +27,7 @@ import type { Adapter, SpawnOptions } from '@agentcats/protocol/adapter';
 
 import { CatAgent, type CatAgentHooks, type TurnOutcome } from './cat-agent.js';
 import { CatMemory } from './cat-memory.js';
+import { Interviews } from './interviews.js';
 import { ApiError } from './errors.js';
 import type { EventLog } from './event-log.js';
 import type { Logger } from './logger.js';
@@ -137,20 +141,26 @@ export class CatManager {
   readonly #prompts = { orchestrator: loadPrompt('orchestrator'), worker: loadPrompt('worker') };
   readonly #hooks: CatAgentHooks = {
     turnEnded: (agent, outcome) => {
-      this.#onTurnEnded(agent, outcome);
+      if (agent.cat.role === 'candidate') this.#interviews.turnEnded(agent, outcome);
+      else this.#onTurnEnded(agent, outcome);
     },
     sessionEnded: (agent, info) => {
-      this.#onSessionEnded(agent, info);
+      if (agent.cat.role === 'candidate') this.#interviews.sessionEnded(agent, info.expected);
+      else this.#onSessionEnded(agent, info);
     },
     activity: (agent) => {
       this.#onActivity(agent);
     },
     usage: (agent) => {
       this.#checkBudget(agent);
+      if (agent.cat.role === 'candidate') this.#interviews.usage(agent);
     },
   };
 
   readonly #memory: Memory;
+  readonly #interviews: Interviews;
+  /** Cats to retire once their current task is over, with the reason. */
+  readonly #retireAfter = new Map<string, string>();
 
   constructor(private readonly o: CatManagerOptions) {
     this.#memory = new Memory({
@@ -165,6 +175,39 @@ export class CatManager {
       },
       track: (work) => {
         this.#track(work);
+      },
+    });
+    this.#interviews = new Interviews({
+      log: o.log,
+      adapter: o.adapter,
+      config: o.config,
+      projectPath: o.projectPath,
+      worktrees: o.worktrees,
+      logger: o.logger,
+      hireCandidate: (model) => this.#hire('candidate', model),
+      agentFor: (catId) => this.#agents.get(catId) ?? null,
+      dropAgent: (catId) => {
+        this.#agents.delete(catId);
+      },
+      candidatePrompt: (cat, role) => this.#fillWorkerPrompt(cat, role.learnings, role.description),
+      candidatePolicy: () => this.#workerPolicy(1),
+      workerCount: () => this.cats().filter((c) => c.role === 'worker').length,
+      onHired: (catId, role) => this.#memory.hiredFor(catId, role.description, role.learnings),
+      // Until a session has run, billing is unknown: enforce, to be safe.
+      budgetEnforced: () => {
+        const { enforce } = this.o.config.budget;
+        const known = this.cats().filter((c) => c.billing !== 'unknown');
+        return (
+          enforce === 'always' ||
+          (enforce === 'metered' &&
+            (known.length === 0 || known.some((c) => c.billing === 'metered')))
+        );
+      },
+      track: (work) => {
+        this.#track(work);
+      },
+      notice: (level, code, message, scope) => {
+        this.#notice(level, code, message, scope);
       },
     });
   }
@@ -201,6 +244,7 @@ export class CatManager {
     }
     if (!this.#orchestratorId) this.#orchestratorId = this.#hire('orchestrator').catId;
     await this.#memory.start();
+    this.#interviews.start();
   }
 
   /**
@@ -211,6 +255,7 @@ export class CatManager {
   async close(): Promise<void> {
     this.#closed = true;
     this.#memory.close();
+    this.#interviews.close();
     for (const timer of this.#stuckTimers.values()) clearTimeout(timer);
     do {
       await Promise.all([...this.#agents.values()].map((agent) => agent.endSession()));
@@ -513,6 +558,167 @@ export class CatManager {
   }
 
   // -------------------------------------------------------------------------
+  // Retire and bring back
+  // -------------------------------------------------------------------------
+
+  /** What retiring a cat would leave: its open task and worktrees with uncommitted work. */
+  async retireCheck(catId: string): Promise<{ openTask: Task | null; uncommittedWork: string[] }> {
+    this.#worker(catId);
+    const open = ['queued', 'running', 'blocked'];
+    const openTask =
+      this.tasks().find((t) => t.assigneeCatId === catId && open.includes(t.status)) ?? null;
+    const uncommittedWork: string[] = [];
+    for (const task of this.tasks()) {
+      if (task.assigneeCatId !== catId || !task.worktreePath) continue;
+      if (['done', 'rejected', 'cancelled'].includes(task.status)) continue;
+      if (await this.o.worktrees.isDirty(task.worktreePath).catch(() => false)) {
+        uncommittedWork.push(task.worktreePath);
+      }
+    }
+    return { openTask, uncommittedWork };
+  }
+
+  /**
+   * Retire a worker. With an open task the user chose to cancel it now, or
+   * to retire the cat once the task is over (it gets no new tasks meanwhile).
+   *
+   * @returns whether the cat is retired now.
+   */
+  async retireCat(
+    catId: string,
+    reason: string,
+    openTask: 'cancel' | 'after_task',
+  ): Promise<boolean> {
+    this.#worker(catId);
+    const { openTask: task } = await this.retireCheck(catId);
+    if (task && openTask === 'after_task') {
+      this.#retireAfter.set(catId, reason);
+      this.#notice(
+        'info',
+        'retire_scheduled',
+        `${this.#agent(catId).cat.name} retires after "${task.title}"`,
+        { catId },
+      );
+      return false;
+    }
+    if (task) await this.cancelTask(task.id, 'user');
+    await this.#retireNow(catId, reason);
+    return true;
+  }
+
+  /** The lead suggests retiring a cat; the user confirms it on the board. */
+  proposeRetire(catId: string, reason: string): void {
+    this.#worker(catId);
+    this.o.log.append({
+      type: 'cat.retire_proposed',
+      catId,
+      payload: { reason: reason.slice(0, 500) },
+    });
+  }
+
+  dismissRetire(catId: string): void {
+    if (!this.o.log.board.retireProposals[catId]) {
+      throw new ApiError('not_found', 'No retirement was proposed for that cat');
+    }
+    this.o.log.append({ type: 'cat.retire_dismissed', catId, payload: {} });
+  }
+
+  async #retireNow(catId: string, reason: string): Promise<void> {
+    const agent = this.#agent(catId);
+    const cat = agent.cat;
+    this.#quiet.add(catId);
+    try {
+      await agent.endSession();
+    } finally {
+      this.#quiet.delete(catId);
+    }
+    this.#clearStuck(catId);
+    const archive = `${cat.name}-${cat.id.slice(0, 8)}`;
+    await this.#memory.retire(catId, archive, reason);
+    this.o.log.append({
+      type: 'cat.retired',
+      catId,
+      payload: { reason: reason.slice(0, 500), archive },
+    });
+    this.#agents.delete(catId);
+    this.#warned.delete(catId);
+    this.#notifyOrchestrator(`${cat.name} was retired by the user: ${reason}`);
+    this.#schedule();
+  }
+
+  /**
+   * Bring a retired cat back with its learnings, XP and level, under its old
+   * name unless another cat has it now.
+   *
+   * @throws ApiError `conflict` if the team is full.
+   */
+  async resurrectCat(catId: string): Promise<Cat> {
+    const entry = this.o.log.board.retired[catId];
+    if (!entry) throw new ApiError('not_found', `No retired cat ${catId}`);
+    const workers = this.cats().filter((c) => c.role === 'worker').length;
+    if (workers >= this.o.config.workers.max) {
+      throw new ApiError(
+        'conflict',
+        `The team is full (${String(this.o.config.workers.max)} workers). Retire a cat first, or raise workers.max.`,
+      );
+    }
+    const taken = new Set(this.cats().map((c) => c.name));
+    const name = taken.has(entry.cat.name)
+      ? (WORKER_NAMES.find((n) => !taken.has(n)) ?? `${entry.cat.name} ${String(taken.size + 1)}`)
+      : entry.cat.name;
+    await this.#memory.unarchive(entry.retired.archive, name);
+    this.o.log.append({ type: 'cat.resurrected', catId, payload: { name } });
+    this.#agents.set(catId, this.#newAgent(catId));
+    await this.#memory.resurrected(catId);
+    this.#notifyOrchestrator(`${name} is back on the team.`);
+    this.#schedule();
+    return this.#agent(catId).cat;
+  }
+
+  #worker(catId: string): Cat {
+    const cat = this.#agent(catId).cat;
+    if (cat.role !== 'worker') throw new ApiError('bad_request', `${cat.name} is not a worker`);
+    return cat;
+  }
+
+  // -------------------------------------------------------------------------
+  // Interviews
+  // -------------------------------------------------------------------------
+
+  async interviewSamples(): Promise<InterviewSample[]> {
+    return (await this.#interviews.samples()).map(({ id, title, repo, source }) => ({
+      id,
+      title,
+      repo,
+      source,
+    }));
+  }
+
+  proposeInterview(
+    role: HireRole,
+    sampleId: string,
+    candidates: number | undefined,
+    by: 'user' | 'orchestrator',
+  ): Promise<Interview> {
+    return this.#interviews.propose(role, sampleId, candidates, by);
+  }
+
+  startInterview(interviewId: string): Promise<Interview> {
+    return this.#interviews.begin(interviewId);
+  }
+
+  cancelInterview(interviewId: string): Promise<Interview> {
+    return this.#interviews.cancel(interviewId);
+  }
+
+  async pickCandidate(interviewId: string, catId: string): Promise<Interview> {
+    const interview = await this.#interviews.pick(interviewId, catId);
+    this.#notifyOrchestrator(`${this.#agent(catId).cat.name} was hired after an interview.`);
+    this.#schedule();
+    return interview;
+  }
+
+  // -------------------------------------------------------------------------
   // Learnings
   // -------------------------------------------------------------------------
 
@@ -550,6 +756,13 @@ export class CatManager {
 
   #schedule(): void {
     if (this.#closed) return;
+    for (const [catId, reason] of this.#retireAfter) {
+      const agent = this.#agents.get(catId);
+      if (agent && !agent.busy && this.activeTaskOf(catId) === null && !this.#startingFor(catId)) {
+        this.#retireAfter.delete(catId);
+        this.#track(this.#retireNow(catId, reason));
+      }
+    }
     for (const task of this.tasks()) {
       if (task.status !== 'queued' || this.#starting.has(task.id)) continue;
       const worker = this.#pickWorker(task);
@@ -566,8 +779,13 @@ export class CatManager {
       !agent.busy &&
       !agent.hasSession &&
       this.activeTaskOf(agent.catId) === null &&
-      ![...this.#starting].some((id) => this.o.log.board.tasks[id]?.assigneeCatId === agent.catId)
+      !this.#retireAfter.has(agent.catId) &&
+      !this.#startingFor(agent.catId)
     );
+  }
+
+  #startingFor(catId: string): boolean {
+    return [...this.#starting].some((id) => this.o.log.board.tasks[id]?.assigneeCatId === catId);
   }
 
   #pickWorker(task: Task): CatAgent | null {
@@ -578,7 +796,9 @@ export class CatManager {
     const workers = [...this.#agents.values()].filter((a) => a.cat.role === 'worker');
     const free = workers.find((a) => this.#isFree(a));
     if (free) return free;
-    return workers.length < this.o.config.workers.max ? this.#hire('worker') : null;
+    return this.o.config.workers.autoHire && workers.length < this.o.config.workers.max
+      ? this.#hire('worker')
+      : null;
   }
 
   async #startTask(taskId: string, worker: CatAgent): Promise<void> {
@@ -606,7 +826,7 @@ export class CatManager {
         systemPrompt: await this.#workerPrompt(cat, task),
         permissionMode: cat.permissionMode,
         attribution: this.o.config.attribution,
-        policy: await this.#workerPolicy(cat),
+        policy: await this.#workerPolicy(cat.level),
       };
       const resumeId = this.o.adapter.capabilities.resume ? this.o.store.resumeIdFor(taskId) : null;
       try {
@@ -1057,7 +1277,7 @@ export class CatManager {
     );
   }
 
-  #hire(role: 'orchestrator' | 'worker'): CatAgent {
+  #hire(role: Cat['role'], model?: string | null): CatAgent {
     const { config } = this.o;
     const taken = new Set(this.cats().map((c) => c.name));
     const name =
@@ -1072,7 +1292,12 @@ export class CatManager {
         name,
         role,
         adapter: this.o.adapter.id,
-        model: role === 'orchestrator' ? config.orchestrator.model : config.workers.model,
+        model:
+          model !== undefined
+            ? model
+            : role === 'orchestrator'
+              ? config.orchestrator.model
+              : config.workers.model,
         permissionMode: role === 'orchestrator' ? 'ask' : config.workers.permissionMode,
         budget: { maxUsd: config.budget.perCatUsd, maxTokens: config.budget.perCatTokens },
       },
@@ -1086,9 +1311,20 @@ export class CatManager {
   /** The worker prompt for one task: its learnings (as many as its level loads) and persona. */
   async #workerPrompt(cat: Cat, task: Task): Promise<string> {
     const { learnings, persona } = await this.#memory.forPrompt(cat.id, task);
+    return this.#fillWorkerPrompt(cat, learnings, persona);
+  }
+
+  /** The worker prompt template, filled in. `learnings` as lines, or already formatted. */
+  #fillWorkerPrompt(cat: Cat, learnings: string | readonly string[], persona: string): string {
+    const text =
+      typeof learnings === 'string'
+        ? learnings
+        : learnings.length > 0
+          ? learnings.map((l) => `- ${l}`).join('\n')
+          : 'Nothing yet: this is one of your first tasks here.';
     return this.#prompts.worker
       .replaceAll('{{name}}', cat.name)
-      .replace('{{learnings}}', learnings)
+      .replace('{{learnings}}', text)
       .replace('{{persona}}', persona ? `\n## Your persona\n\n${persona}\n` : '');
   }
 
@@ -1096,17 +1332,17 @@ export class CatManager {
    * What a worker may do without asking: commit, the configured commands,
    * and what its level unlocks (`levels.ts` in the protocol).
    */
-  async #workerPolicy(cat: Cat): Promise<NonNullable<SpawnOptions['policy']>> {
+  async #workerPolicy(level: number): Promise<NonNullable<SpawnOptions['policy']>> {
     const project = await readProjectCommands(this.o.projectPath);
     return {
       access: 'workspace',
       allowedCommands: [
         ...WORKER_GIT_COMMANDS,
         ...this.o.config.workers.allowedCommands,
-        ...autonomousCommands(cat.level, project),
+        ...autonomousCommands(level, project),
       ],
       protectedPaths: [this.o.projectPath],
-      readablePaths: readablePathsFor(cat.level, this.o.projectPath),
+      readablePaths: readablePathsFor(level, this.o.projectPath),
     };
   }
 

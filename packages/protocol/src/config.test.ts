@@ -7,7 +7,22 @@ describe('AgentcatsConfig', () => {
     expect(AgentcatsConfig.parse({})).toEqual({
       adapter: 'claude',
       orchestrator: { model: null },
-      workers: { max: 3, model: 'sonnet', permissionMode: 'accept_edits', allowedCommands: [] },
+      workers: {
+        max: 3,
+        model: 'sonnet',
+        permissionMode: 'accept_edits',
+        allowedCommands: [],
+        autoHire: true,
+      },
+      interviews: {
+        candidates: 2,
+        tier: 'balanced',
+        budgetUsd: 3,
+        candidateTimeoutMs: 900_000,
+        checkTimeoutMs: 120_000,
+        projectCheck: null,
+        weights: { diff: 0.4, cost: 0.25, time: 0.15, quality: 0.2 },
+      },
       budget: { perCatUsd: 2, globalUsd: 10, perCatTokens: null, enforce: 'metered' },
       xp: { accepted: 10, testsFirstTry: 5, underCost: 3, rejectedPenalty: 10 },
       memory: { debrief: true, model: 'haiku', cap: 30, autoAcceptAfter: null },

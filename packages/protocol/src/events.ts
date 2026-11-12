@@ -22,6 +22,7 @@ import {
   XpReason,
 } from './common.js';
 import { Learning, LearningDraft, TaskResult } from './entities.js';
+import { CandidateResult, CandidateScore, HireRole, InterviewSample } from './hiring.js';
 import { TransitionActor } from './task-machine.js';
 
 /**
@@ -247,6 +248,93 @@ export const LearningsProposalResolvedEvent = z.strictObject({
   }),
 });
 
+/** The lead suggests retiring a cat. Nothing happens until the user confirms. */
+export const CatRetireProposedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.retire_proposed'),
+  payload: z.strictObject({ reason: ShortText }),
+});
+
+export const CatRetireDismissedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.retire_dismissed'),
+  payload: z.strictObject({}),
+});
+
+/** The cat left the board; its folder moved to `.agentcats/retired/<archive>`. */
+export const CatRetiredEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.retired'),
+  payload: z.strictObject({
+    reason: ShortText,
+    archive: z.string().min(1).max(200),
+  }),
+});
+
+/** A retired cat is back, with its learnings, XP and level; `name` may differ if its old one was taken. */
+export const CatResurrectedEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.resurrected'),
+  payload: z.strictObject({ name: z.string().min(1).max(64) }),
+});
+
+/** A candidate won its interview and is now a worker. */
+export const CatHiredEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('cat.hired'),
+  payload: z.strictObject({ interviewId: Id }),
+});
+
+/** An interview waiting for the user to confirm its estimate. */
+export const InterviewProposedEvent = z.strictObject({
+  ...envelope,
+  type: z.literal('interview.proposed'),
+  payload: z.strictObject({
+    interviewId: Id,
+    role: HireRole,
+    sample: InterviewSample,
+    candidateCount: z.int().min(1).max(3),
+    estimateUsd: z.number().nonnegative(),
+    proposedBy: z.enum(['user', 'orchestrator']),
+  }),
+});
+
+/** The user confirmed; the candidates (already created as cats) start. */
+export const InterviewStartedEvent = z.strictObject({
+  ...envelope,
+  type: z.literal('interview.started'),
+  payload: z.strictObject({
+    interviewId: Id,
+    candidateCatIds: z.array(Id).min(1).max(3),
+  }),
+});
+
+/**
+ * A candidate's measured result. `score` is `null` until every candidate is
+ * done, because parts of it are relative to the others; then each candidate
+ * is scored again with its final score.
+ */
+export const InterviewCandidateScoredEvent = z.strictObject({
+  ...catScoped,
+  type: z.literal('interview.candidate_scored'),
+  payload: z.strictObject({
+    interviewId: Id,
+    result: CandidateResult,
+    score: CandidateScore.nullable(),
+  }),
+});
+
+/** The interview is over: a winner was hired, or it was cancelled. Losing candidates leave the board. */
+export const InterviewCompletedEvent = z.strictObject({
+  ...envelope,
+  type: z.literal('interview.completed'),
+  payload: z.strictObject({
+    interviewId: Id,
+    winnerCatId: Id.nullable(),
+    outcome: z.enum(['hired', 'cancelled']),
+  }),
+});
+
 export const DaemonErrorEvent = z.strictObject({
   ...envelope,
   type: z.literal('daemon.error'),
@@ -290,6 +378,15 @@ export const AgentcatsEvent = z.discriminatedUnion('type', [
   LearningsChangedEvent,
   LearningsProposedEvent,
   LearningsProposalResolvedEvent,
+  CatRetireProposedEvent,
+  CatRetireDismissedEvent,
+  CatRetiredEvent,
+  CatResurrectedEvent,
+  CatHiredEvent,
+  InterviewProposedEvent,
+  InterviewStartedEvent,
+  InterviewCandidateScoredEvent,
+  InterviewCompletedEvent,
   NoticeEvent,
   DaemonErrorEvent,
 ]);

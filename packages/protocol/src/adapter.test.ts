@@ -149,6 +149,7 @@ describe('Adapter interface', () => {
         interrupt: true,
         permissionModes: ['ask'],
       },
+      modelTiers: { fast: null, balanced: null, best: null },
       complete: () =>
         Promise.resolve({
           text: 'none',

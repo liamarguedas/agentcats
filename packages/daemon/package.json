@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "prompts"
+    "prompts",
+    "interviews"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

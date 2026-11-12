@@ -48,6 +48,11 @@ export interface MockAdapterOptions {
    */
   readonly scenario?: string | Scenario;
   /**
+   * Pick a scenario per session, for example a different one per interview
+   * candidate. `undefined` falls back to {@link scenario}.
+   */
+  readonly scenarioFor?: (options: SpawnOptions) => string | Scenario | undefined;
+  /**
    * Multiplier for every delay. `1` gives realistic pacing for UI work, `0`
    * runs as fast as possible for tests. Default `1`.
    */
@@ -102,10 +107,13 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
     id: 'mock',
     displayName: 'Mock',
     capabilities: CAPABILITIES,
+    modelTiers: { fast: 'mock-fast', balanced: 'mock-balanced', best: 'mock-best' },
     async spawn(spawnOptions) {
       const isOrchestrator = spawnOptions.mcpServers?.['agentcats'] !== undefined;
       const scenario = resolveScenario(
-        isOrchestrator ? 'orchestrator' : (options.scenario ?? 'happy-path'),
+        isOrchestrator
+          ? 'orchestrator'
+          : (options.scenarioFor?.(spawnOptions) ?? options.scenario ?? 'happy-path'),
       );
       const child = options.spawnProcess ? await startStandInProcess(spawnOptions.cwd) : null;
       return new MockSession(

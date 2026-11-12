@@ -52,6 +52,26 @@ function describe(event: AgentcatsEvent): string {
       return `${event.payload.kind === 'add' ? 'suggests' : 'suggests a rewrite with'} ${String(event.payload.lines.length)} learning${event.payload.lines.length === 1 ? '' : 's'} (${event.payload.trigger.replace('_', ' ')})`;
     case 'learnings.proposal_resolved':
       return `suggestion ${event.payload.decision}${event.payload.resolvedBy === 'auto' ? ' automatically' : ''}`;
+    case 'cat.retire_proposed':
+      return `lead suggests retiring: ${event.payload.reason}`;
+    case 'cat.retire_dismissed':
+      return 'retirement dismissed';
+    case 'cat.retired':
+      return `retired: ${event.payload.reason}`;
+    case 'cat.resurrected':
+      return `back on the team as ${event.payload.name}`;
+    case 'cat.hired':
+      return 'hired after an interview';
+    case 'interview.proposed':
+      return `interview proposed by ${event.payload.proposedBy === 'user' ? 'you' : 'the lead'}: ${String(event.payload.candidateCount)} candidates, ≈ $${event.payload.estimateUsd.toFixed(2)}`;
+    case 'interview.started':
+      return `interview started with ${String(event.payload.candidateCatIds.length)} candidates`;
+    case 'interview.candidate_scored':
+      return event.payload.score === null
+        ? `finished: ${event.payload.result.passed ? 'check passed' : (event.payload.result.failure ?? 'check failed')}`
+        : `scored ${event.payload.score.total === null ? 'not hireable' : String(event.payload.score.total)}`;
+    case 'interview.completed':
+      return event.payload.outcome === 'hired' ? 'interview over: hired' : 'interview cancelled';
     case 'learnings.changed':
       return `learnings ${event.payload.reason}: ${String(event.payload.learnings.length)} line${event.payload.learnings.length === 1 ? '' : 's'}`;
   }

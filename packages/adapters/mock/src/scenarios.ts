@@ -240,6 +240,32 @@ const crash: Scenario = {
   },
 };
 
+/**
+ * Interview candidates for the test sample, whose check passes when
+ * `answer.txt` holds 42. `interview-pass` solves it in one line,
+ * `interview-verbose` solves it with a lot of extra code, and
+ * `interview-fail` gets it wrong.
+ */
+const interviewAnswer = (name: string, answer: string, extraLines: number): Scenario => ({
+  name,
+  description: `Interview candidate: answers ${answer}${extraLines ? ` with ${String(extraLines)} extra lines` : ''}.`,
+  async turn(ctx) {
+    await ctx.say('Reading the task, then writing the answer.', 'thought');
+    await ctx.writeFile('answer.txt', `${answer}\n`);
+    if (extraLines > 0) {
+      const body = Array.from({ length: extraLines }, (_, i) => `// helper line ${String(i)}`);
+      await ctx.writeFile('src/extra.js', `${body.join('\n')}\n`);
+    }
+    ctx.addUsage(1_000 + extraLines * 50, 200 + extraLines * 20);
+    await ctx.commit('answer the interview task');
+    await ctx.say(workerSummary('answer.txt', 'passed', ctx.prompt));
+    return 'end_turn';
+  },
+});
+const interviewPass = interviewAnswer('interview-pass', '42', 0);
+const interviewVerbose = interviewAnswer('interview-verbose', '42', 40);
+const interviewFail = interviewAnswer('interview-fail', '41', 0);
+
 const flaky: Scenario = {
   name: 'flaky',
   description: 'Crashes on the first attempt, succeeds when told it is a retry.',
@@ -318,9 +344,29 @@ const orchestrator: Scenario = {
       return 'end_turn';
     }
 
+    const request = ctx.prompt.trim();
+    // `/retire <cat> <reason>` and `/hire <role>` exercise the lead's lifecycle tools.
+    const retire = /^\/retire (\S+) (.+)$/m.exec(request);
+    if (retire) {
+      await ctx.callTool('retire_cat', { cat: retire[1], reason: retire[2] });
+      ctx.addUsage(300, 40);
+      await ctx.say(`I suggested retiring ${retire[1] ?? ''}. Please confirm it on the board.`);
+      return 'end_turn';
+    }
+    const hire = /^\/hire (.+)$/m.exec(request);
+    if (hire) {
+      const { estimate_usd } = (await ctx.callTool('propose_hire', { role: hire[1] })) as {
+        estimate_usd: number;
+      };
+      ctx.addUsage(300, 40);
+      await ctx.say(
+        `I proposed an interview (about $${estimate_usd.toFixed(2)}). Start it on the board if that is fine.`,
+      );
+      return 'end_turn';
+    }
+
     await ctx.say('Let me split this into independent pieces of work.', 'thought');
     await ctx.callTool('list_cats', {});
-    const request = ctx.prompt.trim();
     const headline = request.split('\n', 1)[0] ?? request;
     const titles = /^\/single\b/m.test(request)
       ? [headline]
@@ -344,6 +390,9 @@ const orchestrator: Scenario = {
 export const SCENARIOS: Readonly<Record<string, Scenario>> = Object.fromEntries(
   [
     happyPath,
+    interviewPass,
+    interviewVerbose,
+    interviewFail,
     routine,
     approval,
     network,

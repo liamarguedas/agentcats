@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { Id, Usage } from './common.js';
 import { Cat, LearningProposal, PendingApproval, Task } from './entities.js';
+import { Interview, RetiredEntry, RetireProposal } from './hiring.js';
 import type { AgentcatsEvent } from './events.js';
 
 /**
@@ -18,11 +19,26 @@ export const BoardState = z.strictObject({
   usage: z.record(Id, Usage),
   /** Learnings waiting for the user's accept or discard. */
   proposals: z.record(Id, LearningProposal),
+  interviews: z.record(Id, Interview),
+  /** Retired cats by id, whole, so they can come back. */
+  retired: z.record(Id, RetiredEntry),
+  /** Retirements the lead suggested, by cat id. */
+  retireProposals: z.record(Id, RetireProposal),
 });
 export type BoardState = z.infer<typeof BoardState>;
 
 export function emptyBoard(): BoardState {
-  return { lastSeq: 0, cats: {}, tasks: {}, pendingApprovals: {}, usage: {}, proposals: {} };
+  return {
+    lastSeq: 0,
+    cats: {},
+    tasks: {},
+    pendingApprovals: {},
+    usage: {},
+    proposals: {},
+    interviews: {},
+    retired: {},
+    retireProposals: {},
+  };
 }
 
 /**
@@ -155,6 +171,137 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
           createdAt: event.ts,
         },
       };
+      return next;
+    }
+
+    case 'cat.retire_proposed':
+      if (!state.cats[event.catId]) return next;
+      next.retireProposals = {
+        ...state.retireProposals,
+        [event.catId]: { catId: event.catId, reason: event.payload.reason, proposedAt: event.ts },
+      };
+      return next;
+
+    case 'cat.retire_dismissed': {
+      const { [event.catId]: _dismissed, ...rest } = state.retireProposals;
+      next.retireProposals = rest;
+      return next;
+    }
+
+    case 'cat.retired': {
+      const cat = state.cats[event.catId];
+      if (!cat) return next;
+      const { [event.catId]: _gone, ...cats } = state.cats;
+      const { [event.catId]: _proposal, ...retireProposals } = state.retireProposals;
+      next.cats = cats;
+      next.retireProposals = retireProposals;
+      next.retired = {
+        ...state.retired,
+        [event.catId]: {
+          cat: { ...cat, status: 'idle', statusReason: null, pausedReason: null },
+          retired: {
+            catId: cat.id,
+            name: cat.name,
+            reason: event.payload.reason,
+            level: cat.level,
+            xp: cat.xp,
+            archive: event.payload.archive,
+            retiredAt: event.ts,
+          },
+        },
+      };
+      return next;
+    }
+
+    case 'cat.resurrected': {
+      const entry = state.retired[event.catId];
+      if (!entry) return next;
+      const { [event.catId]: _back, ...retired } = state.retired;
+      next.retired = retired;
+      next.cats = { ...state.cats, [event.catId]: { ...entry.cat, name: event.payload.name } };
+      return next;
+    }
+
+    case 'cat.hired': {
+      const cat = state.cats[event.catId];
+      if (!cat) return next;
+      next.cats = { ...state.cats, [event.catId]: { ...cat, role: 'worker' } };
+      return next;
+    }
+
+    case 'interview.proposed': {
+      const { interviewId, ...rest } = event.payload;
+      next.interviews = {
+        ...state.interviews,
+        [interviewId]: {
+          id: interviewId,
+          ...rest,
+          status: 'proposed',
+          candidates: [],
+          winnerCatId: null,
+          createdAt: event.ts,
+        },
+      };
+      return next;
+    }
+
+    case 'interview.started': {
+      const interview = state.interviews[event.payload.interviewId];
+      if (!interview) return next;
+      next.interviews = {
+        ...state.interviews,
+        [interview.id]: {
+          ...interview,
+          status: 'running',
+          candidates: event.payload.candidateCatIds.map((catId) => ({
+            catId,
+            result: null,
+            score: null,
+          })),
+        },
+      };
+      return next;
+    }
+
+    case 'interview.candidate_scored': {
+      const interview = state.interviews[event.payload.interviewId];
+      if (!interview) return next;
+      const candidates = interview.candidates.map((c) =>
+        c.catId === event.catId
+          ? { ...c, result: event.payload.result, score: event.payload.score }
+          : c,
+      );
+      const decided = interview.status === 'running' && candidates.every((c) => c.score !== null);
+      next.interviews = {
+        ...state.interviews,
+        [interview.id]: {
+          ...interview,
+          candidates,
+          status: decided ? 'deciding' : interview.status,
+        },
+      };
+      return next;
+    }
+
+    case 'interview.completed': {
+      const interview = state.interviews[event.payload.interviewId];
+      if (!interview) return next;
+      next.interviews = {
+        ...state.interviews,
+        [interview.id]: {
+          ...interview,
+          status: event.payload.outcome === 'hired' ? 'completed' : 'cancelled',
+          winnerCatId: event.payload.winnerCatId,
+        },
+      };
+      const losers = new Set(
+        interview.candidates.map((c) => c.catId).filter((id) => id !== event.payload.winnerCatId),
+      );
+      next.cats = Object.fromEntries(
+        Object.entries(state.cats).filter(
+          ([id, cat]) => !(losers.has(id) && cat.role === 'candidate'),
+        ),
+      );
       return next;
     }
 

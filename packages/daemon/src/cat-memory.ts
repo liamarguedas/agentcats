@@ -1,10 +1,10 @@
 import { type FSWatcher, watch } from 'node:fs';
-import { copyFile, mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { Cat, Learning, LearningDraft, LearningsVersion } from '@agentcats/protocol';
 
-import { writeFileAtomic } from './fs-util.js';
+import { renameWithRetry, writeFileAtomic } from './fs-util.js';
 import { parseLearningsFile, serializeLearningsFile, withIds } from './learnings.js';
 
 /**
@@ -159,10 +159,13 @@ export class CatMemory {
     return personaOf(text);
   }
 
-  /** Regenerate `profile.md`, keeping the persona the user wrote. */
-  async writeProfile(cat: Cat): Promise<void> {
+  /**
+   * Regenerate `profile.md`, keeping the persona the user wrote, or setting
+   * `persona` when given (a hire's role).
+   */
+  async writeProfile(cat: Cat, newPersona?: string): Promise<void> {
     const file = join(this.dir(cat.name), 'profile.md');
-    const persona = personaOf(await readFile(file, 'utf8').catch(() => ''));
+    const persona = newPersona ?? personaOf(await readFile(file, 'utf8').catch(() => ''));
     const content = [
       `# ${cat.name}`,
       '',
@@ -206,6 +209,41 @@ export class CatMemory {
     } catch {
       // Watching is a convenience; reads before use keep the board right.
     }
+  }
+
+  /**
+   * Move a cat's folder to `.agentcats/retired/<archive>/` with a
+   * `retired.json`. Stops watching it first: on Windows a watched folder
+   * cannot be moved.
+   */
+  async archive(name: string, archive: string, info: Record<string, unknown>): Promise<void> {
+    this.unwatch(name);
+    const target = join(this.runtimeDir, 'retired', archive);
+    await mkdir(join(this.runtimeDir, 'retired'), { recursive: true });
+    await rm(target, { recursive: true, force: true });
+    if (await exists(this.dir(name))) await renameWithRetry(this.dir(name), target);
+    else await mkdir(target, { recursive: true });
+    await writeFile(join(target, 'retired.json'), `${JSON.stringify(info, null, 2)}\n`);
+  }
+
+  /** Move an archived folder back to `.agentcats/cats/<name>/`. */
+  async unarchive(archive: string, name: string): Promise<void> {
+    const source = join(this.runtimeDir, 'retired', archive);
+    await mkdir(join(this.runtimeDir, 'cats'), { recursive: true });
+    if (await exists(this.dir(name))) {
+      throw new Error(`.agentcats/cats/${name} already exists`);
+    }
+    if (await exists(source)) {
+      await rm(join(source, 'retired.json'), { force: true });
+      await renameWithRetry(source, this.dir(name));
+    }
+  }
+
+  unwatch(name: string): void {
+    this.#watchers.get(name)?.close();
+    this.#watchers.delete(name);
+    clearTimeout(this.#timers.get(name));
+    this.#timers.delete(name);
   }
 
   close(): void {

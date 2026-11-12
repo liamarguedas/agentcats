@@ -135,6 +135,60 @@ function buildServer(manager: CatManager): McpServer {
       }),
   );
 
+  server.registerTool(
+    'retire_cat',
+    {
+      description:
+        'Suggest retiring a worker cat, for example one whose work keeps getting rejected. The user confirms or dismisses it on the board; nothing happens before that.',
+      inputSchema: { cat: z.string().describe('The cat name or id'), reason: z.string().min(1) },
+    },
+    ({ cat, reason }) =>
+      guard(() => {
+        const found = manager
+          .cats()
+          .find((c) => c.id === cat || c.name.toLowerCase() === cat.toLowerCase());
+        if (!found) throw new ApiError('not_found', `No cat named ${cat}`);
+        manager.proposeRetire(found.id, reason);
+        return { proposed: true, cat: found.name, note: 'The user will confirm or dismiss this.' };
+      }),
+  );
+
+  server.registerTool(
+    'list_interview_samples',
+    { description: 'List the sample tasks a hiring interview can use.' },
+    () => guard(() => manager.interviewSamples()),
+  );
+
+  server.registerTool(
+    'propose_hire',
+    {
+      description:
+        'Suggest hiring a new worker through an interview: candidates do the same sample task and are scored. The user sees the cost estimate and starts it; nothing runs before that.',
+      inputSchema: {
+        role: z.string().min(1).describe('What the new cat is for, in a sentence or two'),
+        tier: z.enum(['fast', 'balanced', 'best']).optional(),
+        sample: z.string().optional().describe('A sample id from list_interview_samples'),
+        candidates: z.number().int().min(1).max(3).optional(),
+      },
+    },
+    ({ role, tier, sample, candidates }) =>
+      guard(async () => {
+        const sampleId = sample ?? (await manager.interviewSamples())[0]?.id;
+        if (!sampleId) throw new ApiError('not_found', 'There are no interview samples');
+        const interview = await manager.proposeInterview(
+          { description: role, tier: tier ?? 'balanced', learnings: [] },
+          sampleId,
+          candidates,
+          'orchestrator',
+        );
+        return {
+          interview_id: interview.id,
+          estimate_usd: interview.estimateUsd,
+          note: 'The user will see the estimate and start or cancel the interview.',
+        };
+      }),
+  );
+
   return server;
 }
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ApprovalDecision, Budget, Id, LearningText, PermissionMode, Timestamp } from './common.js';
 import { Cat, LearningDraft, Task } from './entities.js';
+import { HireRole, Interview, InterviewSample } from './hiring.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
 import { API_PREFIX } from './transport.js';
@@ -93,6 +94,45 @@ export type LearningsHistoryResponse = z.infer<typeof LearningsHistoryResponse>;
 
 export const RestoreLearningsRequest = z.strictObject({ versionId: z.string().min(1).max(200) });
 export type RestoreLearningsRequest = z.infer<typeof RestoreLearningsRequest>;
+
+/** Retire a cat. With an open task the user chooses to cancel it now or retire after it. */
+export const RetireCatRequest = z.strictObject({
+  reason: z.string().trim().min(1).max(500),
+  openTask: z.enum(['cancel', 'after_task']).default('cancel'),
+});
+export type RetireCatRequest = z.input<typeof RetireCatRequest>;
+
+export const RetireCatResponse = z.strictObject({
+  /** `false` when the cat retires later, after its task. */
+  retired: z.boolean(),
+});
+export type RetireCatResponse = z.infer<typeof RetireCatResponse>;
+
+/** What retiring a cat would leave behind, for the confirmation dialog. */
+export const RetireCheckResponse = z.strictObject({
+  /** The task it is working on, if any. */
+  openTask: Task.nullable(),
+  /** Worktrees of its tasks that have uncommitted changes; they are kept, not deleted. */
+  uncommittedWork: z.array(z.string()),
+});
+export type RetireCheckResponse = z.infer<typeof RetireCheckResponse>;
+
+export const InterviewSamplesResponse = z.strictObject({ samples: z.array(InterviewSample) });
+export type InterviewSamplesResponse = z.infer<typeof InterviewSamplesResponse>;
+
+/** Plan an interview. It waits as `proposed`, with its estimate, until the user starts it. */
+export const ProposeInterviewRequest = z.strictObject({
+  role: HireRole,
+  sampleId: z.string().min(1).max(200),
+  candidates: z.int().min(1).max(3).optional(),
+});
+export type ProposeInterviewRequest = z.input<typeof ProposeInterviewRequest>;
+
+export const InterviewResponse = z.strictObject({ interview: Interview });
+export type InterviewResponse = z.infer<typeof InterviewResponse>;
+
+export const PickCandidateRequest = z.strictObject({ catId: Id });
+export type PickCandidateRequest = z.infer<typeof PickCandidateRequest>;
 
 /** Every stored event about one task, oldest first, for the task drawer. */
 export const TaskEventsResponse = z.strictObject({ events: z.array(AgentcatsEvent) });
@@ -264,6 +304,69 @@ export const routes = {
     path: `${API_PREFIX}/proposals/:proposalId`,
     body: ResolveProposalRequest,
     response: CatResponse,
+    successStatus: 200,
+  },
+  retireCheck: {
+    method: 'GET',
+    path: `${API_PREFIX}/cats/:catId/retire-check`,
+    body: null,
+    response: RetireCheckResponse,
+    successStatus: 200,
+  },
+  retireCat: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/retire`,
+    body: RetireCatRequest,
+    response: RetireCatResponse,
+    successStatus: 200,
+  },
+  dismissRetire: {
+    method: 'POST',
+    path: `${API_PREFIX}/cats/:catId/retire/dismiss`,
+    body: null,
+    response: AcceptedResponse,
+    successStatus: 202,
+  },
+  resurrectCat: {
+    method: 'POST',
+    path: `${API_PREFIX}/retired/:catId/resurrect`,
+    body: null,
+    response: CatResponse,
+    successStatus: 200,
+  },
+  interviewSamples: {
+    method: 'GET',
+    path: `${API_PREFIX}/interviews/samples`,
+    body: null,
+    response: InterviewSamplesResponse,
+    successStatus: 200,
+  },
+  proposeInterview: {
+    method: 'POST',
+    path: `${API_PREFIX}/interviews`,
+    body: ProposeInterviewRequest,
+    response: InterviewResponse,
+    successStatus: 201,
+  },
+  startInterview: {
+    method: 'POST',
+    path: `${API_PREFIX}/interviews/:interviewId/start`,
+    body: null,
+    response: InterviewResponse,
+    successStatus: 200,
+  },
+  cancelInterview: {
+    method: 'POST',
+    path: `${API_PREFIX}/interviews/:interviewId/cancel`,
+    body: null,
+    response: InterviewResponse,
+    successStatus: 200,
+  },
+  pickCandidate: {
+    method: 'POST',
+    path: `${API_PREFIX}/interviews/:interviewId/pick`,
+    body: PickCandidateRequest,
+    response: InterviewResponse,
     successStatus: 200,
   },
   chat: {

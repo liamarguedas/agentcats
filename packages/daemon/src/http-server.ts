@@ -164,6 +164,31 @@ export function createHttpServer(options: HttpServerOptions): {
       const { versionId } = body as z.infer<typeof routes.restoreLearnings.body>;
       return { cat: await manager.restoreLearnings(param(params, 'catId'), versionId) };
     },
+    retireCheck: (params) => manager.retireCheck(param(params, 'catId')),
+    retireCat: async (params, body) => {
+      const { reason, openTask } = body as z.infer<typeof routes.retireCat.body>;
+      return { retired: await manager.retireCat(param(params, 'catId'), reason, openTask) };
+    },
+    dismissRetire: (params) => {
+      manager.dismissRetire(param(params, 'catId'));
+      return Promise.resolve(accepted);
+    },
+    resurrectCat: async (params) => ({ cat: await manager.resurrectCat(param(params, 'catId')) }),
+    interviewSamples: async () => ({ samples: await manager.interviewSamples() }),
+    proposeInterview: async (_params, body) => {
+      const { role, sampleId, candidates } = body as z.infer<typeof routes.proposeInterview.body>;
+      return { interview: await manager.proposeInterview(role, sampleId, candidates, 'user') };
+    },
+    startInterview: async (params) => ({
+      interview: await manager.startInterview(param(params, 'interviewId')),
+    }),
+    cancelInterview: async (params) => ({
+      interview: await manager.cancelInterview(param(params, 'interviewId')),
+    }),
+    pickCandidate: async (params, body) => {
+      const { catId } = body as z.infer<typeof routes.pickCandidate.body>;
+      return { interview: await manager.pickCandidate(param(params, 'interviewId'), catId) };
+    },
     resolveProposal: async (params, body) => {
       const { decision } = body as z.infer<typeof routes.resolveProposal.body>;
       return { cat: await manager.resolveProposal(param(params, 'proposalId'), decision) };

@@ -31,6 +31,7 @@ import {
   ToolKind,
   Usage,
 } from './common.js';
+import type { ModelTier } from './hiring.js';
 
 // ---------------------------------------------------------------------------
 // Normalized agent events
@@ -260,6 +261,8 @@ export interface Adapter {
   /** Name shown on the board, e.g. "Claude". */
   readonly displayName: string;
   readonly capabilities: AdapterCapabilities;
+  /** Model names for the hiring tiers; `null` uses the agent's default for that tier. */
+  readonly modelTiers: Readonly<Record<ModelTier, string | null>>;
 
   /**
    * Start an agent session. Resolves once the agent process is running; the

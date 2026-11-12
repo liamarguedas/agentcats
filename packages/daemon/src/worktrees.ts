@@ -156,6 +156,19 @@ export class WorktreeManager {
     return true;
   }
 
+  /**
+   * Remove a throwaway worktree even with uncommitted work, and delete its
+   * branch unless `keepBranch`. For interview candidates only: their work
+   * is not the user's.
+   */
+  async discard(path: string, branch: string, keepBranch = false): Promise<void> {
+    if (await stat(path).catch(() => null)) {
+      await git(this.repoPath, ['worktree', 'remove', '--force', path]);
+    }
+    await git(this.repoPath, ['worktree', 'prune']);
+    if (!keepBranch) await git(this.repoPath, ['branch', '-D', branch]).catch(() => undefined);
+  }
+
   async #mergeBase(branch: string): Promise<string> {
     return git(this.repoPath, ['merge-base', 'HEAD', branch]);
   }

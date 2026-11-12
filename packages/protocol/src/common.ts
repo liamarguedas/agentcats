@@ -14,8 +14,12 @@ export type Timestamp = z.infer<typeof Timestamp>;
 /** Short human-readable text shown in bubbles and the event log. */
 export const ShortText = z.string().max(500);
 
-/** What a cat does. The orchestrator delegates; workers change code in worktrees. */
-export const CatRole = z.enum(['orchestrator', 'worker']);
+/**
+ * What a cat does. The orchestrator delegates; workers change code in
+ * worktrees; candidates are interviewing for a worker's job and never get
+ * normal tasks.
+ */
+export const CatRole = z.enum(['orchestrator', 'worker', 'candidate']);
 export type CatRole = z.infer<typeof CatRole>;
 
 /**
