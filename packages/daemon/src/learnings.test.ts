@@ -117,10 +117,17 @@ describe('parseProposal', () => {
     const answer = [
       "- The worker's `resetStore()` note (it also resets `nextId`) is a repository fact that would change a future worker's choice, so it is worth keeping.",
       "- Its `deleteAllNotes()` addition is already a description of this task's change and should not be kept.",
+      '- The worker\'s "Learned" note about `makeNote` bypassing POST is repo-specific and useful, so it\'s kept below.',
       '- resetStore() also resets nextId, so bulk deletes that must keep ids increasing need their own store function.',
     ].join('\n');
     expect(parseProposal(answer, TASK, 3).map((d) => d.text)).toEqual([
       'resetStore() also resets nextId, so bulk deletes that must keep ids increasing need their own store function.',
+    ]);
+  });
+
+  it("strips a copied 'Learned:' label", () => {
+    expect(parseProposal('- Learned: makeNote skips the POST /notes validation', TASK, 3)).toEqual([
+      { text: 'makeNote skips the POST /notes validation', sourceTaskId: TASK },
     ]);
   });
 

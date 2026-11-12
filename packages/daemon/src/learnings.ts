@@ -142,7 +142,7 @@ export function dedupe(
  * through.
  */
 export function isCommentary(text: string): boolean {
-  return /\b(worth keeping|should not be kept|not worth (keeping|remembering)|is a repository fact|the worker'?s (note|line|learned|summary|claim)|this (learning|task's change)|a description of this task)\b/i.test(
+  return /\b(worth keeping|should not be kept|not worth (keeping|remembering)|is a repository fact|the worker'?s ["'`]?(note|line|learned|summary|claim)|kept below|this (learning|task's change)|a description of this task)\b/i.test(
     text,
   );
 }
@@ -162,7 +162,9 @@ export function parseProposal(
     const draft = parseLine(line);
     if (!draft || draft.text.length < 15 || /^none\b/i.test(draft.text)) continue;
     if (isCommentary(draft.text)) continue;
-    drafts.push({ text: draft.text, sourceTaskId: draft.sourceTaskId ?? sourceTaskId });
+    // The model sometimes copies the summary's label: "Learned: ...".
+    const text = draft.text.replace(/^(learned|learning)\s*:\s*/i, '');
+    drafts.push({ text, sourceTaskId: draft.sourceTaskId ?? sourceTaskId });
     if (drafts.length === limit) break;
   }
   return drafts;
