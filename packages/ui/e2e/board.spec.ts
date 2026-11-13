@@ -52,11 +52,14 @@ test('the lead splits a request between two workers who work in parallel', async
   await chat(page, 'Add a login endpoint and write tests for it');
   await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
 
-  const workers = page.getByRole('region', { name: 'Workers' }).locator('.seat');
-  await expect(workers).toHaveCount(2, { timeout: 15_000 });
+  // Check the first worker's status as soon as its seat appears: on a slow
+  // runner it can finish its task before the second worker is hired.
   await expect(page.getByTestId('cat-Mochi').getByTestId('cat-status')).toHaveText(
     /Thinking|Working/,
+    { timeout: 15_000 },
   );
+  const workers = page.getByRole('region', { name: 'Workers' }).locator('.seat');
+  await expect(workers).toHaveCount(2, { timeout: 15_000 });
   await shot(page, 'team-working');
 
   await expect(tasks(page).locator('.task-card--review')).toHaveCount(2, { timeout: 20_000 });
