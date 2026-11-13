@@ -8,11 +8,17 @@ import {
   SNAPSHOT_EVENT_LIMIT,
 } from '@agentcats/protocol';
 
+import type { z } from 'zod';
+
 import type { Store } from './store.js';
 
-/** An event before the log assigns `id`, `seq` and `ts`. */
-export type EventDraft = AgentcatsEvent extends infer E
-  ? E extends AgentcatsEvent
+/**
+ * An event before the log assigns `id`, `seq` and `ts`. Typed as the schema's
+ * input, so fields with a default may be left out: `append` parses it.
+ */
+type EventInput = z.input<typeof AgentcatsEvent>;
+export type EventDraft = EventInput extends infer E
+  ? E extends EventInput
     ? Omit<E, 'id' | 'seq' | 'ts'>
     : never
   : never;

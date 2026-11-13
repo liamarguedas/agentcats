@@ -72,7 +72,9 @@ describe.runIf(LIVE)('M3 live', () => {
           sampleId: SAMPLE,
           candidates: 2,
         })) as { interview: Interview };
-        lines.push(`Estimate shown before start: $${interview.estimateUsd.toFixed(2)}`);
+        lines.push(
+          `Estimate shown before start: ${interview.estimateUsd === null ? 'cost unknown' : `$${interview.estimateUsd.toFixed(2)}`}`,
+        );
         expect(interview.status).toBe('proposed');
 
         // Approvals during the interview: allow, and log them.

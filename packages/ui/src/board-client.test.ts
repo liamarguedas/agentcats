@@ -60,7 +60,7 @@ const created: AgentcatsEvent = {
     adapter: 'mock',
     model: null,
     permissionMode: 'accept_edits',
-    budget: { maxUsd: 2, maxTokens: null },
+    budget: { maxUsd: 2, maxTokens: null, maxMinutes: null },
   },
 };
 
@@ -69,6 +69,7 @@ function snapshotOf(events: AgentcatsEvent[]): Snapshot {
     protocolVersion: PROTOCOL_VERSION,
     board: events.reduce(applyEvent, emptyBoard()),
     events,
+    adapters: [],
   };
 }
 

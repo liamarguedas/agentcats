@@ -17,6 +17,7 @@ const usage = (outputTokens: number, costUsd: number | null = null) => ({
     cacheWriteTokens: 0,
     costUsd,
     costSource: costUsd === null ? ('unknown' as const) : ('reported' as const),
+    activeMs: 0,
   },
 });
 
@@ -148,8 +149,11 @@ describe('Adapter interface', () => {
         modelSelection: false,
         interrupt: true,
         permissionModes: ['ask'],
+        policyEnforcement: 'none',
+        complete: true,
       },
       modelTiers: { fast: null, balanced: null, best: null },
+      estimateUsd: () => null,
       complete: () =>
         Promise.resolve({
           text: 'none',
@@ -160,6 +164,7 @@ describe('Adapter interface', () => {
             cacheWriteTokens: 0,
             costUsd: null,
             costSource: 'unknown',
+            activeMs: 0,
           },
         }),
       spawn: () => Promise.resolve(session),

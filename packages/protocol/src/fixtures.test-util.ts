@@ -14,7 +14,7 @@ export const sampleEvents = {
       adapter: 'mock',
       model: null,
       permissionMode: 'accept_edits',
-      budget: { maxUsd: 2, maxTokens: null },
+      budget: { maxUsd: 2, maxTokens: null, maxMinutes: null },
     },
   },
   'task.created': {
@@ -106,6 +106,7 @@ export const sampleEvents = {
       cacheWriteTokens: 0,
       costUsd: 0.01,
       costSource: 'reported',
+      activeMs: 0,
     },
   },
   'daemon.error': {
@@ -121,7 +122,7 @@ export const sampleEvents = {
     ts: 11_000,
     type: 'cat.updated',
     catId: 'cat-1',
-    payload: { billing: 'metered', budget: { maxUsd: 5, maxTokens: null } },
+    payload: { billing: 'metered', budget: { maxUsd: 5, maxTokens: null, maxMinutes: null } },
   },
   'cat.paused': {
     id: 'e12',
@@ -250,6 +251,7 @@ export const sampleEvents = {
       interviewId: 'i1',
       role: { description: 'Writes careful tests', tier: 'balanced', learnings: [] },
       sample: { id: 'add-function', title: 'Add a function', repo: 'fixture', source: 'bundled' },
+      candidateAdapters: [],
       candidateCount: 2,
       estimateUsd: 0.5,
       proposedBy: 'user',

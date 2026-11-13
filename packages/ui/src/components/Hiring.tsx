@@ -10,6 +10,10 @@ import type {
 } from '@agentcats/protocol';
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from 'react';
 
+/** An interview estimate in words; `null` when an agent in it cannot report cost. */
+export const estimateText = (usd: number | null) =>
+  usd === null ? 'cost unknown' : `about $${usd.toFixed(2)}`;
+
 const TIER_LABEL: Record<ModelTier, string> = {
   fast: 'Fast and cheap',
   balanced: 'Balanced',
@@ -134,7 +138,7 @@ export function HireDialog(props: HireDialogProps) {
             on the {TIER_LABEL[planned.role.tier].toLowerCase()} tier.
           </p>
           <p className="hire-confirm__estimate" data-testid="estimate">
-            Estimated cost: about ${planned.estimateUsd.toFixed(2)}
+            Estimated cost: {estimateText(planned.estimateUsd)}
           </p>
           <p className="drawer__hint">
             API-equivalent: on a subscription plan this is plan usage, not a charge. The daemon runs
@@ -153,7 +157,7 @@ export function HireDialog(props: HireDialogProps) {
                 });
               }}
             >
-              Start interview (≈ ${planned.estimateUsd.toFixed(2)})
+              Start interview ({estimateText(planned.estimateUsd)})
             </button>
             <button type="button" className="button" onClick={close}>
               Cancel
@@ -282,8 +286,8 @@ export function InterviewPanel(props: InterviewPanelProps) {
           <h2 className="section-title">Interview · {interview.sample.title}</h2>
           <p className="drawer__muted">
             {interview.role.description} · {interview.role.tier} ·{' '}
-            {interview.proposedBy === 'orchestrator' ? 'proposed by the lead · ' : ''}≈ $
-            {interview.estimateUsd.toFixed(2)}
+            {interview.proposedBy === 'orchestrator' ? 'proposed by the lead · ' : ''}
+            {estimateText(interview.estimateUsd)}
           </p>
         </div>
         <span className={`chip chip--interview-${interview.status}`}>
@@ -294,7 +298,7 @@ export function InterviewPanel(props: InterviewPanelProps) {
       {interview.status === 'proposed' && (
         <div className="drawer__actions">
           <button type="button" className="button button--primary" onClick={props.onStart}>
-            Start interview (≈ ${interview.estimateUsd.toFixed(2)})
+            Start interview ({estimateText(interview.estimateUsd)})
           </button>
           <button type="button" className="button" onClick={props.onCancel}>
             Cancel

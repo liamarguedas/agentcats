@@ -522,3 +522,32 @@ Where Claude-specific assumptions leaked into lifecycle code (M4 will expose the
 - **Session resume** after a crash uses `capabilities.resume`. Interview candidates never resume; they fail and are scored as failed.
 - **Cost reporting:** scoring treats an unknown cost as 50 out of 100, so an adapter that reports no cost is neither rewarded nor punished.
 - **The worker summary format** (`## Summary` with Changed, Tests, Open issues, Learned) is parsed for the test result, which is self-reported, and for the debrief's hint. Interviews no longer depend on it. A different agent that ignores the format still works, but loses the hint.
+
+## 2026-11-13 - M4 planning answers and Step 0
+
+**Answers (the user's):**
+- **A generic ACP adapter** (`packages/adapters/acp`), with Codex as a thin package on top (`packages/adapters/codex`) that starts Zed's `codex-acp` and maps its tiers and modes. Kiro and other ACP agents can plug in later.
+- **Codex stays mock-only for now.** The user's Codex CLI is logged in with an OpenAI API key, so live runs are billed per token. Everything is built and tested against the mock and a scripted ACP agent; the live Codex checks wait for the user's go-ahead. Acceptance criteria 1 to 3 need them.
+- **Time budget:** 60 minutes of agent working time per cat, for cats whose adapter reports no cost. Warning at 80 percent, pause at 100 percent, editable per cat.
+
+**Landscape, verified 2026-11-13:**
+- **Codex CLI:** 0.145.0 is installed (the latest is 0.169.0). `codex exec --json` has no approval callback. `codex app-server` (JSON-RPC, marked experimental) has threads, turns, approvals and resume, and reports tokens only.
+- **ACP:** stable at v1. TypeScript SDK `@agentclientprotocol/sdk` 2.1.0 (2.6.0 is under two weeks old).
+- **Codex over ACP:** `@zed-industries/codex-acp` 0.16.0 (2026-06-08). It bundles its own Codex build and uses the user's Codex login and config. This deviates from the M0 rule of running the user's installed CLI, accepted for the generic route.
+- **Kiro:** `kiro-cli acp` is native ACP (since 1.25; the CLI is now 3.x). It is deferred: it is not installed here, and an orphaned-child-process bug was reported in early 2026.
+- **Pinned:** codex-acp 0.16.0, tested against Codex CLI 0.145.0 config and auth.
+
+**Free handshake with codex-acp** (`initialize` and `session/new` only, no prompt, no cost):
+- **Capabilities:** `loadSession`, `sessionCapabilities.resume` and `close`, `mcpCapabilities.http: true`; an HTTP MCP server was accepted in `session/new`.
+- **Modes:** `read-only`, `auto` ("read and edit files in the workspace, and run commands; approval is required to access the internet or edit other files") and `full-access`.
+- **Models:** a `model` config option, `gpt-5.4-mini`, `gpt-5.4`, `gpt-5.5` and others.
+- **Auth:** methods are ChatGPT or an API key; the client is not told which one is in use, so billing is `unknown`.
+- **Version skew:** codex-acp logged an error reading the model cache written by the newer installed CLI (`unknown variant max`). It is harmless here, but it is the expected cost of a bundled build.
+
+**Leaks found before writing the adapter** (resolutions in the M4 implementation entry):
+1. **Policy enforcement.** Claude lets agentcats decide each tool call (PreToolUse hooks). ACP agents decide themselves what needs approval, and Codex relies on its sandbox: in `auto` it runs commands in the workspace without asking. The M2 level gates, push refusal and always-ask rules cannot be enforced the same way.
+2. **No system prompt** in ACP. The worker prompt and learnings must travel another way.
+3. **No cost reporting** in ACP.
+4. **No one-shot call** (`complete()`) in ACP.
+5. **Billing is unknown** for Codex.
+6. **The Claude-specific defaults** from the M3 handoff notes.

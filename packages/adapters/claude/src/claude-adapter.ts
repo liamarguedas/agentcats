@@ -45,6 +45,8 @@ const CAPABILITIES: AdapterCapabilities = {
   modelSelection: true,
   interrupt: true,
   permissionModes: ['ask', 'accept_edits', 'auto'],
+  policyEnforcement: 'hooks',
+  complete: true,
 };
 
 const PERMISSION_MODES: Record<PermissionMode, ClaudePermissionMode> = {
@@ -77,6 +79,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Adapter
     displayName: 'Claude',
     capabilities: CAPABILITIES,
     modelTiers: { fast: 'haiku', balanced: 'sonnet', best: 'opus' },
+    // About what one interview candidate costs on each tier, at API prices.
+    estimateUsd: (tier) => ({ fast: 0.05, balanced: 0.25, best: 1.25 })[tier],
     spawn: (spawnOptions) => spawnClaudeSession(spawnOptions, options),
     complete: (completeOptions) => completeOnce(completeOptions, options),
   };

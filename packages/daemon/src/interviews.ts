@@ -23,23 +23,18 @@ import { listSamples, overlay, prepareFixtureRepo, type SampleSpec, workDiff } f
 import { scoreCandidates } from './scoring.js';
 import type { WorktreeManager } from './worktrees.js';
 
-/** What one candidate is expected to cost when there is no history for the sample and tier. */
-export const DEFAULT_CANDIDATE_USD: Readonly<Record<ModelTier, number>> = {
-  fast: 0.05,
-  balanced: 0.25,
-  best: 1.25,
-};
-
 /** What the interviews need from the rest of the daemon. */
 export interface InterviewHost {
   readonly log: EventLog;
-  readonly adapter: Adapter;
+  readonly adapterFor: (id: string) => Adapter;
+  /** The workers' adapter id, for candidates the request does not name one for. */
+  readonly workerAdapter: () => string;
   readonly config: AgentcatsConfig;
   readonly projectPath: string;
   readonly worktrees: WorktreeManager;
   readonly logger: Logger;
-  /** Add a candidate cat to the board with a fresh name, and return its agent. */
-  hireCandidate(model: string | null): CatAgent;
+  /** Add a candidate cat on an adapter to the board with a fresh name, and return its agent. */
+  hireCandidate(adapterId: string, model: string | null): CatAgent;
   /** A candidate's agent, if it still has one. */
   agentFor(catId: string): CatAgent | null;
   /** Forget a candidate's agent after it left the board. */
@@ -128,6 +123,7 @@ export class Interviews {
     sampleId: string,
     candidateCount: number | undefined,
     proposedBy: 'user' | 'orchestrator',
+    adapters: readonly string[] = [],
   ): Promise<Interview> {
     const sample = (await this.samples()).find((s) => s.id === sampleId);
     if (!sample) throw new ApiError('not_found', `No interview sample ${sampleId}`);
@@ -138,10 +134,30 @@ export class Interviews {
       );
     }
     this.#assertRoom();
-    const count = candidateCount ?? this.h.config.interviews.candidates;
-    const estimateUsd = round(count * this.#perCandidateEstimate(sample.id, role.tier));
+    const count = Math.max(candidateCount ?? this.h.config.interviews.candidates, adapters.length);
+    if (count > 3) throw new ApiError('bad_request', 'An interview has at most 3 candidates');
+    const candidateAdapters = Array.from(
+      { length: count },
+      (_, i) => adapters[i] ?? this.h.workerAdapter(),
+    );
+    for (const id of candidateAdapters) {
+      if (this.h.adapterFor(id).id !== id) {
+        throw new ApiError('bad_request', `No adapter "${id}" in this run`);
+      }
+    }
+    const estimates = candidateAdapters.map((id) =>
+      this.#perCandidateEstimate(sample.id, role.tier, id),
+    );
+    const estimateUsd = estimates.some((e) => e === null)
+      ? null
+      : round(estimates.reduce<number>((sum, e) => sum + (e ?? 0), 0));
     const budget = this.h.config.interviews.budgetUsd;
-    if (budget !== null && this.h.budgetEnforced() && estimateUsd > budget) {
+    if (
+      budget !== null &&
+      estimateUsd !== null &&
+      this.h.budgetEnforced() &&
+      estimateUsd > budget
+    ) {
       throw new ApiError(
         'conflict',
         `The estimate ($${estimateUsd.toFixed(2)}) is over the interview budget ($${budget.toFixed(2)}). Use fewer candidates or a cheaper tier, or raise interviews.budgetUsd.`,
@@ -156,6 +172,7 @@ export class Interviews {
         sample: { id: sample.id, title: sample.title, repo: sample.repo, source: sample.source },
         candidateCount: count,
         estimateUsd,
+        candidateAdapters,
         proposedBy,
       },
     });
@@ -176,10 +193,10 @@ export class Interviews {
       this.#samples.get(interview.sample.id) ??
       (await this.samples()).find((s) => s.id === interview.sample.id);
     if (!sample) throw new ApiError('not_found', `The sample ${interview.sample.id} is gone`);
-    const model = this.h.adapter.modelTiers[interview.role.tier];
-    const agents = Array.from({ length: interview.candidateCount }, () =>
-      this.h.hireCandidate(model),
-    );
+    const agents = Array.from({ length: interview.candidateCount }, (_, i) => {
+      const adapter = this.h.adapterFor(interview.candidateAdapters[i] ?? this.h.workerAdapter());
+      return this.h.hireCandidate(adapter.id, adapter.modelTiers[interview.role.tier]);
+    });
     this.h.log.append({
       type: 'interview.started',
       payload: { interviewId, candidateCatIds: agents.map((a) => a.catId) },
@@ -537,17 +554,24 @@ export class Interviews {
   }
 
   /**
-   * Cost per candidate: the median of earlier candidates on the same sample
-   * and tier when there are at least two, otherwise a default per tier.
+   * Cost per candidate on an adapter: the median of earlier candidates on the
+   * same sample, tier and adapter when there are at least two, otherwise the
+   * adapter's own estimate, which is `null` for one that reports no cost.
    */
-  #perCandidateEstimate(sampleId: string, tier: ModelTier): number {
+  #perCandidateEstimate(sampleId: string, tier: ModelTier, adapterId: string): number | null {
+    const adapter = this.h.adapterFor(adapterId);
+    if (!adapter.capabilities.reportsCost) return null;
     const costs = Object.values(this.h.log.board.interviews)
       .filter((i) => i.sample.id === sampleId && i.role.tier === tier)
       .flatMap((i) =>
-        i.candidates.flatMap((c) => (c.result?.costUsd != null ? [c.result.costUsd] : [])),
+        i.candidates.flatMap((c, n) =>
+          (i.candidateAdapters[n] ?? adapterId) === adapterId && c.result?.costUsd != null
+            ? [c.result.costUsd]
+            : [],
+        ),
       )
       .sort((a, b) => a - b);
-    if (costs.length < 2) return DEFAULT_CANDIDATE_USD[tier];
+    if (costs.length < 2) return adapter.estimateUsd(tier);
     const mid = Math.floor(costs.length / 2);
     return costs.length % 2 ? (costs[mid] ?? 0) : ((costs[mid - 1] ?? 0) + (costs[mid] ?? 0)) / 2;
   }

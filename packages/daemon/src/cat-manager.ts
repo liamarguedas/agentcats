@@ -101,7 +101,10 @@ export function testsFromSummary(text: string): TaskResult['tests'] {
 export interface CatManagerOptions {
   readonly log: EventLog;
   readonly store: Store;
-  readonly adapter: Adapter;
+  /** Every adapter cats can run on, by id. */
+  readonly adapters: ReadonlyMap<string, Adapter>;
+  /** The default adapter's id (`config.adapter`); it runs debriefs. */
+  readonly defaultAdapter: string;
   readonly config: AgentcatsConfig;
   readonly projectPath: string;
   readonly pids: PidRegistry;
@@ -159,19 +162,22 @@ export class CatManager {
 
   readonly #memory: Memory;
   readonly #interviews: Interviews;
+  readonly #unknownAdapters = new Set<string>();
   /** Cats to retire once their current task is over, with the reason. */
   readonly #retireAfter = new Map<string, string>();
 
   constructor(private readonly o: CatManagerOptions) {
     this.#memory = new Memory({
       log: o.log,
-      adapter: o.adapter,
+      adapter: this.adapterFor(o.defaultAdapter),
       config: o.config,
       projectPath: o.projectPath,
       files: new CatMemory(join(o.projectPath, RUNTIME_DIR_NAME)),
       logger: o.logger,
       chargeUsage: (catId, usage) => {
-        this.#agents.get(catId)?.chargeUsage(usage);
+        // A debrief runs on the default adapter; only a cat on the same one is charged for it.
+        const agent = this.#agents.get(catId);
+        if (agent?.cat.adapter === o.defaultAdapter) agent.chargeUsage(usage);
       },
       track: (work) => {
         this.#track(work);
@@ -179,12 +185,13 @@ export class CatManager {
     });
     this.#interviews = new Interviews({
       log: o.log,
-      adapter: o.adapter,
+      adapterFor: (id) => this.adapterFor(id),
+      workerAdapter: () => this.#roleAdapter('worker'),
       config: o.config,
       projectPath: o.projectPath,
       worktrees: o.worktrees,
       logger: o.logger,
-      hireCandidate: (model) => this.#hire('candidate', model),
+      hireCandidate: (adapterId, model) => this.#hire('candidate', model, adapterId),
       agentFor: (catId) => this.#agents.get(catId) ?? null,
       dropAgent: (catId) => {
         this.#agents.delete(catId);
@@ -242,6 +249,12 @@ export class CatManager {
         });
       }
     }
+    const lead = this.adapterFor(this.#roleAdapter('orchestrator'));
+    if (!lead.capabilities.mcp) {
+      throw new Error(
+        `The lead cannot run on ${lead.displayName}: it has no MCP support. Set orchestrator.adapter to one that does.`,
+      );
+    }
     if (!this.#orchestratorId) this.#orchestratorId = this.#hire('orchestrator').catId;
     await this.#memory.start();
     this.#interviews.start();
@@ -275,6 +288,38 @@ export class CatManager {
   // -------------------------------------------------------------------------
   // Queries
   // -------------------------------------------------------------------------
+
+  /**
+   * The adapter with this id. A cat from an earlier run may name an adapter
+   * this daemon does not have; it falls back to the default, with a warning.
+   */
+  adapterFor(id: string): Adapter {
+    const adapter = this.o.adapters.get(id);
+    if (adapter) return adapter;
+    if (!this.#unknownAdapters.has(id)) {
+      this.#unknownAdapters.add(id);
+      this.o.logger.warn(`No adapter "${id}" in this run; using ${this.o.defaultAdapter} instead`);
+    }
+    return this.o.adapters.get(this.o.defaultAdapter) as Adapter;
+  }
+
+  /** Name, capabilities and id of every adapter, for the board. */
+  adapterInfos(): { id: string; displayName: string; capabilities: Adapter['capabilities'] }[] {
+    return [...this.o.adapters.values()].map((a) => ({
+      id: a.id,
+      displayName: a.displayName,
+      capabilities: { ...a.capabilities, permissionModes: [...a.capabilities.permissionModes] },
+    }));
+  }
+
+  /** The configured adapter for new cats of a role. */
+  #roleAdapter(role: 'orchestrator' | 'worker'): string {
+    const { config } = this.o;
+    return (
+      (role === 'orchestrator' ? config.orchestrator.adapter : config.workers.adapter) ??
+      this.o.defaultAdapter
+    );
+  }
 
   get orchestratorId(): string {
     return this.#orchestratorId;
@@ -354,9 +399,25 @@ export class CatManager {
     await agent.resolveApproval(approvalId, decision, 'user');
   }
 
-  /** Edit a cat's properties. Model and permission mode apply from its next session. */
+  /**
+   * Edit a cat's properties. Adapter, model and permission mode apply from
+   * its next session.
+   *
+   * @throws ApiError `bad_request` for an adapter this daemon does not have,
+   *   or one without MCP for the lead.
+   */
   updateCat(catId: string, patch: UpdateCatRequest): Cat {
-    this.#agent(catId);
+    const current = this.#agent(catId).cat;
+    if (patch.adapter !== undefined) {
+      const adapter = this.o.adapters.get(patch.adapter);
+      if (!adapter) throw new ApiError('bad_request', `No adapter "${patch.adapter}" in this run`);
+      if (current.role === 'orchestrator' && !adapter.capabilities.mcp) {
+        throw new ApiError(
+          'bad_request',
+          `${adapter.displayName} cannot lead: it has no MCP support`,
+        );
+      }
+    }
     this.o.log.append({ type: 'cat.updated', catId, payload: patch });
     this.#warned.delete(catId);
     if (patch.model !== undefined) this.#track(this.#memory.writeProfile(catId));
@@ -699,8 +760,9 @@ export class CatManager {
     sampleId: string,
     candidates: number | undefined,
     by: 'user' | 'orchestrator',
+    adapters: readonly string[] = [],
   ): Promise<Interview> {
-    return this.#interviews.propose(role, sampleId, candidates, by);
+    return this.#interviews.propose(role, sampleId, candidates, by, adapters);
   }
 
   startInterview(interviewId: string): Promise<Interview> {
@@ -829,7 +891,7 @@ export class CatManager {
         attribution: this.o.config.attribution,
         policy: await this.#workerPolicy(cat.level),
       };
-      const resumeId = this.o.adapter.capabilities.resume ? this.o.store.resumeIdFor(taskId) : null;
+      const resumeId = worker.adapter.capabilities.resume ? this.o.store.resumeIdFor(taskId) : null;
       try {
         await worker.startSession(resumeId ? { ...options, resumeId } : options, taskId);
       } catch (error) {
@@ -1116,8 +1178,27 @@ export class CatManager {
     return mode === 'always' || (mode === 'metered' && cat.billing === 'metered');
   }
 
+  /**
+   * A cat whose adapter cannot report cost is held to a working-time budget
+   * instead, always: it is the only limit such a cat has.
+   */
+  #timeBudgeted(cat: Cat): boolean {
+    return !this.adapterFor(cat.adapter).capabilities.reportsCost;
+  }
+
+  #minutesUsed(cat: Cat): number {
+    return (this.o.log.board.usage[cat.id]?.activeMs ?? 0) / 60_000;
+  }
+
   /** Why a cat is over its own or the global budget, or `null`. */
   #overBudget(cat: Cat): string | null {
+    if (this.#timeBudgeted(cat)) {
+      const max = cat.budget.maxMinutes;
+      const used = this.#minutesUsed(cat);
+      return max !== null && used >= max
+        ? `${used.toFixed(0)} of ${String(max)} minutes of work`
+        : null;
+    }
     if (!this.#enforced(cat)) return null;
     const usage = this.o.log.board.usage[cat.id];
     const spent = usage?.costUsd ?? 0;
@@ -1143,7 +1224,7 @@ export class CatManager {
 
   #checkBudget(agent: CatAgent): void {
     const cat = agent.cat;
-    if (!this.#enforced(cat) || cat.pausedReason) return;
+    if (!(this.#enforced(cat) || this.#timeBudgeted(cat)) || cat.pausedReason) return;
     const over = this.#overBudget(cat);
     if (over) {
       this.#notice(
@@ -1171,6 +1252,19 @@ export class CatManager {
             );
           }
         }
+      }
+      return;
+    }
+    if (this.#timeBudgeted(cat)) {
+      const max = cat.budget.maxMinutes;
+      if (max !== null && this.#minutesUsed(cat) >= WARN_RATIO * max && !this.#warned.has(cat.id)) {
+        this.#warned.add(cat.id);
+        this.#notice(
+          'warning',
+          'budget_warning',
+          `${cat.name} has worked ${this.#minutesUsed(cat).toFixed(0)} of its ${String(max)} minutes (its agent reports no cost, so its budget is time)`,
+          { catId: cat.id },
+        );
       }
       return;
     }
@@ -1268,7 +1362,7 @@ export class CatManager {
     return new CatAgent(
       {
         log: this.o.log,
-        adapter: this.o.adapter,
+        adapterFor: (id) => this.adapterFor(id),
         pids: this.o.pids,
         logger: this.o.logger,
         approvalTimeoutMs: this.o.config.approvalTimeoutMs,
@@ -1278,8 +1372,11 @@ export class CatManager {
     );
   }
 
-  #hire(role: Cat['role'], model?: string | null): CatAgent {
+  #hire(role: Cat['role'], model?: string | null, adapterId?: string): CatAgent {
     const { config } = this.o;
+    const adapter = this.adapterFor(
+      adapterId ?? this.#roleAdapter(role === 'orchestrator' ? 'orchestrator' : 'worker'),
+    );
     const taken = new Set(this.cats().map((c) => c.name));
     const name =
       role === 'orchestrator'
@@ -1292,15 +1389,19 @@ export class CatManager {
       payload: {
         name,
         role,
-        adapter: this.o.adapter.id,
+        adapter: adapter.id,
         model:
           model !== undefined
             ? model
             : role === 'orchestrator'
               ? config.orchestrator.model
-              : config.workers.model,
+              : (config.workers.model ?? adapter.modelTiers.balanced),
         permissionMode: role === 'orchestrator' ? 'ask' : config.workers.permissionMode,
-        budget: { maxUsd: config.budget.perCatUsd, maxTokens: config.budget.perCatTokens },
+        budget: {
+          maxUsd: config.budget.perCatUsd,
+          maxTokens: config.budget.perCatTokens,
+          maxMinutes: config.budget.perCatMinutes,
+        },
       },
     });
     const agent = this.#newAgent(catId);

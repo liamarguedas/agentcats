@@ -6,10 +6,11 @@ describe('AgentcatsConfig', () => {
   it('fills every default from an empty file', () => {
     expect(AgentcatsConfig.parse({})).toEqual({
       adapter: 'claude',
-      orchestrator: { model: null },
+      orchestrator: { adapter: null, model: null },
       workers: {
         max: 3,
-        model: 'sonnet',
+        adapter: null,
+        model: null,
         permissionMode: 'accept_edits',
         allowedCommands: [],
         autoHire: true,
@@ -23,9 +24,15 @@ describe('AgentcatsConfig', () => {
         projectCheck: null,
         weights: { diff: 0.4, cost: 0.25, time: 0.15, quality: 0.2 },
       },
-      budget: { perCatUsd: 2, globalUsd: 10, perCatTokens: null, enforce: 'metered' },
+      budget: {
+        perCatUsd: 2,
+        globalUsd: 10,
+        perCatTokens: null,
+        perCatMinutes: 60,
+        enforce: 'metered',
+      },
       xp: { accepted: 10, testsFirstTry: 5, underCost: 3, rejectedPenalty: 10 },
-      memory: { debrief: true, model: 'haiku', cap: 30, autoAcceptAfter: null },
+      memory: { debrief: true, model: null, cap: 30, autoAcceptAfter: null },
       attribution: false,
       stuckTimeoutMs: 300_000,
       approvalTimeoutMs: 300_000,

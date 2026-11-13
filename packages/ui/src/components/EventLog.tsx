@@ -63,7 +63,7 @@ function describe(event: AgentcatsEvent): string {
     case 'cat.hired':
       return 'hired after an interview';
     case 'interview.proposed':
-      return `interview proposed by ${event.payload.proposedBy === 'user' ? 'you' : 'the lead'}: ${String(event.payload.candidateCount)} candidates, ≈ $${event.payload.estimateUsd.toFixed(2)}`;
+      return `interview proposed by ${event.payload.proposedBy === 'user' ? 'you' : 'the lead'}: ${String(event.payload.candidateCount)} candidates, ${event.payload.estimateUsd === null ? 'cost unknown' : `≈ $${event.payload.estimateUsd.toFixed(2)}`}`;
     case 'interview.started':
       return `interview started with ${String(event.payload.candidateCatIds.length)} candidates`;
     case 'interview.candidate_scored':

@@ -62,6 +62,7 @@ export const CatUpdatedEvent = z.strictObject({
   type: z.literal('cat.updated'),
   payload: z
     .strictObject({
+      adapter: z.string().min(1).max(64).optional(),
       model: z.string().min(1).nullable().optional(),
       permissionMode: PermissionMode.optional(),
       budget: Budget.optional(),
@@ -294,7 +295,8 @@ export const InterviewProposedEvent = z.strictObject({
     role: HireRole,
     sample: InterviewSample,
     candidateCount: z.int().min(1).max(3),
-    estimateUsd: z.number().nonnegative(),
+    estimateUsd: z.number().nonnegative().nullable(),
+    candidateAdapters: z.array(z.string().min(1).max(64)).max(3).default([]),
     proposedBy: z.enum(['user', 'orchestrator']),
   }),
 });

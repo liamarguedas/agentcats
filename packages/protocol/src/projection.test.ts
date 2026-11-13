@@ -16,7 +16,7 @@ describe('applyEvent', () => {
       role: 'worker',
       status: 'thinking',
       billing: 'metered',
-      budget: { maxUsd: 5, maxTokens: null },
+      budget: { maxUsd: 5, maxTokens: null, maxMinutes: null },
       pausedReason: null,
       xp: 10,
       level: 2,

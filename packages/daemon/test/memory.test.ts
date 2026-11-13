@@ -170,7 +170,7 @@ describe('debrief', () => {
       lines: [{ text: FIXTURE, sourceTaskId: task.id }],
     });
     const debrief = completions.find(isDebrief)!;
-    expect(debrief.model).toBe('haiku');
+    expect(debrief.model).toBe('mock-fast'); // the default adapter's fast tier
     expect(debrief.prompt).toContain('The user accepted the result.');
     expect(debrief.prompt).toContain('Tests: passed');
     expect(await readFile(learningsFile(cat.name), 'utf8')).not.toContain(FIXTURE);

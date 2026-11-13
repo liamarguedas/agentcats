@@ -176,8 +176,12 @@ export function createHttpServer(options: HttpServerOptions): {
     resurrectCat: async (params) => ({ cat: await manager.resurrectCat(param(params, 'catId')) }),
     interviewSamples: async () => ({ samples: await manager.interviewSamples() }),
     proposeInterview: async (_params, body) => {
-      const { role, sampleId, candidates } = body as z.infer<typeof routes.proposeInterview.body>;
-      return { interview: await manager.proposeInterview(role, sampleId, candidates, 'user') };
+      const { role, sampleId, candidates, adapters } = body as z.infer<
+        typeof routes.proposeInterview.body
+      >;
+      return {
+        interview: await manager.proposeInterview(role, sampleId, candidates, 'user', adapters),
+      };
     },
     startInterview: async (params) => ({
       interview: await manager.startInterview(param(params, 'interviewId')),
@@ -212,6 +216,7 @@ export function createHttpServer(options: HttpServerOptions): {
         protocolVersion: PROTOCOL_VERSION,
         board: log.board,
         events: log.recent(),
+        adapters: manager.adapterInfos(),
       }),
   };
 

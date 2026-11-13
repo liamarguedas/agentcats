@@ -43,6 +43,8 @@ export type ChatRequest = z.infer<typeof ChatRequest>;
 /** Edit a cat's properties on the board. Takes effect from its next session. */
 export const UpdateCatRequest = z
   .strictObject({
+    /** Applies from the cat's next session. */
+    adapter: z.string().min(1).max(64).optional(),
     model: z.string().min(1).nullable().optional(),
     permissionMode: PermissionMode.optional(),
     budget: Budget.optional(),
@@ -125,6 +127,11 @@ export const ProposeInterviewRequest = z.strictObject({
   role: HireRole,
   sampleId: z.string().min(1).max(200),
   candidates: z.int().min(1).max(3).optional(),
+  /**
+   * Adapter per candidate, in order, to compare agents on the same task.
+   * Missing entries use the workers' adapter.
+   */
+  adapters: z.array(z.string().min(1).max(64)).max(3).optional(),
 });
 export type ProposeInterviewRequest = z.input<typeof ProposeInterviewRequest>;
 
@@ -142,9 +149,29 @@ export type TaskEventsResponse = z.infer<typeof TaskEventsResponse>;
 export const AcceptedResponse = z.strictObject({ accepted: z.literal(true) });
 export type AcceptedResponse = z.infer<typeof AcceptedResponse>;
 
+/** An adapter as the board needs it: its name, and what it can and cannot do. */
+export const AdapterInfo = z.strictObject({
+  id: z.string().min(1).max(64),
+  displayName: z.string().min(1).max(64),
+  capabilities: z.strictObject({
+    mcp: z.boolean(),
+    approvals: z.boolean(),
+    resume: z.boolean(),
+    reportsCost: z.boolean(),
+    modelSelection: z.boolean(),
+    interrupt: z.boolean(),
+    permissionModes: z.array(PermissionMode),
+    policyEnforcement: z.enum(['hooks', 'sandbox', 'none']),
+    complete: z.boolean(),
+  }),
+});
+export type AdapterInfo = z.infer<typeof AdapterInfo>;
+
 export const Snapshot = z.strictObject({
   protocolVersion: z.int().positive(),
   board: BoardState,
+  /** The adapters this daemon can run cats on. */
+  adapters: z.array(AdapterInfo),
   /** The most recent events, oldest first, at most {@link SNAPSHOT_EVENT_LIMIT}. */
   events: z.array(AgentcatsEvent),
 });

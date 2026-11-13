@@ -84,8 +84,13 @@ export const Interview = z.strictObject({
   sample: InterviewSample,
   /** How many candidates run, 1 to 3. */
   candidateCount: z.int().min(1).max(3),
-  /** API-equivalent dollars for all candidates, shown before the user confirms. */
-  estimateUsd: z.number().nonnegative(),
+  /**
+   * API-equivalent dollars for all candidates, shown before the user
+   * confirms. `null` when an adapter in the interview cannot report cost.
+   */
+  estimateUsd: z.number().nonnegative().nullable(),
+  /** Adapter of each candidate, in hiring order. */
+  candidateAdapters: z.array(z.string().min(1).max(64)).max(3).default([]),
   status: InterviewStatus,
   proposedBy: z.enum(['user', 'orchestrator']),
   candidates: z.array(Candidate).max(3),

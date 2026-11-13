@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { PermissionMode } from './common.js';
 import { ModelTier } from './hiring.js';
 
+/** Adapters agentcats ships with. */
+export const AdapterId = z.enum(['claude', 'codex', 'mock']);
+export type AdapterId = z.infer<typeof AdapterId>;
+
 /** File name of the project config, inside the project's `.agentcats/` directory. */
 export const CONFIG_FILE_NAME = 'agentcats.config.json';
 
@@ -19,10 +23,15 @@ export const RUNTIME_DIR_NAME = '.agentcats';
  */
 export const AgentcatsConfig = z.strictObject({
   $schema: z.string().optional(),
-  /** Which adapter runs the cats. `mock` needs no agent CLI and spends no tokens. */
-  adapter: z.enum(['claude', 'mock']).default('claude'),
+  /**
+   * The default adapter for every cat. `mock` needs no agent CLI and spends
+   * no tokens. The lead and workers can each use another one.
+   */
+  adapter: AdapterId.default('claude'),
   orchestrator: z
     .strictObject({
+      /** `null` uses the default `adapter`. It must support MCP. */
+      adapter: AdapterId.nullable().default(null),
       /** `null` uses the agent's own default model. */
       model: z.string().min(1).nullable().default(null),
     })
@@ -31,7 +40,10 @@ export const AgentcatsConfig = z.strictObject({
     .strictObject({
       /** How many workers may run at the same time. */
       max: z.int().min(1).max(16).default(3),
-      model: z.string().min(1).nullable().default('sonnet'),
+      /** `null` uses the default `adapter`. */
+      adapter: AdapterId.nullable().default(null),
+      /** `null` uses the adapter's balanced tier (`sonnet` for Claude). */
+      model: z.string().min(1).nullable().default(null),
       permissionMode: PermissionMode.default('accept_edits'),
       /**
        * Commands workers may run without asking, usually the project's test
@@ -81,6 +93,11 @@ export const AgentcatsConfig = z.strictObject({
       globalUsd: z.number().positive().nullable().default(10),
       perCatTokens: z.int().positive().nullable().default(null),
       /**
+       * Minutes of agent working time per cat, for adapters that cannot
+       * report cost (Codex). Warning at 80 percent, pause at 100.
+       */
+      perCatMinutes: z.number().positive().nullable().default(60),
+      /**
        * `metered` enforces budgets only for cats billed per use (API key,
        * Bedrock, Vertex). `always` also enforces them on subscription plans,
        * where cost is an API-equivalent estimate. `never` only shows totals.
@@ -105,7 +122,8 @@ export const AgentcatsConfig = z.strictObject({
       /** Run a debrief after each reviewed task to propose learnings. */
       debrief: z.boolean().default(true),
       /** Model for debrief and consolidation calls; `null` is the agent's default. */
-      model: z.string().min(1).nullable().default('haiku'),
+      /** `null` uses the default adapter's fast tier (`haiku` for Claude). */
+      model: z.string().min(1).nullable().default(null),
       /** Most lines a cat's `learnings.md` may hold; going over proposes a consolidation. */
       cap: z.int().min(5).max(200).default(30),
       /**

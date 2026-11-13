@@ -76,6 +76,13 @@ export interface MockAdapterOptions {
    * returns the lines unchanged.
    */
   readonly complete?: (options: CompleteOptions) => string | Promise<string>;
+  /** Adapter id, for a second mock in mixed-team tests. Default `mock`. */
+  readonly id?: string;
+  /**
+   * Report a cost with usage. `false` plays an adapter that cannot (like
+   * Codex): cost is `null`, so budgets fall back to working time.
+   */
+  readonly reportsCost?: boolean;
 }
 
 const CAPABILITIES: AdapterCapabilities = {
@@ -86,6 +93,8 @@ const CAPABILITIES: AdapterCapabilities = {
   modelSelection: true,
   interrupt: true,
   permissionModes: ['ask', 'accept_edits', 'auto'],
+  policyEnforcement: 'hooks',
+  complete: true,
 };
 
 /** Made-up per-token prices so the board has an estimated cost to show. */
@@ -104,10 +113,12 @@ class TurnAborted extends Error {
 export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
   const timeScale = options.timeScale ?? 1;
   return {
-    id: 'mock',
-    displayName: 'Mock',
-    capabilities: CAPABILITIES,
+    id: options.id ?? 'mock',
+    displayName: options.id ? `Mock (${options.id})` : 'Mock',
+    capabilities: { ...CAPABILITIES, reportsCost: options.reportsCost ?? true },
     modelTiers: { fast: 'mock-fast', balanced: 'mock-balanced', best: 'mock-best' },
+    estimateUsd: (tier) =>
+      options.reportsCost === false ? null : { fast: 0.05, balanced: 0.25, best: 1.25 }[tier],
     async spawn(spawnOptions) {
       const isOrchestrator = spawnOptions.mcpServers?.['agentcats'] !== undefined;
       const scenario = resolveScenario(
@@ -123,6 +134,7 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
         child,
         options.billing ?? 'metered',
         options.realFiles ?? false,
+        options.reportsCost ?? true,
       );
     },
     async complete(completeOptions) {
@@ -137,9 +149,12 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
           cacheReadTokens: 0,
           cacheWriteTokens: 0,
           costUsd:
-            inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
-            outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN,
-          costSource: 'estimated',
+            options.reportsCost === false
+              ? null
+              : inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
+                outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN,
+          costSource: options.reportsCost === false ? 'unknown' : 'estimated',
+          activeMs: 0,
         },
       };
     },
@@ -200,6 +215,7 @@ class MockSession implements Session {
     cacheWriteTokens: 0,
     costUsd: 0,
     costSource: 'estimated',
+    activeMs: 0,
   };
   #eventsTaken = false;
   #ended = false;
@@ -216,6 +232,7 @@ class MockSession implements Session {
     private readonly child: ChildProcess | null,
     billing: Billing,
     private readonly realFiles: boolean,
+    private readonly reportsCost: boolean,
   ) {
     this.pid = child?.pid ?? null;
     child?.once('exit', (code) => void this.#onChildExit(code));
@@ -444,9 +461,14 @@ class MockSession implements Session {
         const usage = this.#usage;
         usage.inputTokens += inputTokens;
         usage.outputTokens += outputTokens;
-        usage.costUsd =
-          usage.inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
-          usage.outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN;
+        if (this.reportsCost) {
+          usage.costUsd =
+            usage.inputTokens * ESTIMATED_USD_PER_INPUT_TOKEN +
+            usage.outputTokens * ESTIMATED_USD_PER_OUTPUT_TOKEN;
+        } else {
+          usage.costUsd = null;
+          usage.costSource = 'unknown';
+        }
         this.#emit({ type: 'usage', usage: { ...usage } });
       },
       emit: (event) => {

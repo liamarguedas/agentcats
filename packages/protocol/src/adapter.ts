@@ -172,6 +172,29 @@ export interface AdapterCapabilities {
   readonly interrupt: boolean;
   /** Modes {@link Adapter.spawn} accepts. */
   readonly permissionModes: readonly PermissionMode[];
+  /**
+   * How {@link SpawnOptions.policy} is enforced.
+   *
+   * - `hooks`: every tool call is checked against the policy before it runs,
+   *   so allowed commands, the level gates and the always-ask rules apply
+   *   exactly (Claude).
+   * - `sandbox`: the agent's own sandbox keeps writes in `cwd` and the network
+   *   off, and it asks for anything beyond that. Commands inside `cwd` may run
+   *   without asking, whatever the policy says (Codex).
+   * - `none`: neither; only `access` is honored.
+   *
+   * The board warns on cats whose adapter is not `hooks`.
+   */
+  readonly policyEnforcement: 'hooks' | 'sandbox' | 'none';
+  /** {@link Adapter.complete} works. Without it, debriefs and consolidations are skipped. */
+  readonly complete: boolean;
+}
+
+/** What the board shows about an adapter. */
+export interface AdapterInfo {
+  readonly id: string;
+  readonly displayName: string;
+  readonly capabilities: AdapterCapabilities;
 }
 
 /** An MCP server the agent should connect to for this session only. */
@@ -263,6 +286,12 @@ export interface Adapter {
   readonly capabilities: AdapterCapabilities;
   /** Model names for the hiring tiers; `null` uses the agent's default for that tier. */
   readonly modelTiers: Readonly<Record<ModelTier, string | null>>;
+  /**
+   * Expected cost of one interview candidate on a tier, in API-equivalent
+   * dollars, for the estimate shown before an interview. `null` when the
+   * adapter cannot know (it reports no cost).
+   */
+  estimateUsd(tier: ModelTier): number | null;
 
   /**
    * Start an agent session. Resolves once the agent process is running; the

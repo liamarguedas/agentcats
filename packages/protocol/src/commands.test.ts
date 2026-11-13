@@ -88,6 +88,7 @@ describe('command schemas', () => {
       protocolVersion: PROTOCOL_VERSION,
       board: sampleLog.reduce(applyEvent, emptyBoard()),
       events: sampleLog,
+      adapters: [],
     };
     expect(Snapshot.parse(snapshot)).toEqual(snapshot);
   });

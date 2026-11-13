@@ -454,11 +454,20 @@ export class Memory {
   // Helpers
   // -------------------------------------------------------------------------
 
-  /** One-shot model call; its cost goes on the cat's usage. */
+  /**
+   * One-shot model call on the default adapter; its cost goes on the cat's
+   * usage when the cat runs on that adapter.
+   *
+   * @throws Error when the adapter has no one-shot calls.
+   */
   async #ask(catId: string, systemPrompt: string, prompt: string): Promise<string> {
-    const answer = await this.o.adapter.complete({
+    const { adapter } = this.o;
+    if (!adapter.capabilities.complete) {
+      throw new Error(`${adapter.displayName} has no one-shot calls, so there is no debrief`);
+    }
+    const answer = await adapter.complete({
       cwd: this.o.projectPath,
-      model: this.o.config.memory.model,
+      model: this.o.config.memory.model ?? adapter.modelTiers.fast,
       systemPrompt,
       prompt,
     });

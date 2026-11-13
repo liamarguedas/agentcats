@@ -233,6 +233,7 @@ export class Translator {
       ),
       costUsd: Math.max(previous?.costUsd ?? 0, result.total_cost_usd),
       costSource: 'reported',
+      activeMs: 0,
     };
     this.#usage = next;
     return next;
@@ -251,5 +252,6 @@ export function usageOfResult(result: SDKResultMessage): Usage {
     cacheWriteTokens: sum((m) => m.cacheCreationInputTokens),
     costUsd: result.total_cost_usd,
     costSource: 'reported',
+    activeMs: 0,
   };
 }

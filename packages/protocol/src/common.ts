@@ -35,6 +35,11 @@ export type Billing = z.infer<typeof Billing>;
 export const Budget = z.strictObject({
   maxUsd: z.number().positive().nullable(),
   maxTokens: z.int().positive().nullable(),
+  /**
+   * Agent working time, for cats whose adapter cannot report cost. Ignored
+   * for adapters that do.
+   */
+  maxMinutes: z.number().positive().nullable().default(null),
 });
 export type Budget = z.infer<typeof Budget>;
 
@@ -133,6 +138,8 @@ export const Usage = z.strictObject({
   cacheWriteTokens: z.int().nonnegative(),
   costUsd: z.number().nonnegative().nullable(),
   costSource: CostSource,
+  /** Time the cat's turns have run, measured by the daemon; 0 from adapters. */
+  activeMs: z.int().nonnegative().default(0),
 });
 export type Usage = z.infer<typeof Usage>;
 

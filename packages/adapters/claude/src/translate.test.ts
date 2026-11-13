@@ -134,6 +134,7 @@ describe('Translator', () => {
         cacheWriteTokens: 200,
         costUsd: 0.05,
         costSource: 'reported',
+        activeMs: 0,
       },
     });
   });

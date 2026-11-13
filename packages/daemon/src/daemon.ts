@@ -17,7 +17,10 @@ import { defaultWorktreesRoot, WorktreeManager } from './worktrees.js';
 export interface DaemonOptions {
   /** Project the cats work on: a git repository with at least one commit. */
   readonly projectPath: string;
+  /** The default adapter (`config.adapter`). */
   readonly adapter: Adapter;
+  /** More adapters, for teams that mix agents. */
+  readonly adapters?: readonly Adapter[];
   /** Already loaded config. Loaded from the project when omitted. */
   readonly config?: AgentcatsConfig;
   /** Built UI directory, or `null` for none. Default `null`. */
@@ -70,7 +73,8 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
   const manager = new CatManager({
     log,
     store,
-    adapter: options.adapter,
+    adapters: new Map([options.adapter, ...(options.adapters ?? [])].map((a) => [a.id, a])),
+    defaultAdapter: options.adapter.id,
     config,
     projectPath,
     pids,

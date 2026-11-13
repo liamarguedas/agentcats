@@ -47,7 +47,8 @@ export interface CatAgentHooks {
 
 export interface CatAgentDeps {
   readonly log: EventLog;
-  readonly adapter: Adapter;
+  /** The adapter a cat runs on, by its id (cats on one team may differ). */
+  readonly adapterFor: (adapterId: string) => Adapter;
   readonly pids: PidRegistry;
   readonly logger: Logger;
   readonly approvalTimeoutMs: number;
@@ -69,7 +70,11 @@ const ZERO_USAGE: Usage = {
   cacheWriteTokens: 0,
   costUsd: 0,
   costSource: 'unknown',
+  activeMs: 0,
 };
+
+/** How often a running turn's time is added to the cat's usage, for time budgets. */
+const ACTIVE_TICK_MS = 30_000;
 
 /**
  * One cat and its current agent session. Maps normalized agent events to
@@ -92,6 +97,12 @@ export class CatAgent {
   #turnEndWaiters: (() => void)[] = [];
   #expectedEnd = false;
   #usageBase: Usage = ZERO_USAGE;
+  /** The session's latest usage report from the agent. */
+  #sessionUsage: Usage = ZERO_USAGE;
+  /** Working time of the session's finished turns. */
+  #sessionActiveMs = 0;
+  #turnStartedAt: number | null = null;
+  #activeTicker: NodeJS.Timeout | null = null;
   readonly #tools = new Map<string, { toolName: string; kind: ToolKind; inputSummary: string }>();
   readonly #approvals = new Map<string, PendingApproval>();
 
@@ -99,6 +110,11 @@ export class CatAgent {
     private readonly deps: CatAgentDeps,
     readonly catId: string,
   ) {}
+
+  /** The adapter this cat runs on now. */
+  get adapter(): Adapter {
+    return this.deps.adapterFor(this.cat.adapter);
+  }
 
   get cat(): Cat {
     const cat = this.deps.log.board.cats[this.catId];
@@ -138,7 +154,9 @@ export class CatAgent {
     await this.endSession();
     this.#taskId = taskId;
     this.#usageBase = this.deps.log.board.usage[this.catId] ?? ZERO_USAGE;
-    this.#spawning = this.deps.adapter.spawn({ ...options, catId: this.catId });
+    this.#sessionUsage = ZERO_USAGE;
+    this.#sessionActiveMs = 0;
+    this.#spawning = this.adapter.spawn({ ...options, catId: this.catId });
     try {
       const session = await this.#spawning;
       if (session.pid !== null) {
@@ -188,6 +206,35 @@ export class CatAgent {
     const ended = new Promise<void>((resolve) => this.#turnEndWaiters.push(resolve));
     await this.#session.interrupt();
     await ended;
+  }
+
+  /** The cat's total usage: what it had before this session, plus the session's, with working time. */
+  #reportUsage(): void {
+    const running = this.#turnStartedAt === null ? 0 : Date.now() - this.#turnStartedAt;
+    this.deps.log.append({
+      type: 'usage.updated',
+      catId: this.catId,
+      payload: addUsage(this.#usageBase, {
+        ...this.#sessionUsage,
+        activeMs: this.#sessionActiveMs + running,
+      }),
+    });
+    this.deps.hooks.usage(this);
+  }
+
+  #startTicker(): void {
+    clearInterval(this.#activeTicker ?? undefined);
+    this.#activeTicker = setInterval(() => {
+      this.#reportUsage();
+    }, ACTIVE_TICK_MS);
+    this.#activeTicker.unref();
+  }
+
+  #endTurnClock(): void {
+    clearInterval(this.#activeTicker ?? undefined);
+    this.#activeTicker = null;
+    if (this.#turnStartedAt !== null) this.#sessionActiveMs += Date.now() - this.#turnStartedAt;
+    this.#turnStartedAt = null;
   }
 
   #turnFinished(): void {
@@ -291,12 +338,14 @@ export class CatAgent {
           });
         }
         this.deps.logger.info(
-          `${this.cat.name}: session started (${this.deps.adapter.id} ${event.agentVersion ?? 'unknown version'})`,
+          `${this.cat.name}: session started (${this.adapter.id} ${event.agentVersion ?? 'unknown version'})`,
         );
         return;
 
       case 'turn.started':
         this.#inTurn = true;
+        this.#turnStartedAt = Date.now();
+        this.#startTicker();
         this.setStatus('thinking');
         return;
 
@@ -366,15 +415,13 @@ export class CatAgent {
       }
 
       case 'usage':
-        log.append({
-          type: 'usage.updated',
-          catId: this.catId,
-          payload: addUsage(this.#usageBase, event.usage),
-        });
-        hooks.usage(this);
+        this.#sessionUsage = event.usage;
+        this.#reportUsage();
         return;
 
       case 'turn.ended': {
+        this.#endTurnClock();
+        this.#reportUsage();
         this.#turnFinished();
         this.#dropApprovals();
         const outcome: TurnOutcome = {
@@ -412,6 +459,11 @@ export class CatAgent {
     if (this.#session !== session) return;
     const taskId = this.#taskId;
     const expected = this.#expectedEnd;
+    if (this.#turnStartedAt !== null) {
+      // The session ended mid-turn: its time still counts.
+      this.#endTurnClock();
+      this.#reportUsage();
+    }
     this.#session = null;
     this.#taskId = null;
     this.#turnFinished();
@@ -454,5 +506,6 @@ function addUsage(base: Usage, session: Usage): Usage {
     cacheWriteTokens: base.cacheWriteTokens + session.cacheWriteTokens,
     costUsd: cost,
     costSource: session.costSource,
+    activeMs: base.activeMs + session.activeMs,
   };
 }
