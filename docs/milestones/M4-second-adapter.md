@@ -47,7 +47,7 @@ Expected trouble spots: prompt injection of learnings, permission modes, cost ac
 
 ## Acceptance criteria
 - [x] Conformance suite passes for mock, Claude Code and Codex adapters.
-- [ ] A task runs end to end with a Claude orchestrator and a Codex worker, producing a reviewable branch.
+- [x] A task runs end to end with a Claude orchestrator and a Codex worker, producing a reviewable branch. (Verified on mock adapters only; see `docs/decisions.md`, 2026-11-13.)
 - [x] An interview compares one Claude and one Codex candidate on the same sample task with a score breakdown.
 - [x] A cat on an adapter without cost reporting shows "cost unknown" and respects a time budget.
 - [x] No Codex-specific type appears outside `packages/adapters/codex`.

@@ -594,10 +594,18 @@ Where Claude-specific assumptions leaked into lifecycle code (M4 will expose the
 - **Codex live, on a $0.50 prepaid API budget** (the user changed "mock only" to a few cheap runs; all on `gpt-5.4-mini`):
   - **Conformance suite:** 8 of 8 passed, in two runs. The first run passed 6; the two approval checks failed (see below). After the fixes, the two approval checks passed. The other six were not rerun with the sandbox fix, to save budget.
   - **Interview** (`live-m4.test.ts`, add-function sample, fast tier): both candidates passed with a full score breakdown. Claude (haiku): +26 -1, $0.006, 24 s, score 86.7 (diff 66.7, cost 100, time 100, quality 100). Codex: +16 -2, cost unknown, 71 s, score 77.5 (diff 100, cost 50, time 33.2, quality 100). The estimate showed "cost unknown". Codex asked before `git commit`, a write outside its worktree (the git directory).
-  - **Mixed-team task: not run.** The user asked for one run only, to stay within budget. Criterion 2 stays unchecked; covered by mock-adapter daemon tests only.
+  - **Mixed-team task: not run live.** The user asked for one run only, to stay within budget.
 - **Leak 13, found live: version skew and the Windows sandbox.** codex-acp bundles its own, older Codex build. It could not start the `elevated` Windows sandbox set up by the user's Codex CLI 0.145, so every command failed ("windows sandbox: spawn setup refresh"). Fix: the Codex adapter passes `-c windows.sandbox="unelevated"` on Windows, weaker but working; `codex.windowsSandbox: "codex_config"` keeps the user's setting.
 - **Finding: Codex does not ask before network commands.** The network approval check assumed it would. On Windows a network command runs and fails in the sandbox. The README and the ⚠ badge no longer say it asks. The approval check now asks for a file edit in read-only mode (`approvalMode: 'ask'` in the suite), which Codex does ask about.
 - **Spend:** Codex reports no cost; estimated about $0.05 to $0.20 for all Codex runs, to be confirmed on the user's OpenAI usage page.
+
+## 2026-11-13 - M4 criterion 2 accepted on mock coverage
+
+- **Deviation:** the criterion "a task runs end to end with a Claude orchestrator and a Codex worker" was not run live. The user accepted the mock coverage instead, to keep within a $0.50 OpenAI API budget.
+- **What covers it:**
+  - the daemon's mixed-team tests on two mock adapters (a lead on one, a worker on the other, producing a reviewable branch);
+  - real Codex doing worker-shaped work live: the conformance suite, and the interview, where the Codex candidate edited, tested and committed on a branch that passed the hidden tests.
+- **Not covered:** a real Claude lead handing a task to a real Codex worker through the lead's MCP tools. The live test is ready: `AGENTCATS_LIVE_CLAUDE=1 AGENTCATS_LIVE_CODEX=1 pnpm exec vitest run packages/cli/test/live-m4.test.ts -t "Codex worker"`, about $0.05 to $0.20 on `gpt-5.4-mini`.
 
 ## M5 handoff notes
 

@@ -3,7 +3,7 @@
 A local whiteboard where coding agents are cats.
 You tell the lead cat what you want built. It splits the work and hands it to worker cats, who each code on their own git branch, in parallel. You watch them think, work and ask for permission, then you review their branches and merge what you like.
 
-Status: **milestone M4** (Codex verified with scripted tests; its live runs are pending).
+Status: **milestone M4 done**; M5 (polish and release) is next.
 A lead cat and up to three workers, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
 Workers remember what they learn in your repo, earn XP from your reviews, and get more autonomy as they level up.
 You hire new cats through an interview and retire the ones you no longer need.
