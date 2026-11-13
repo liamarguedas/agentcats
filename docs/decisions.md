@@ -590,12 +590,13 @@ Where Claude-specific assumptions leaked into lifecycle code (M4 will expose the
 ## 2026-11-13 - M4 live verification
 
 - **Claude, conformance suite live** (`claude.live.test.ts`, `haiku`, the user's Pro plan): 8 of 8 passed. Valid turn, follow-up, approval allow and deny (the network hook), kill with no process left, cost reported, working directory, crash reported.
-- **Codex: not run live.** The user chose mock-only because their Codex login is an API key (billed per token). Covered without cost:
-  - the free `codex-acp` handshake (Step 0);
-  - the ACP adapter's own tests and the conformance suite against a scripted ACP agent, which exercises the same code path;
-  - mixed-team and cross-adapter interview tests on two mock adapters.
-- **Gated Codex runs are ready** for when the user approves: `AGENTCATS_LIVE_CODEX=1` for the suite, and `AGENTCATS_LIVE_CLAUDE=1 AGENTCATS_LIVE_CODEX=1` for `packages/cli/test/live-m4.test.ts` (a Claude lead with a Codex worker, and a Claude vs Codex interview). Expected cost on `gpt-5.4-mini` and `gpt-5.4`: well under $1.
-- **Acceptance criteria 1 to 3 stay unchecked until then.**
+- **Codex live, on a $0.50 prepaid API budget** (the user changed "mock only" to a few cheap runs; all on `gpt-5.4-mini`):
+  - **Conformance suite:** 8 of 8 passed, in two runs. The first run passed 6; the two approval checks failed (see below). After the fixes, the two approval checks passed. The other six were not rerun with the sandbox fix, to save budget.
+  - **Interview** (`live-m4.test.ts`, add-function sample, fast tier): both candidates passed with a full score breakdown. Claude (haiku): +26 -1, $0.006, 24 s, score 86.7 (diff 66.7, cost 100, time 100, quality 100). Codex: +16 -2, cost unknown, 71 s, score 77.5 (diff 100, cost 50, time 33.2, quality 100). The estimate showed "cost unknown". Codex asked before `git commit`, a write outside its worktree (the git directory).
+  - **Mixed-team task: not run.** The user asked for one run only, to stay within budget. Criterion 2 stays unchecked; covered by mock-adapter daemon tests only.
+- **Leak 13, found live: version skew and the Windows sandbox.** codex-acp bundles its own, older Codex build. It could not start the `elevated` Windows sandbox set up by the user's Codex CLI 0.145, so every command failed ("windows sandbox: spawn setup refresh"). Fix: the Codex adapter passes `-c windows.sandbox="unelevated"` on Windows, weaker but working; `codex.windowsSandbox: "codex_config"` keeps the user's setting.
+- **Finding: Codex does not ask before network commands.** The network approval check assumed it would. On Windows a network command runs and fails in the sandbox. The README and the ⚠ badge no longer say it asks. The approval check now asks for a file edit in read-only mode (`approvalMode: 'ask'` in the suite), which Codex does ask about.
+- **Spend:** Codex reports no cost; estimated about $0.05 to $0.20 for all Codex runs, to be confirmed on the user's OpenAI usage page.
 
 ## M5 handoff notes
 

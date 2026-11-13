@@ -46,9 +46,9 @@ Implement `packages/adapters/codex/` to the interface. Normalize its events to `
 Expected trouble spots: prompt injection of learnings, permission modes, cost accounting, session resume, tool name normalization in the activity bubbles. Each fix goes through the protocol or adapter interface, never as a special case in daemon code. Log each leak found and how it was resolved.
 
 ## Acceptance criteria
-- [ ] Conformance suite passes for mock, Claude Code and Codex adapters.
+- [x] Conformance suite passes for mock, Claude Code and Codex adapters.
 - [ ] A task runs end to end with a Claude orchestrator and a Codex worker, producing a reviewable branch.
-- [ ] An interview compares one Claude and one Codex candidate on the same sample task with a score breakdown.
+- [x] An interview compares one Claude and one Codex candidate on the same sample task with a score breakdown.
 - [x] A cat on an adapter without cost reporting shows "cost unknown" and respects a time budget.
 - [x] No Codex-specific type appears outside `packages/adapters/codex`.
 - [x] `docs/decisions.md` lists every abstraction leak found and the fix.
