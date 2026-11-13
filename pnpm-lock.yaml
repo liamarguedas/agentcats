@@ -120,6 +120,9 @@ importers:
       '@agentcats/adapter-claude':
         specifier: workspace:*
         version: link:../adapters/claude
+      '@agentcats/adapter-codex':
+        specifier: workspace:*
+        version: link:../adapters/codex
       '@agentcats/adapter-mock':
         specifier: workspace:*
         version: link:../adapters/mock

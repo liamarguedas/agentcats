@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@agentcats/adapter-claude": "workspace:*",
+    "@agentcats/adapter-codex": "workspace:*",
     "@agentcats/adapter-mock": "workspace:*",
     "@agentcats/daemon": "workspace:*",
     "@agentcats/protocol": "workspace:*",

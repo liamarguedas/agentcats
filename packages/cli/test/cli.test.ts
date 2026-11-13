@@ -61,7 +61,7 @@ describe('parseCliArgs', () => {
   });
 
   it.each([
-    [['--adapter', 'codex'], /--adapter/],
+    [['--adapter', 'gemini'], /--adapter/],
     [['--port', 'abc'], /--port/],
     [['--port', '70000'], /--port/],
     [['--wat'], /Unknown option/],
@@ -125,7 +125,7 @@ describe('main', () => {
 
   it('fails with exit code 2 and usage for a bad option', async () => {
     const { io, err } = testIo();
-    expect(await main(['--adapter', 'codex'], io)).toBe(2);
+    expect(await main(['--adapter', 'gemini'], io)).toBe(2);
     expect(err.join(' ')).toMatch(/Usage: agentcats/);
   });
 

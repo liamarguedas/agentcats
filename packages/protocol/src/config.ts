@@ -30,8 +30,8 @@ export const AgentcatsConfig = z.strictObject({
   adapter: AdapterId.default('claude'),
   orchestrator: z
     .strictObject({
-      /** `null` uses the default `adapter`. It must support MCP. */
-      adapter: AdapterId.nullable().default(null),
+      /** An adapter id; `null` uses the default `adapter`. It must support MCP. */
+      adapter: z.string().min(1).max(64).nullable().default(null),
       /** `null` uses the agent's own default model. */
       model: z.string().min(1).nullable().default(null),
     })
@@ -40,8 +40,8 @@ export const AgentcatsConfig = z.strictObject({
     .strictObject({
       /** How many workers may run at the same time. */
       max: z.int().min(1).max(16).default(3),
-      /** `null` uses the default `adapter`. */
-      adapter: AdapterId.nullable().default(null),
+      /** An adapter id; `null` uses the default `adapter`. */
+      adapter: z.string().min(1).max(64).nullable().default(null),
       /** `null` uses the adapter's balanced tier (`sonnet` for Claude). */
       model: z.string().min(1).nullable().default(null),
       permissionMode: PermissionMode.default('accept_edits'),

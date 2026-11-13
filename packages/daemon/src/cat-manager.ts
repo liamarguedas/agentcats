@@ -249,6 +249,11 @@ export class CatManager {
         });
       }
     }
+    for (const role of ['orchestrator', 'worker'] as const) {
+      const id = this.#roleAdapter(role);
+      if (!this.o.adapters.has(id))
+        throw new Error(`No adapter "${id}" for the ${role} in this run`);
+    }
     const lead = this.adapterFor(this.#roleAdapter('orchestrator'));
     if (!lead.capabilities.mcp) {
       throw new Error(

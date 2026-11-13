@@ -10,6 +10,7 @@ import {
   resolveClaudeExecutable,
   TESTED_CLAUDE_VERSIONS,
 } from '@agentcats/adapter-claude';
+import { createCodexAdapter, TESTED_CODEX_ACP_VERSION } from '@agentcats/adapter-codex';
 import { createMockAdapter } from '@agentcats/adapter-mock';
 import { ConfigError, consoleLogger, GitError, loadConfig, startDaemon } from '@agentcats/daemon';
 import type { AgentcatsConfig } from '@agentcats/protocol';
@@ -21,7 +22,7 @@ Starts the agentcats daemon for a project and opens the board in your browser.
 
 Options:
   -p, --project <path>         Project the cat works in (default: current directory)
-      --adapter <claude|mock>  Override the adapter from agentcats.config.json
+      --adapter <claude|codex|mock>  Override the default adapter from agentcats.config.json
       --port <number>          Port on 127.0.0.1 (default: config, or a free port)
       --no-open                Print the board URL instead of opening a browser
   -h, --help                   Show this help
@@ -72,8 +73,8 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
     throw new UsageError((error as Error).message);
   }
   const adapter = values.adapter ?? null;
-  if (adapter !== null && adapter !== 'claude' && adapter !== 'mock') {
-    throw new UsageError(`--adapter must be "claude" or "mock", got "${adapter}"`);
+  if (adapter !== null && adapter !== 'claude' && adapter !== 'codex' && adapter !== 'mock') {
+    throw new UsageError(`--adapter must be "claude", "codex" or "mock", got "${adapter}"`);
   }
   const port = values.port === undefined ? null : Number(values.port);
   if (port !== null && (!Number.isInteger(port) || port < 0 || port > 65_535)) {
@@ -95,17 +96,9 @@ export async function findUiDir(): Promise<string | null> {
   return (await stat(join(dist, 'index.html')).catch(() => null)) ? dist : null;
 }
 
-async function createAdapter(config: AgentcatsConfig, io: CliIo): Promise<Adapter> {
-  // On a real project the mock only animates; it never writes files or commits.
-  if (config.adapter === 'mock') return createMockAdapter();
+async function createClaude(config: AgentcatsConfig, io: CliIo): Promise<Adapter | null> {
   const executable = await resolveClaudeExecutable(config.claude.executablePath);
-  if (!executable) {
-    throw new ConfigError(
-      config.claude.executablePath
-        ? `Claude Code not found at ${config.claude.executablePath}.`
-        : 'Claude Code (`claude`) was not found on PATH. Install it, set claude.executablePath in .agentcats/agentcats.config.json, or run with --adapter mock.',
-    );
-  }
+  if (!executable) return null;
   const version = await claudeVersion(executable).catch(() => null);
   io.out(`Using Claude Code ${version ?? '(unknown version)'} at ${executable}`);
   if (version === null || !TESTED_CLAUDE_VERSIONS.includes(version)) {
@@ -114,6 +107,55 @@ async function createAdapter(config: AgentcatsConfig, io: CliIo): Promise<Adapte
     );
   }
   return createClaudeAdapter({ executablePath: executable });
+}
+
+/**
+ * The adapters for this run: the ones the config asks for (default, lead,
+ * workers), which must work, and on a real project the other real agents
+ * too, so interviews can compare them. The default comes first.
+ *
+ * @throws ConfigError when an adapter the config asks for cannot run.
+ */
+async function createAdapters(config: AgentcatsConfig, io: CliIo): Promise<Adapter[]> {
+  const required = new Set<string>(
+    [config.adapter, config.orchestrator.adapter, config.workers.adapter].filter(
+      (id): id is string => id !== null,
+    ),
+  );
+  for (const id of required) {
+    if (id !== 'claude' && id !== 'codex' && id !== 'mock') {
+      throw new ConfigError(
+        `Unknown adapter "${id}" in agentcats.config.json (claude, codex or mock)`,
+      );
+    }
+  }
+  // On a real project the mock only animates; it never writes files or commits.
+  const offered = config.adapter === 'mock' ? required : new Set([...required, 'claude', 'codex']);
+  const adapters: Adapter[] = [];
+  for (const id of [config.adapter, ...[...offered].filter((o) => o !== config.adapter)]) {
+    if (id === 'mock') adapters.push(createMockAdapter());
+    if (id === 'codex') {
+      // Codex starts only when a Codex cat does; codex-acp uses the user's Codex login.
+      adapters.push(createCodexAdapter());
+      if (required.has('codex')) {
+        io.out(
+          `Using Codex through codex-acp ${TESTED_CODEX_ACP_VERSION}, with your Codex login. It reports no cost, so Codex cats get a time budget.`,
+        );
+      }
+    }
+    if (id === 'claude') {
+      const claude = await createClaude(config, io);
+      if (claude) adapters.push(claude);
+      else if (required.has('claude')) {
+        throw new ConfigError(
+          config.claude.executablePath
+            ? `Claude Code not found at ${config.claude.executablePath}.`
+            : 'Claude Code (`claude`) was not found on PATH. Install it, set claude.executablePath in .agentcats/agentcats.config.json, or run with --adapter mock.',
+        );
+      }
+    }
+  }
+  return adapters;
 }
 
 /**
@@ -146,12 +188,14 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
       ...(args.adapter !== null && { adapter: args.adapter }),
       ...(args.port !== null && { port: args.port }),
     };
-    const adapter = await createAdapter(config, io);
+    const [adapter, ...others] = await createAdapters(config, io);
+    if (!adapter) throw new ConfigError(`No adapter "${config.adapter}"`);
     const uiDir = await findUiDir();
 
     const daemon = await startDaemon({
       projectPath: args.project,
       adapter,
+      adapters: others,
       config,
       uiDir,
       logger: consoleLogger,
