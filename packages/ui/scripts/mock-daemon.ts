@@ -52,6 +52,19 @@ await writeFile(
   "process.exit(require('node:fs').readFileSync('answer.txt', 'utf8').trim() === '42' ? 0 : 1);\n",
 );
 let candidates = 0;
+
+function sandboxedMock() {
+  const adapter = createMockAdapter({
+    id: 'mock-nocost',
+    reportsCost: false,
+    timeScale: Number(env['AGENTCATS_TIME_SCALE'] ?? 1),
+    realFiles: true,
+  });
+  return {
+    ...adapter,
+    capabilities: { ...adapter.capabilities, policyEnforcement: 'sandbox' as const },
+  };
+}
 git('add', '.');
 git(
   '-c',
@@ -81,8 +94,13 @@ const daemon = await startDaemon({
         ? ['interview-pass', 'interview-verbose', 'interview-fail'][candidates++ % 3]
         : undefined,
   }),
+  // A second agent that, like Codex, reports no cost and enforces its own
+  // sandbox, so the board's time budget and sandbox warning can be seen.
+  adapters: [sandboxedMock()],
   config: AgentcatsConfig.parse({
     adapter: 'mock',
+    // An explicit worker model, so only interview candidates use the tier names.
+    workers: { model: 'mock-worker' },
     port: Number(env['AGENTCATS_PORT'] ?? 4545),
     worktreesDir,
   }),

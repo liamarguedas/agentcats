@@ -926,8 +926,11 @@ code {
 
 .cat-card__name {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 4px 8px;
+  max-width: 100%;
 }
 
 .role-tag {
@@ -1889,4 +1892,26 @@ code {
 
 .retired__item .button {
   margin-left: auto;
+}
+
+/* Adapters */
+
+.adapter-badge {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.adapter-badge--sandbox {
+  border-color: color-mix(in srgb, var(--warn) 55%, var(--line));
+  color: var(--warn);
+  cursor: help;
+}
+
+.form__row--candidates {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }

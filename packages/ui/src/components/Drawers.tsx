@@ -1,4 +1,11 @@
-import type { AgentcatsEvent, Cat, PermissionMode, Task, Usage } from '@agentcats/protocol';
+import type {
+  AdapterInfo,
+  AgentcatsEvent,
+  Cat,
+  PermissionMode,
+  Task,
+  Usage,
+} from '@agentcats/protocol';
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from 'react';
 
 import { InlineText } from './InlineText.js';
@@ -280,10 +287,13 @@ export interface CatDrawerProps {
   readonly cat: Cat;
   readonly usage: Usage | undefined;
   readonly canNudge: boolean;
+  /** Adapters the cat can move to; the lead only sees ones with MCP. */
+  readonly adapters: readonly AdapterInfo[];
   readonly onSave: (patch: {
+    adapter?: string;
     model: string | null;
     permissionMode?: PermissionMode;
-    budget: { maxUsd: number | null; maxTokens: number | null };
+    budget: { maxUsd: number | null; maxTokens: number | null; maxMinutes: number | null };
   }) => Promise<void>;
   readonly onNudge: () => void;
   /** Open the retire dialog; workers only. */
@@ -300,6 +310,7 @@ const numberOrNull = (text: string) => {
 
 export function CatDrawer({
   cat,
+  adapters,
   usage,
   canNudge,
   onSave,
@@ -309,6 +320,10 @@ export function CatDrawer({
   children,
 }: CatDrawerProps) {
   const [model, setModel] = useState(cat.model ?? '');
+  const [adapterId, setAdapterId] = useState(cat.adapter);
+  const [minutes, setMinutes] = useState(
+    cat.budget.maxMinutes === null ? '' : String(cat.budget.maxMinutes),
+  );
   const [mode, setMode] = useState<PermissionMode>(cat.permissionMode);
   const [usd, setUsd] = useState(cat.budget.maxUsd === null ? '' : String(cat.budget.maxUsd));
   const [tokens, setTokens] = useState(
@@ -321,11 +336,13 @@ export function CatDrawer({
     e.preventDefault();
     const maxTokens = numberOrNull(tokens);
     await onSave({
+      ...(adapterId !== cat.adapter && { adapter: adapterId }),
       model: model.trim() || null,
       ...(!isLead && { permissionMode: mode }),
       budget: {
         maxUsd: numberOrNull(usd),
         maxTokens: maxTokens === null ? null : Math.round(maxTokens),
+        maxMinutes: numberOrNull(minutes),
       },
     });
     setSaved(true);
@@ -362,6 +379,26 @@ export function CatDrawer({
       {children && <h3 className="drawer__subtitle">Properties</h3>}
 
       <form className="form" onSubmit={(e) => void submit(e)}>
+        {adapters.length > 1 && (
+          <label className="form__field">
+            <span>Agent</span>
+            <select
+              value={adapterId}
+              onChange={(e) => {
+                setAdapterId(e.target.value);
+                setSaved(false);
+              }}
+            >
+              {adapters
+                .filter((a) => !isLead || a.capabilities.mcp || a.id === cat.adapter)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.displayName}
+                  </option>
+                ))}
+            </select>
+          </label>
+        )}
         <label className="form__field">
           <span>Model</span>
           <input
@@ -402,6 +439,19 @@ export function CatDrawer({
             />
           </label>
           <label className="form__field">
+            <span>Time limit (min)</span>
+            <input
+              inputMode="decimal"
+              value={minutes}
+              placeholder="no limit"
+              title="Used for agents that report no cost"
+              onChange={(e) => {
+                setMinutes(e.target.value);
+                setSaved(false);
+              }}
+            />
+          </label>
+          <label className="form__field">
             <span>Token limit</span>
             <input
               inputMode="numeric"
@@ -415,7 +465,7 @@ export function CatDrawer({
           </label>
         </div>
         <p className="drawer__hint">
-          Model and permission mode apply from the cat&apos;s next session.
+          Agent, model and permission mode apply from the cat&apos;s next session.
         </p>
         <div className="drawer__actions">
           <button type="submit" className="button button--primary">

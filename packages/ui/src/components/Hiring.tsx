@@ -1,4 +1,5 @@
 import type {
+  AdapterInfo,
   Candidate,
   Cat,
   HireRole,
@@ -70,10 +71,13 @@ export interface HireDialogProps {
   readonly loadSamples: () => Promise<readonly InterviewSample[]>;
   readonly defaultCandidates: number;
   /** Plan the interview; resolves with it (status `proposed`) or `null` on error. */
+  /** Agents candidates can run on; the first is the default. */
+  readonly adapters: readonly AdapterInfo[];
   readonly onPropose: (
     role: HireRole,
     sampleId: string,
     candidates: number,
+    adapters: readonly string[],
   ) => Promise<Interview | null>;
   readonly onStart: (interviewId: string) => Promise<boolean>;
   readonly onCancel: (interviewId: string) => void;
@@ -86,6 +90,8 @@ export function HireDialog(props: HireDialogProps) {
   const [description, setDescription] = useState('');
   const [tier, setTier] = useState<ModelTier>('balanced');
   const [candidates, setCandidates] = useState(props.defaultCandidates);
+  const [candidateAdapters, setCandidateAdapters] = useState<readonly string[]>([]);
+  const adapterOf = (i: number) => candidateAdapters[i] ?? props.adapters[0]?.id ?? '';
   const [sampleId, setSampleId] = useState('');
   const [learnings, setLearnings] = useState('');
   const [planned, setPlanned] = useState<Interview | null>(null);
@@ -120,7 +126,8 @@ export function HireDialog(props: HireDialogProps) {
         .map((l) => l.replace(/^\s*[-*]\s*/, '').trim())
         .filter(Boolean),
     };
-    setPlanned(await props.onPropose(role, sampleId, candidates));
+    const adapters = Array.from({ length: candidates }, (_, i) => adapterOf(i));
+    setPlanned(await props.onPropose(role, sampleId, candidates, adapters));
     setBusy(false);
   }
 
@@ -211,6 +218,29 @@ export function HireDialog(props: HireDialogProps) {
               </select>
             </label>
           </div>
+          {props.adapters.length > 1 && (
+            <div className="form__row form__row--candidates">
+              {Array.from({ length: candidates }, (_, i) => (
+                <label key={i} className="form__field">
+                  <span>Candidate {i + 1}</span>
+                  <select
+                    value={adapterOf(i)}
+                    onChange={(e) => {
+                      const next = Array.from({ length: 3 }, (_, n) => adapterOf(n));
+                      next[i] = e.target.value;
+                      setCandidateAdapters(next);
+                    }}
+                  >
+                    {props.adapters.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          )}
           <label className="form__field">
             <span>Interview task</span>
             <select

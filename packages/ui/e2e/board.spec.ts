@@ -243,6 +243,28 @@ test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await expect(retired).toHaveCount(0);
 });
 
+test('a cat moved to an agent without cost reporting shows cost unknown, its time budget and a sandbox warning', async ({
+  page,
+}) => {
+  await openBoard(page);
+  const card = page.getByTestId('cat-Mochi');
+  await expect(card.getByTestId('adapter-badge')).toHaveText('Mock');
+  await page.getByRole('button', { name: 'Properties of Mochi' }).click();
+  const drawer = page.getByRole('dialog');
+  await drawer
+    .getByRole('combobox', { name: 'Agent' })
+    .selectOption({ label: 'Mock (mock-nocost)' });
+  await expect(drawer.getByLabel('Time limit (min)')).toHaveValue('60');
+  await drawer.getByRole('button', { name: 'Save' }).click();
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await page.keyboard.press('Escape');
+
+  await expect(card.getByTestId('adapter-badge')).toHaveText('Mock (mock-nocost) ⚠');
+  await expect(card.getByTestId('adapter-badge')).toHaveAttribute('title', /own sandbox/);
+  await expect(card).toContainText(/cost unknown · .* \/ 60 min/);
+  await card.screenshot({ path: `${SHOTS}/cost-unknown.png`, animations: 'disabled' });
+});
+
 test('the board resyncs after a reload', async ({ page }) => {
   await openBoard(page);
   await page.reload();

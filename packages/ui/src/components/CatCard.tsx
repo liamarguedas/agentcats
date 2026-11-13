@@ -1,4 +1,4 @@
-import type { Cat, PendingApproval, Task, ToolKind, Usage } from '@agentcats/protocol';
+import type { AdapterInfo, Cat, PendingApproval, Task, ToolKind, Usage } from '@agentcats/protocol';
 
 import { CatSprite } from './Cat.js';
 import { InlineText } from './InlineText.js';
@@ -52,6 +52,8 @@ export interface CatCardProps {
   readonly pendingLearnings: number;
   /** Why the lead suggests retiring this cat, if it does. */
   readonly retireSuggestion: string | null;
+  /** The adapter the cat runs on; `undefined` before the snapshot lists it. */
+  readonly adapter: AdapterInfo | undefined;
   readonly onReviewRetire: () => void;
   readonly onDismissRetire: () => void;
 }
@@ -100,6 +102,7 @@ export function CatCard(props: CatCardProps) {
         <h2 className="cat-card__name">
           {cat.name}
           <span className="role-tag">{ROLE_LABEL[cat.role]}</span>
+          <AdapterBadge adapter={props.adapter} id={cat.adapter} />
         </h2>
         <p
           className={`status-pill status-pill--${status}`}
@@ -114,7 +117,7 @@ export function CatCard(props: CatCardProps) {
         </p>
         {cat.role === 'worker' && <LevelBadge cat={cat} />}
         {task && size === 'worker' && <p className="cat-card__task">{task.title}</p>}
-        <Spend cat={cat} usage={usage} />
+        <Spend cat={cat} usage={usage} adapter={props.adapter} />
         <div className="cat-card__actions">
           {paused ? (
             <button type="button" className="button button--small" onClick={props.onResume}>
@@ -271,8 +274,60 @@ function Bubble({ cat, approval, lastMessage, onApprove }: CatCardProps) {
   }
 }
 
+/** Which agent a cat runs on, with a warning when agentcats cannot check each of its actions. */
+function AdapterBadge({ adapter, id }: { adapter: AdapterInfo | undefined; id: string }) {
+  const sandboxed = adapter && adapter.capabilities.policyEnforcement !== 'hooks';
+  return (
+    <span
+      className={`adapter-badge${sandboxed ? ' adapter-badge--sandbox' : ''}`}
+      data-testid="adapter-badge"
+      title={
+        sandboxed
+          ? `${adapter.displayName} enforces its own sandbox: it may run commands in its worktree without asking, so allowed commands and level gates are not checked one by one. It still asks before network access and writes outside its worktree.`
+          : `Runs on ${adapter?.displayName ?? id}`
+      }
+    >
+      {adapter?.displayName ?? id}
+      {sandboxed && ' ⚠'}
+    </span>
+  );
+}
+
+/** Working time against the time budget, for cats whose agent reports no cost. */
+function TimeSpend({ cat, usage }: { cat: Cat; usage: Usage | undefined }) {
+  const minutes = (usage?.activeMs ?? 0) / 60_000;
+  const max = cat.budget.maxMinutes;
+  const ratio = max === null ? null : Math.min(1, minutes / max);
+  return (
+    <div className="spend" title="This agent reports no cost, so its budget is working time">
+      <span className="spend__text">
+        cost unknown · {minutes < 1 ? '<1' : minutes.toFixed(0)}
+        {max !== null && <span className="spend__max"> / {max} min</span>}
+        {max === null && ' min'}
+      </span>
+      {ratio !== null && (
+        <span className="meter" aria-hidden="true">
+          <span
+            className={`meter__fill${ratio >= 1 ? ' meter__fill--over' : ratio >= 0.8 ? ' meter__fill--warn' : ''}`}
+            style={{ width: `${String(Math.round(ratio * 100))}%` }}
+          />
+        </span>
+      )}
+    </div>
+  );
+}
+
 /** Running spend against the budget. On a subscription the cost is an API-equivalent estimate. */
-function Spend({ cat, usage }: { cat: Cat; usage: Usage | undefined }) {
+function Spend({
+  cat,
+  usage,
+  adapter,
+}: {
+  cat: Cat;
+  usage: Usage | undefined;
+  adapter: AdapterInfo | undefined;
+}) {
+  if (adapter && !adapter.capabilities.reportsCost) return <TimeSpend cat={cat} usage={usage} />;
   const spent = usage?.costUsd ?? null;
   const tokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0);
   const estimate = cat.billing === 'subscription' || usage?.costSource === 'estimated';

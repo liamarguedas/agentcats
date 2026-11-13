@@ -1,4 +1,5 @@
 import {
+  type AdapterInfo,
   AgentcatsEvent,
   applyEvent,
   type BoardState,
@@ -23,6 +24,8 @@ export interface BoardView {
   readonly board: BoardState;
   /** Recent events for the log panel, oldest first. */
   readonly events: readonly AgentcatsEvent[];
+  /** The adapters cats can run on, with what each can do. */
+  readonly adapters: readonly AdapterInfo[];
 }
 
 /** The subset of the browser WebSocket the client uses, so tests can inject `ws`. */
@@ -63,7 +66,7 @@ const MAX_BACKOFF_MS = 10_000;
  * exponential backoff and resyncs.
  */
 export class BoardClient {
-  #view: BoardView = { connection: 'connecting', board: emptyBoard(), events: [] };
+  #view: BoardView = { connection: 'connecting', board: emptyBoard(), events: [], adapters: [] };
   readonly #listeners = new Set<() => void>();
   #socket: WebSocketLike | null = null;
   #buffer: AgentcatsEvent[] | null = null;
@@ -203,7 +206,12 @@ export class BoardClient {
     const buffered = this.#buffer;
     this.#buffer = null;
     this.#attempt = 0;
-    this.#set({ connection: 'live', board: snapshot.board, events: snapshot.events });
+    this.#set({
+      connection: 'live',
+      board: snapshot.board,
+      events: snapshot.events,
+      adapters: snapshot.adapters,
+    });
     for (const event of buffered) this.#apply(event);
   }
 

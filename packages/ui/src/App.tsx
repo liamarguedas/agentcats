@@ -245,6 +245,7 @@ export function App({ client }: { client: BoardClient }) {
       xpPop={xpPopOf(cat.id)}
       pendingLearnings={proposalsOf(cat.id).length}
       retireSuggestion={board.retireProposals[cat.id]?.reason ?? null}
+      adapter={view.adapters.find((a) => a.id === cat.adapter)}
       onReviewRetire={() => {
         setRetiring(cat.id);
       }}
@@ -444,11 +445,21 @@ export function App({ client }: { client: BoardClient }) {
         <HireDialog
           defaultCandidates={2}
           loadSamples={loadSamples}
-          onPropose={async (role, sampleId, candidates) => {
+          adapters={view.adapters}
+          onPropose={async (role, sampleId, candidates, adapters) => {
             let planned = null;
             await attempt(async () => {
               planned = (
-                await client.request('proposeInterview', {}, { role, sampleId, candidates })
+                await client.request(
+                  'proposeInterview',
+                  {},
+                  {
+                    role,
+                    sampleId,
+                    candidates,
+                    ...(view.adapters.length > 1 && { adapters: [...adapters] }),
+                  },
+                )
               ).interview;
             });
             return planned;
@@ -505,6 +516,7 @@ export function App({ client }: { client: BoardClient }) {
         <CatDrawer
           key={openCat.id}
           cat={openCat}
+          adapters={view.adapters}
           usage={board.usage[openCat.id]}
           canNudge={
             openCat.role === 'worker' &&
