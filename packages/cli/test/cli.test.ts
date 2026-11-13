@@ -179,3 +179,57 @@ describe('the Node version check', () => {
     expect(cliPackage.engines.node).toBe(`>=${MINIMUM.join('.')}`);
   });
 });
+
+describe('doctor and cleanup commands', () => {
+  it('parses the command, and rejects an unknown one', () => {
+    expect(parseCliArgs(['doctor', '-p', '/work/repo'], '/')).toMatchObject({ command: 'doctor' });
+    expect(parseCliArgs([], '/')).toMatchObject({ command: 'run' });
+    expect(() => parseCliArgs(['fix-everything'])).toThrow('Unknown command "fix-everything"');
+  });
+
+  it('doctor checks a mock project and fails only on what a run needs', async () => {
+    project = await gitProject();
+    await writeFile(
+      join(project, '.agentcats', 'agentcats.config.json'),
+      JSON.stringify({ adapter: 'mock', worktreesDir: join(project, '.agentcats', 'worktrees') }),
+    );
+    const { io, out } = testIo();
+    expect(await main(['doctor', '--project', project], io)).toBe(0);
+    expect(out).toEqual(
+      expect.arrayContaining([
+        `✓ Node.js ${process.version}`,
+        '✓ Config is valid',
+        '✓ agentcats is not running for this project',
+      ]),
+    );
+    // Claude and Codex are optional here: present or not, they never fail the check.
+    expect(out.some((l) => l.startsWith('✗'))).toBe(false);
+  });
+
+  it('doctor fails on an invalid config and outside a git repository', async () => {
+    project = await gitProject();
+    await writeFile(join(project, '.agentcats', 'agentcats.config.json'), '{"port": "x"}');
+    const { io, out } = testIo();
+    expect(await main(['doctor', '--project', project], io)).toBe(1);
+    expect(out.join('\n')).toMatch(/✗ .*agentcats.config.json is invalid/);
+
+    const plain = await mkdtemp(join(tmpdir(), 'agentcats-cli-'));
+    const second = testIo();
+    try {
+      expect(await main(['doctor', '--project', plain], second.io)).toBe(1);
+      expect(second.out.join('\n')).toMatch(/✗ .*is not a git repository/);
+    } finally {
+      await rm(plain, { recursive: true, force: true });
+    }
+  });
+
+  it('cleanup on a fresh project has nothing to do', async () => {
+    project = await gitProject();
+    const { io, out } = testIo();
+    expect(await main(['cleanup', '--project', project], io)).toBe(0);
+    expect(out).toEqual([
+      'No leftover agent processes.',
+      expect.stringMatching(/^Removed 0 worktree/),
+    ]);
+  });
+});

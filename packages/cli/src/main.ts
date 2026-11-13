@@ -23,9 +23,16 @@ import {
 import type { AgentcatsConfig } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
-export const USAGE = `Usage: agentcats --project <path> [options]
+import { cleanup, doctor } from './maintenance.js';
+
+export const USAGE = `Usage: agentcats [command] [--project <path>] [options]
 
 Starts the agentcats daemon for a project and opens the board in your browser.
+
+Commands:
+  (none)                       Run the board
+  doctor                       Check Node, git, the config, Claude and Codex logins, and leftovers
+  cleanup                      Stop agent processes and remove worktrees left by earlier runs
 
 Options:
   -p, --project <path>         Project the cat works in (default: current directory)
@@ -44,7 +51,10 @@ export interface CliIo {
   readonly stopSignal: () => Promise<void>;
 }
 
+export const COMMANDS = ['run', 'doctor', 'cleanup'] as const;
+
 export interface ParsedArgs {
+  readonly command: (typeof COMMANDS)[number];
   readonly project: string;
   readonly adapter: AgentcatsConfig['adapter'] | null;
   readonly port: number | null;
@@ -63,8 +73,9 @@ export class UsageError extends Error {
  */
 export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): ParsedArgs {
   let values;
+  let positionals: string[];
   try {
-    ({ values } = parseArgs({
+    ({ values, positionals } = parseArgs({
       args: [...argv],
       options: {
         project: { type: 'string', short: 'p' },
@@ -74,10 +85,16 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
         help: { type: 'boolean', short: 'h', default: false },
       },
       allowNegative: true,
+      allowPositionals: true,
       strict: true,
     }));
   } catch (error) {
     throw new UsageError((error as Error).message);
+  }
+  const [name = 'run', ...extra] = positionals;
+  const command = COMMANDS.find((c) => c === name && c !== 'run');
+  if ((name !== 'run' && !command) || extra.length > 0) {
+    throw new UsageError(`Unknown command "${[name, ...extra].join(' ')}"`);
   }
   const adapter = values.adapter ?? null;
   if (adapter !== null && adapter !== 'claude' && adapter !== 'codex' && adapter !== 'mock') {
@@ -88,6 +105,7 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
     throw new UsageError(`--port must be an integer from 0 to 65535, got "${String(values.port)}"`);
   }
   return {
+    command: command ?? 'run',
     project: resolve(cwd, values.project ?? '.'),
     adapter,
     port,
@@ -198,6 +216,8 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     io.err(`Project directory not found: ${args.project}`);
     return 1;
   }
+  if (args.command === 'doctor') return doctor(args.project, io, createAdapter);
+  if (args.command === 'cleanup') return cleanup(args.project, io);
 
   try {
     const loaded = await loadConfig(args.project);

@@ -51,20 +51,28 @@ export class PidRegistry {
    * @returns PIDs that were killed.
    */
   async reapOrphans(): Promise<number[]> {
-    const leftovers = await this.#load();
-    const killed: number[] = [];
-    for (const record of leftovers) {
+    const killed = await this.orphans();
+    for (const pid of killed) await killProcessTree(pid);
+    this.#records = [];
+    await this.#save();
+    return killed;
+  }
+
+  /**
+   * PIDs in the file that are still running and still the processes we
+   * started. Changes nothing; only meaningful while no daemon runs.
+   */
+  async orphans(): Promise<number[]> {
+    const alive: number[] = [];
+    for (const record of await this.#load()) {
       if (!isProcessAlive(record.pid)) continue;
       const started = await processStartTime(record.pid);
       if (started === null || Math.abs(started - record.startedAt) > START_TIME_TOLERANCE_MS) {
         continue; // PID was reused by something else.
       }
-      await killProcessTree(record.pid);
-      killed.push(record.pid);
+      alive.push(record.pid);
     }
-    this.#records = [];
-    await this.#save();
-    return killed;
+    return alive;
   }
 
   async #load(): Promise<PidRecord[]> {

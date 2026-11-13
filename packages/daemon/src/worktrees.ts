@@ -36,6 +36,15 @@ export function slug(text: string): string {
   );
 }
 
+/**
+ * Check a project is a git repository with at least one commit.
+ *
+ * @throws GitError with a message for the user otherwise.
+ */
+export async function verifyProjectRepo(projectPath: string): Promise<void> {
+  await new WorktreeManager(projectPath, '').verifyRepo();
+}
+
 /** Default worktree root, outside the repo: `~/.agentcats/worktrees/<project>-<hash>`. */
 export function defaultWorktreesRoot(projectPath: string): string {
   const hash = createHash('sha256').update(resolve(projectPath)).digest('hex').slice(0, 8);
