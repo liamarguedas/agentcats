@@ -252,6 +252,7 @@ class ClaudeSession implements Session {
   #eventsTaken = false;
   #inTurn = false;
   #interrupting = false;
+  #killing = false;
   #ended = false;
   #turnEnded: (() => void) | null = null;
 
@@ -280,7 +281,7 @@ class ClaudeSession implements Session {
       });
     }
     child?.once('exit', (code) => {
-      this.#end(code === 0 ? 'exited' : 'crashed', code);
+      this.#end(this.#killing ? 'killed' : code === 0 ? 'exited' : 'crashed', code);
     });
     void this.#pump(q);
   }
@@ -327,6 +328,7 @@ class ClaudeSession implements Session {
 
   async kill(): Promise<void> {
     if (this.#ended) return;
+    this.#killing = true; // the exit that follows is ours, not a crash
     this.#interrupting = true;
     this.#denyPending();
     this.input.close();

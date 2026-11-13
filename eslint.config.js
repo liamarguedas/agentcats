@@ -5,6 +5,33 @@ import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
+const AGENT_SDKS = [
+  { group: ['@anthropic-ai/*'], home: 'packages/adapters/claude', agent: 'Claude' },
+  { group: ['@agentclientprotocol/*'], home: 'packages/adapters/acp', agent: 'ACP' },
+  { group: ['@zed-industries/*'], home: 'packages/adapters/codex', agent: 'Codex' },
+];
+
+function agentSdkRules() {
+  const rule = (sdks) => ({
+    'no-restricted-imports': [
+      'error',
+      {
+        patterns: sdks.map((sdk) => ({
+          group: sdk.group,
+          message: `${sdk.agent}-specific code belongs in ${sdk.home}.`,
+        })),
+      },
+    ],
+  });
+  return [
+    { files: ['**/*.ts', '**/*.tsx'], rules: rule(AGENT_SDKS) },
+    ...AGENT_SDKS.map((sdk) => ({
+      files: [`${sdk.home}/**/*.ts`],
+      rules: rule(AGENT_SDKS.filter((other) => other !== sdk)),
+    })),
+  ];
+}
+
 export default defineConfig(
   { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '**/test-results/**'] },
   js.configs.recommended,
@@ -25,24 +52,10 @@ export default defineConfig(
       ],
     },
   },
-  {
-    // Claude-specific types stay inside the Claude adapter (see CLAUDE.md).
-    files: ['**/*.ts', '**/*.tsx'],
-    ignores: ['packages/adapters/claude/**'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['@anthropic-ai/*'],
-              message: 'Claude-specific code belongs in packages/adapters/claude.',
-            },
-          ],
-        },
-      ],
-    },
-  },
+  // Agent-specific SDKs stay inside their adapter packages (see CLAUDE.md).
+  // One rule lists all of them; each adapter package gets the rule without its
+  // own SDK. (Separate blocks would not add up: the last one would win.)
+  ...agentSdkRules(),
   {
     files: ['packages/ui/src/**/*.{ts,tsx}'],
     extends: [reactHooks.configs.flat.recommended],

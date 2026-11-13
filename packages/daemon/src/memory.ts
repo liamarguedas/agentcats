@@ -140,6 +140,7 @@ export class Memory {
 
   async #open(cat: Cat): Promise<void> {
     await this.o.files.ensure(cat, cat.learnings);
+    await this.writeStats(cat.id);
     await this.sync(cat.id);
     this.o.files.watch(cat.name, () => {
       this.o.track(this.sync(cat.id));
@@ -159,9 +160,15 @@ export class Memory {
   }
 
   /** Copy XP, level and task counts to `stats.json`. */
-  async writeStats(catId: string): Promise<void> {
-    const cat = this.o.log.board.cats[catId];
-    if (cat?.role === 'worker') await this.o.files.writeStats(cat);
+  /**
+   * Copy XP, level and task counts to `stats.json`. Serialized per cat, and
+   * read from the board inside the lock, so the last write is the newest.
+   */
+  writeStats(catId: string): Promise<void> {
+    return this.#locked(catId, async () => {
+      const cat = this.o.log.board.cats[catId];
+      if (cat?.role === 'worker') await this.o.files.writeStats(cat);
+    });
   }
 
   async writeProfile(catId: string): Promise<void> {

@@ -72,7 +72,6 @@ export class CatMemory {
       await this.writeLearnings(cat.name, learnings);
     }
     await this.writeProfile(cat);
-    await this.writeStats(cat);
   }
 
   /** Learnings in the file, or `null` if there is no file. */

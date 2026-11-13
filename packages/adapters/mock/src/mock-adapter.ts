@@ -219,6 +219,7 @@ class MockSession implements Session {
   };
   #eventsTaken = false;
   #ended = false;
+  #killing = false;
   #turnCount = 0;
   #nextId = 0;
   #turn: { abort: AbortController; done: Promise<void> } | null = null;
@@ -279,13 +280,14 @@ class MockSession implements Session {
 
   async kill(): Promise<void> {
     if (this.#ended) return;
+    this.#killing = true; // the exit that follows is ours, not a crash
     await this.interrupt();
     if (this.child?.pid !== undefined) await killProcessTree(this.child.pid);
     this.#end('killed', null);
   }
 
   async #onChildExit(code: number | null): Promise<void> {
-    if (this.#ended) return;
+    if (this.#ended || this.#killing) return;
     await this.interrupt();
     this.#end('crashed', code);
   }

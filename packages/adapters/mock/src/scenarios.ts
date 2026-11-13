@@ -262,6 +262,18 @@ const interviewAnswer = (name: string, answer: string, extraLines: number): Scen
     return 'end_turn';
   },
 });
+/** For the adapter conformance suite: writes conformance.txt in the working directory. */
+const conformanceWrite: Scenario = {
+  name: 'conformance-write',
+  description: 'Writes conformance.txt ("ok") in its working directory.',
+  async turn(ctx) {
+    await ctx.writeFile('conformance.txt', 'ok\n');
+    ctx.addUsage(200, 20);
+    await ctx.say('Wrote conformance.txt.');
+    return 'end_turn';
+  },
+};
+
 const interviewPass = interviewAnswer('interview-pass', '42', 0);
 const interviewVerbose = interviewAnswer('interview-verbose', '42', 40);
 const interviewFail = interviewAnswer('interview-fail', '41', 0);
@@ -390,6 +402,7 @@ const orchestrator: Scenario = {
 export const SCENARIOS: Readonly<Record<string, Scenario>> = Object.fromEntries(
   [
     happyPath,
+    conformanceWrite,
     interviewPass,
     interviewVerbose,
     interviewFail,

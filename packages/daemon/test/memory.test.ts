@@ -143,11 +143,17 @@ describe('cat folders', () => {
     expect(await readFile(join(dir, 'learnings.md'), 'utf8')).toContain(
       `# ${cat.name}'s learnings`,
     );
-    expect(JSON.parse(await readFile(join(dir, 'stats.json'), 'utf8'))).toMatchObject({
-      xp: 0,
-      level: 1,
-      tasksDone: 1,
-    });
+    // Written in the background after the task is handed in.
+    await vi.waitFor(
+      async () => {
+        expect(JSON.parse(await readFile(join(dir, 'stats.json'), 'utf8'))).toMatchObject({
+          xp: 0,
+          level: 1,
+          tasksDone: 1,
+        });
+      },
+      { timeout: 10_000 },
+    );
     const gitignore = await readFile(join(t.projectPath, '.agentcats', '.gitignore'), 'utf8');
     expect(gitignore).toContain('!cats/*/learnings.md');
     expect(gitignore).not.toContain('!cats/*/stats.json');
