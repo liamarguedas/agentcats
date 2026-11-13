@@ -86,7 +86,8 @@ const ACTIVE_TICK_MS = 30_000;
  */
 export class CatAgent {
   #session: Session | null = null;
-  #spawning: Promise<Session> | null = null;
+  /** A session being started, until it is installed as `#session`. */
+  #spawning: Promise<void> | null = null;
   #pump: Promise<void> = Promise.resolve();
   #taskId: string | null = null;
   #resumeId: string | null = null;
@@ -156,21 +157,9 @@ export class CatAgent {
     this.#usageBase = this.deps.log.board.usage[this.catId] ?? ZERO_USAGE;
     this.#sessionUsage = ZERO_USAGE;
     this.#sessionActiveMs = 0;
-    this.#spawning = this.adapter.spawn({ ...options, catId: this.catId });
+    this.#spawning = this.#install(this.adapter.spawn({ ...options, catId: this.catId }));
     try {
-      const session = await this.#spawning;
-      if (session.pid !== null) {
-        // The guardian already ties the agent to the daemon; the PID file is
-        // the backup. Failing to write it is worth a warning, not a failed task.
-        await this.deps.pids.add(session.pid, this.catId).catch((error: unknown) => {
-          this.deps.logger.warn(
-            `Could not record agent pid ${String(session.pid)}: ${String(error)}`,
-          );
-        });
-      }
-      this.#session = session;
-      this.#expectedEnd = false;
-      this.#pump = this.#consume(session);
+      await this.#spawning;
     } catch (error) {
       this.#taskId = null;
       throw error;
@@ -247,7 +236,10 @@ export class CatAgent {
    * manager is told with `expected: true`.
    */
   async endSession(): Promise<void> {
-    const session = this.#session ?? (await this.#spawning?.catch(() => null)) ?? null;
+    // A session still starting is waited for, then ended like any other: one
+    // killed before it is installed would come back as the live session.
+    await this.#spawning?.catch(() => null);
+    const session = this.#session;
     if (!session) return;
     this.#expectedEnd = true;
     await session.kill();
@@ -307,6 +299,22 @@ export class CatAgent {
       catId: this.catId,
       payload: { status, reason: reason === null ? null : short(reason) },
     });
+  }
+
+  async #install(spawned: Promise<Session>): Promise<void> {
+    const session = await spawned;
+    if (session.pid !== null) {
+      // The guardian already ties the agent to the daemon; the PID file is
+      // the backup. Failing to write it is worth a warning, not a failed task.
+      await this.deps.pids.add(session.pid, this.catId).catch((error: unknown) => {
+        this.deps.logger.warn(
+          `Could not record agent pid ${String(session.pid)}: ${String(error)}`,
+        );
+      });
+    }
+    this.#session = session;
+    this.#expectedEnd = false;
+    this.#pump = this.#consume(session);
   }
 
   async #consume(session: Session): Promise<void> {

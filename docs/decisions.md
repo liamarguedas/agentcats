@@ -586,6 +586,7 @@ Where Claude-specific assumptions leaked into lifecycle code (M4 will expose the
 - `stats.json` could be overwritten by a cat's state from when it was hired, and two writes could share a temp file. Writes are now serialized per cat and read the board at write time.
 - Saving a cat's panel dropped its time budget: the budget was sent without `maxMinutes`, and the server filled in "no limit".
 - The card's name row overflowed with a long adapter badge.
+- A kill or cancel while a worker was starting left the worker with a live session for a task that was over, so a rerun stayed queued forever (a CI flake, reproduced under load). The start now ends that session and reschedules, and `endSession` waits for a session still starting instead of killing it before it is installed.
 
 ## 2026-11-13 - M4 live verification
 

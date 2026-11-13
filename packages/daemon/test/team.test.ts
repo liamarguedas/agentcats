@@ -309,6 +309,35 @@ describe('pause while starting', () => {
     );
     expect((await board()).tasks[task.id]?.status).toBe('running');
   });
+
+  it('kills a cat before its session is up; the task fails and re-runs', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    await setup({ scenario: 'hang' }, {}, null, (adapter) => ({
+      ...adapter,
+      spawn: async (options) => {
+        await gate;
+        return adapter.spawn(options);
+      },
+    }));
+    const task = await createTask('long job');
+    await waitForStatus(task.id, 'running');
+    const catId = await workerOf(task.id);
+
+    // The kill waits for the session it stops, so let the spawn finish meanwhile.
+    const kill = t.api('POST', `/api/cats/${catId}/kill`);
+    await new Promise((r) => setTimeout(r, 50));
+    release();
+    expect((await kill).status).toBe(202);
+    const failed = await waitForStatus(task.id, 'failed');
+    expect(failed.reasonCode).toBe('killed');
+    await t.api('POST', `/api/tasks/${task.id}/rerun`);
+    await waitForStatus(task.id, 'running');
+    await stream.waitFor(
+      isType('tool.called', (e) => e.catId === catId),
+      10_000,
+    );
+  });
 });
 
 describe('approvals', () => {

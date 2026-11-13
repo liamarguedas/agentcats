@@ -595,6 +595,7 @@ export class CatManager {
       statusReason: 'Re-run by you',
     });
     this.#autoRetried.delete(taskId);
+    this.#heldPrompts.delete(taskId);
     this.#retryNotes.set(taskId, 'The user asked you to run this task again.');
     this.#schedule();
     return this.task(taskId);
@@ -908,10 +909,16 @@ export class CatManager {
       const note = this.#retryNotes.get(taskId);
       this.#retryNotes.delete(taskId);
       const prompt = [note, task.title, task.description].filter(Boolean).join('\n\n');
-      // Paused (or stopped) while the session was starting: there was no turn
-      // to interrupt then, so hold the prompt until the user resumes.
-      if (worker.cat.pausedReason || this.task(taskId).status !== 'running') {
+      // Paused while the session was starting: there was no turn to
+      // interrupt then, so hold the prompt until the user resumes.
+      if (worker.cat.pausedReason) {
         this.#heldPrompts.set(taskId, prompt);
+        return;
+      }
+      // Killed or cancelled while starting: the stop found no session to end,
+      // so end this one, or the worker stays busy with a task that is over.
+      if (this.task(taskId).status !== 'running') {
+        await worker.endSession();
         return;
       }
       await worker.send(prompt);
@@ -925,6 +932,8 @@ export class CatManager {
       );
     } finally {
       this.#starting.delete(taskId);
+      // A rerun during the start was skipped while it was starting.
+      this.#schedule();
     }
   }
 
