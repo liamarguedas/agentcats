@@ -72,3 +72,38 @@ export async function claudeVersion(executable: string): Promise<string | null> 
   );
   return /\d+\.\d+\.\d+/.exec(stdout)?.[0] ?? null;
 }
+
+export interface ClaudeAuth {
+  readonly loggedIn: boolean;
+  /** How, e.g. `claude.ai` (a plan) or `api_key`. */
+  readonly authMethod: string;
+}
+
+/**
+ * `claude auth status`, which prints JSON and exits 1 when logged out. Free:
+ * it starts no session.
+ *
+ * @returns `null` if the output is not that JSON (an older CLI without the
+ *   command), so the caller cannot tell.
+ */
+export async function claudeAuthStatus(executable: string): Promise<ClaudeAuth | null> {
+  const isScript = /\.(?:c|m)?js$/i.test(executable);
+  const stdout = await execFileAsync(
+    isScript ? process.execPath : executable,
+    isScript ? [executable, 'auth', 'status'] : ['auth', 'status'],
+    { timeout: 15_000, windowsHide: true },
+  ).then(
+    (r) => r.stdout,
+    (error: unknown) => (error as { stdout?: string }).stdout ?? '',
+  );
+  try {
+    const json = JSON.parse(stdout) as Partial<ClaudeAuth>;
+    if (typeof json.loggedIn !== 'boolean') return null;
+    return {
+      loggedIn: json.loggedIn,
+      authMethod: typeof json.authMethod === 'string' ? json.authMethod : 'unknown',
+    };
+  } catch {
+    return null;
+  }
+}

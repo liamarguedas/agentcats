@@ -6,6 +6,7 @@ import type { ApprovalDecision, Billing, PermissionMode } from '@agentcats/proto
 import {
   type Adapter,
   type AdapterCapabilities,
+  type AdapterReadiness,
   AdapterError,
   type AgentEvent,
   type CompleteOptions,
@@ -26,7 +27,12 @@ import {
   type SpawnOptions as SdkSpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 
-import { claudeVersion, resolveClaudeExecutable, TESTED_CLAUDE_VERSIONS } from './executable.js';
+import {
+  claudeAuthStatus,
+  claudeVersion,
+  resolveClaudeExecutable,
+  TESTED_CLAUDE_VERSIONS,
+} from './executable.js';
 import { policyOptions, sessionSettings } from './policy.js';
 import { billingOf, summarizeInput, toolKind, Translator, usageOfResult } from './translate.js';
 
@@ -83,18 +89,40 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions = {}): Adapter
     estimateUsd: (tier) => ({ fast: 0.05, balanced: 0.25, best: 1.25 })[tier],
     spawn: (spawnOptions) => spawnClaudeSession(spawnOptions, options),
     complete: (completeOptions) => completeOnce(completeOptions, options),
+    preflight: () => preflight(options),
   };
+}
+
+function notFound(adapterOptions: ClaudeAdapterOptions): string {
+  return adapterOptions.executablePath
+    ? `Claude Code not found at ${adapterOptions.executablePath}`
+    : 'Claude Code (`claude`) was not found on PATH. Install it from https://code.claude.com, or set claude.executablePath in agentcats.config.json.';
 }
 
 async function requireExecutable(adapterOptions: ClaudeAdapterOptions): Promise<string> {
   const executable = await resolveClaudeExecutable(adapterOptions.executablePath ?? null);
   if (executable) return executable;
-  throw new AdapterError(
-    'spawn_failed',
-    adapterOptions.executablePath
-      ? `Claude Code not found at ${adapterOptions.executablePath}`
-      : 'Claude Code (`claude`) was not found on PATH. Install it, or set claude.executablePath in agentcats.config.json.',
-  );
+  throw new AdapterError('spawn_failed', notFound(adapterOptions));
+}
+
+async function preflight(adapterOptions: ClaudeAdapterOptions): Promise<AdapterReadiness> {
+  const executable = await resolveClaudeExecutable(adapterOptions.executablePath ?? null);
+  if (!executable) return { ready: false, detail: notFound(adapterOptions) };
+  const [version, auth] = await Promise.all([
+    claudeVersion(executable).catch(() => null),
+    claudeAuthStatus(executable).catch(() => null),
+  ]);
+  const name = `Claude Code ${version ?? '(unknown version)'}`;
+  if (auth && !auth.loggedIn) {
+    return {
+      ready: false,
+      detail: `${name} is not logged in. Run \`claude\` and log in with /login, or set ANTHROPIC_API_KEY.`,
+    };
+  }
+  return {
+    ready: true,
+    detail: `${name} at ${executable}${auth ? `, logged in (${auth.authMethod})` : ''}`,
+  };
 }
 
 /**

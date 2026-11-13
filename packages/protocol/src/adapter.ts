@@ -278,6 +278,16 @@ export interface SpawnOptions {
   readonly attribution?: boolean;
 }
 
+/** Whether an adapter can run on this machine, from {@link Adapter.preflight}. */
+export interface AdapterReadiness {
+  readonly ready: boolean;
+  /**
+   * One line for the user: what was found ("logged in with claude.ai") or,
+   * when not ready, what is wrong and how to fix it.
+   */
+  readonly detail: string;
+}
+
 export interface Adapter {
   /** Stable id stored on the cat, e.g. `claude` or `mock`. */
   readonly id: string;
@@ -310,6 +320,14 @@ export interface Adapter {
    *   answer in time.
    */
   complete(options: CompleteOptions): Promise<Completion>;
+
+  /**
+   * Check, without starting a session or spending tokens, that the agent can
+   * run here: installed, logged in. Used at startup and by `agentcats
+   * doctor`. Omitted means nothing to check. Never throws; a failure is a
+   * readiness with `ready: false`.
+   */
+  preflight?(): Promise<AdapterReadiness>;
 }
 
 /**

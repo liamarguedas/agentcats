@@ -131,6 +131,15 @@ export function describeConformance(target: ConformanceTarget): void {
       return { probe: new Probe(session, timeoutMs), cwd };
     }
 
+    it('answers preflight, if it has one, without throwing', async () => {
+      const readiness = await target.create().preflight?.();
+      if (!readiness) return;
+      expect(typeof readiness.ready).toBe('boolean');
+      expect(readiness.detail.trim()).not.toBe('');
+      // A live target is about to run real turns, so it must be ready.
+      expect(readiness).toMatchObject({ ready: true });
+    });
+
     it('starts with session.started and plays a valid turn', async () => {
       const { probe } = await start();
       const ended = await probe.turn(target.prompts.reply);

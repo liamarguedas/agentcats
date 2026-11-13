@@ -4,6 +4,7 @@ import { delimiter, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { createClaudeAdapter } from './claude-adapter.js';
 import { claudeVersion, resolveClaudeExecutable } from './executable.js';
 
 const isWindows = process.platform === 'win32';
@@ -53,5 +54,50 @@ describe('claudeVersion', () => {
     const script = join(dir, 'fake-claude.mjs');
     await writeFile(script, "console.log('2.1.302 (Claude Code)');");
     expect(await claudeVersion(script)).toBe('2.1.302');
+  });
+});
+
+describe('preflight', () => {
+  /** A fake `claude` script answering `--version` and `auth status`, logged in or not. */
+  async function fakeClaude(auth: string, exitCode: number): Promise<string> {
+    dir = await mkdtemp(join(tmpdir(), 'agentcats-exe-'));
+    const file = join(dir, 'claude.mjs');
+    await writeFile(
+      file,
+      `const args = process.argv.slice(2);
+if (args[0] === '--version') console.log('2.1.302 (Claude Code)');
+else if (args.join(' ') === 'auth status') { console.log(${JSON.stringify(auth)}); process.exitCode = ${String(exitCode)}; }`,
+    );
+    return file;
+  }
+
+  it('is ready when Claude Code is logged in, and says how', async () => {
+    const file = await fakeClaude('{"loggedIn": true, "authMethod": "claude.ai"}', 0);
+    expect(await createClaudeAdapter({ executablePath: file }).preflight?.()).toEqual({
+      ready: true,
+      detail: `Claude Code 2.1.302 at ${file}, logged in (claude.ai)`,
+    });
+  });
+
+  it('is not ready when logged out, and says how to log in', async () => {
+    const file = await fakeClaude('{"loggedIn": false, "authMethod": "none"}', 1);
+    const readiness = await createClaudeAdapter({ executablePath: file }).preflight?.();
+    expect(readiness?.ready).toBe(false);
+    expect(readiness?.detail).toMatch(/is not logged in\. Run `claude` and log in with \/login/);
+  });
+
+  it('cannot tell on a CLI without `auth status`, so it does not block', async () => {
+    const file = await fakeClaude('unknown command', 1);
+    const readiness = await createClaudeAdapter({ executablePath: file }).preflight?.();
+    expect(readiness).toEqual({ ready: true, detail: `Claude Code 2.1.302 at ${file}` });
+  });
+
+  it('is not ready when Claude Code is missing', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agentcats-exe-'));
+    const readiness = await createClaudeAdapter({
+      executablePath: join(dir, 'missing'),
+    }).preflight?.();
+    expect(readiness?.ready).toBe(false);
+    expect(readiness?.detail).toMatch(/not found/);
   });
 });

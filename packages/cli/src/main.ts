@@ -10,7 +10,7 @@ import {
   resolveClaudeExecutable,
   TESTED_CLAUDE_VERSIONS,
 } from '@agentcats/adapter-claude';
-import { createCodexAdapter, TESTED_CODEX_ACP_VERSION } from '@agentcats/adapter-codex';
+import { createCodexAdapter } from '@agentcats/adapter-codex';
 import { createMockAdapter } from '@agentcats/adapter-mock';
 import {
   ConfigError,
@@ -103,23 +103,39 @@ export async function findUiDir(): Promise<string | null> {
   return (await stat(join(dist, 'index.html')).catch(() => null)) ? dist : null;
 }
 
-async function createClaude(config: AgentcatsConfig, io: CliIo): Promise<Adapter | null> {
+/** Claude Code, found once here; a missing one is reported by its preflight. */
+async function createClaude(config: AgentcatsConfig, io: CliIo): Promise<Adapter> {
   const executable = await resolveClaudeExecutable(config.claude.executablePath);
-  if (!executable) return null;
-  const version = await claudeVersion(executable).catch(() => null);
-  io.out(`Using Claude Code ${version ?? '(unknown version)'} at ${executable}`);
-  if (version === null || !TESTED_CLAUDE_VERSIONS.includes(version)) {
-    io.err(
-      `Warning: this Claude Code version has not been tested with agentcats (tested: ${TESTED_CLAUDE_VERSIONS.join(', ')}).`,
-    );
+  if (executable) {
+    const version = await claudeVersion(executable).catch(() => null);
+    if (version === null || !TESTED_CLAUDE_VERSIONS.includes(version)) {
+      io.err(
+        `Warning: this Claude Code version has not been tested with agentcats (tested: ${TESTED_CLAUDE_VERSIONS.join(', ')}).`,
+      );
+    }
   }
-  return createClaudeAdapter({ executablePath: executable });
+  const executablePath = executable ?? config.claude.executablePath;
+  return createClaudeAdapter(executablePath ? { executablePath } : {});
+}
+
+/** Every adapter the CLI knows, by id, or `null` if it cannot even be created. */
+export async function createAdapter(
+  id: string,
+  config: AgentcatsConfig,
+  io: CliIo,
+): Promise<Adapter | null> {
+  if (id === 'mock') return createMockAdapter();
+  // Codex starts only when a Codex cat does; codex-acp uses the user's Codex login.
+  if (id === 'codex') return createCodexAdapter({ windowsSandbox: config.codex.windowsSandbox });
+  if (id === 'claude') return createClaude(config, io);
+  return null;
 }
 
 /**
  * The adapters for this run: the ones the config asks for (default, lead,
- * workers), which must work, and on a real project the other real agents
- * too, so interviews can compare them. The default comes first.
+ * workers), which must be ready, and on a real project the other real
+ * agents too if they are ready, so interviews can compare them. The default
+ * comes first.
  *
  * @throws ConfigError when an adapter the config asks for cannot run.
  */
@@ -140,26 +156,21 @@ async function createAdapters(config: AgentcatsConfig, io: CliIo): Promise<Adapt
   const offered = config.adapter === 'mock' ? required : new Set([...required, 'claude', 'codex']);
   const adapters: Adapter[] = [];
   for (const id of [config.adapter, ...[...offered].filter((o) => o !== config.adapter)]) {
-    if (id === 'mock') adapters.push(createMockAdapter());
-    if (id === 'codex') {
-      // Codex starts only when a Codex cat does; codex-acp uses the user's Codex login.
-      adapters.push(createCodexAdapter({ windowsSandbox: config.codex.windowsSandbox }));
-      if (required.has('codex')) {
-        io.out(
-          `Using Codex through codex-acp ${TESTED_CODEX_ACP_VERSION}, with your Codex login. It reports no cost, so Codex cats get a time budget.`,
-        );
+    const adapter = await createAdapter(id, config, io);
+    const readiness = adapter
+      ? ((await adapter.preflight?.()) ?? { ready: true, detail: adapter.displayName })
+      : { ready: false, detail: `No adapter "${id}"` };
+    if (!readiness.ready || !adapter) {
+      // An agent only offered for interviews is left out quietly; `agentcats doctor` shows why.
+      if (required.has(id)) {
+        throw new ConfigError(`${readiness.detail} Or run with --adapter mock.`);
       }
+      continue;
     }
-    if (id === 'claude') {
-      const claude = await createClaude(config, io);
-      if (claude) adapters.push(claude);
-      else if (required.has('claude')) {
-        throw new ConfigError(
-          config.claude.executablePath
-            ? `Claude Code not found at ${config.claude.executablePath}.`
-            : 'Claude Code (`claude`) was not found on PATH. Install it, set claude.executablePath in .agentcats/agentcats.config.json, or run with --adapter mock.',
-        );
-      }
+    adapters.push(adapter);
+    if (required.has(id) && id !== 'mock') io.out(`Using ${readiness.detail}`);
+    if (id === 'codex' && required.has(id)) {
+      io.out('Codex reports no cost, so Codex cats get a time budget.');
     }
   }
   return adapters;

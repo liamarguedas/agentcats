@@ -1,7 +1,10 @@
+import { stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import { type AcpAgentConfig, createAcpAdapter } from '@agentcats/adapter-acp';
-import type { Adapter } from '@agentcats/protocol/adapter';
+import type { Adapter, AdapterReadiness } from '@agentcats/protocol/adapter';
 
 const require = createRequire(import.meta.url);
 
@@ -66,10 +69,34 @@ export function createCodexAdapter(options: CodexAdapterOptions = {}): Adapter {
     modelTiers: { fast: 'gpt-5.4-mini', balanced: 'gpt-5.4', best: 'gpt-5.5' },
     estimateUsd: () => null,
     // `read-only` asks before every edit; `auto` edits and runs commands in
-    // the workspace and asks for the network and anything outside it.
+    // the workspace without asking, and its sandbox blocks the rest.
     modeFor: (policy, mode) =>
       policy?.access === 'read_only' || mode === 'ask' ? 'read-only' : 'auto',
     modelOption: 'model',
   };
-  return createAcpAdapter(config);
+  return { ...createAcpAdapter(config), preflight: () => codexReadiness() };
+}
+
+/**
+ * Whether Codex has a login codex-acp can use: a Codex login in
+ * `$CODEX_HOME/auth.json` (default `~/.codex`, made by `codex login`), or an
+ * API key in `CODEX_API_KEY` or `OPENAI_API_KEY`. codex-acp itself is a
+ * dependency, so it is always installed.
+ */
+export async function codexReadiness(
+  env: NodeJS.ProcessEnv = process.env,
+  home: string = homedir(),
+): Promise<AdapterReadiness> {
+  const name = `Codex through codex-acp ${TESTED_CODEX_ACP_VERSION}`;
+  const codexHome = env['CODEX_HOME'] ?? join(home, '.codex');
+  if ((await stat(join(codexHome, 'auth.json')).catch(() => null))?.isFile()) {
+    return { ready: true, detail: `${name}, with your Codex login in ${codexHome}` };
+  }
+  const key = ['CODEX_API_KEY', 'OPENAI_API_KEY'].find((k) => env[k]);
+  if (key) return { ready: true, detail: `${name}, with ${key}` };
+  return {
+    ready: false,
+    detail:
+      'Codex is not logged in. Install the Codex CLI and run `codex login`, or set OPENAI_API_KEY.',
+  };
 }
