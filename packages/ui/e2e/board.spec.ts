@@ -49,17 +49,28 @@ test('connects with the token from the link and shows the lead cat', async ({ pa
 
 test('the lead splits a request between two workers who work in parallel', async ({ page }) => {
   await openBoard(page);
+  // A worker is busy for well under a second at this time scale, shorter than
+  // the assertion's polling, so record every status Mochi's card shows.
+  await page.evaluate(() => {
+    const seen: string[] = [];
+    (window as unknown as { mochiStatuses: string[] }).mochiStatuses = seen;
+    new MutationObserver(() => {
+      const text = document.querySelector(
+        '[data-testid="cat-Mochi"] [data-testid="cat-status"]',
+      )?.textContent;
+      if (text && seen.at(-1) !== text) seen.push(text);
+    }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  });
   await chat(page, 'Add a login endpoint and write tests for it');
   await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
 
-  // Check the first worker's status as soon as its seat appears: on a slow
-  // runner it can finish its task before the second worker is hired.
-  await expect(page.getByTestId('cat-Mochi').getByTestId('cat-status')).toHaveText(
-    /Thinking|Working/,
-    { timeout: 15_000 },
-  );
   const workers = page.getByRole('region', { name: 'Workers' }).locator('.seat');
   await expect(workers).toHaveCount(2, { timeout: 15_000 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { mochiStatuses: string[] }).mochiStatuses),
+    )
+    .toEqual(expect.arrayContaining([expect.stringMatching(/Thinking|Working/)]));
   await shot(page, 'team-working');
 
   await expect(tasks(page).locator('.task-card--review')).toHaveCount(2, { timeout: 20_000 });
