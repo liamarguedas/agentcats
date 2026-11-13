@@ -9,6 +9,7 @@ import type {
   StopReason,
 } from '@agentcats/protocol/adapter';
 
+import { ChunkRedactor } from './chunk-redactor.js';
 import { ApiError } from './errors.js';
 import type { EventLog } from './event-log.js';
 import type { Logger } from './logger.js';
@@ -89,6 +90,7 @@ export class CatAgent {
   /** A session being started, until it is installed as `#session`. */
   #spawning: Promise<void> | null = null;
   #pump: Promise<void> = Promise.resolve();
+  readonly #redactor = new ChunkRedactor();
   #taskId: string | null = null;
   #resumeId: string | null = null;
   #inTurn = false;
@@ -326,6 +328,17 @@ export class CatAgent {
     }
   }
 
+  /** Append the agent text held back by the redactor: of every message, or all but `except`. */
+  #flushText(except?: string): void {
+    for (const { messageId, channel, text } of this.#redactor.flush(except)) {
+      this.deps.log.append({
+        type: 'message.agent',
+        ...this.#scope(),
+        payload: { messageId, channel, text },
+      });
+    }
+  }
+
   #scope(): { catId: string; taskId?: string } {
     return { catId: this.catId, ...(this.#taskId !== null && { taskId: this.#taskId }) };
   }
@@ -334,6 +347,8 @@ export class CatAgent {
     const { log, hooks } = this.deps;
     const scope = this.#scope();
     if (event.type !== 'session.ended') hooks.activity(this);
+    // Text held back for redaction is over once anything else happens.
+    if (event.type !== 'message.chunk') this.#flushText();
 
     switch (event.type) {
       case 'session.started':
@@ -357,16 +372,21 @@ export class CatAgent {
         this.setStatus('thinking');
         return;
 
-      case 'message.chunk':
-        log.append({
-          type: 'message.agent',
-          ...scope,
-          payload: { messageId: event.messageId, channel: event.channel, text: event.text },
-        });
+      case 'message.chunk': {
+        this.#flushText(event.messageId);
+        const text = this.#redactor.push(event.messageId, event.channel, event.text);
+        if (text) {
+          log.append({
+            type: 'message.agent',
+            ...scope,
+            payload: { messageId: event.messageId, channel: event.channel, text },
+          });
+        }
         if (event.channel === 'text') {
           this.#turnText = (this.#turnText + event.text).slice(-SUMMARY_LIMIT);
         }
         return;
+      }
 
       case 'tool.started': {
         const info = {

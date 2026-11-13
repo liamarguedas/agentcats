@@ -641,3 +641,13 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **CI: Linux, macOS and Windows.** Windows stays because the user develops on it. The repo goes public at release; until then macOS runs only on pushes to `main`, to spare private-repo minutes.
 - **Adapter criterion:** tested by a fresh agent given only the docs and a blank folder, run when that step comes.
 - **Publishing, tagging and making the repo public** are outward-facing: each waits for the user's explicit go-ahead.
+
+## 2026-11-13 - M5 hardening decisions
+
+- **One daemon per project** (`.agentcats/run/daemon.json`, an exclusive create checked against the OS start time). Before, a second `agentcats` on the same project started fine, killed the first one's agents as orphans and shared its database.
+- **Readiness through the adapter contract:** an optional `Adapter.preflight()` (no session, no tokens). Claude asks `claude auth status`; Codex looks for `$CODEX_HOME/auth.json` or `CODEX_API_KEY`/`OPENAI_API_KEY`. An agent the config needs must be ready to start; one only offered for interviews is left out quietly and shown by `agentcats doctor`. The conformance suite checks the preflight of any adapter that has one.
+- **`agentcats cleanup`** removes only clean worktrees of tasks and interviews that are over, keeps branches (a failed task can still be re-run), keeps anything with uncommitted changes, and refuses while a daemon runs.
+- **Secrets are redacted at the one door into the event log** (`EventLog.append`) and in console logs, with patterns in `packages/protocol/src/redact.ts`, so the database, the board and exports never hold them. Two consequences:
+  - A key typed into a task description reaches the agent as `[redacted]`. Secrets go to agents through their environment, not the board.
+  - Streamed agent text is held back until a line ends (or 2,000 characters), so a key split across chunks is still caught. Codex text therefore appears on the board a line at a time; Claude sends whole messages and is unaffected.
+- **Port in use and an old Node** now get a one-line explanation instead of a stack trace. The Node check runs in plain JavaScript before any module an old Node lacks is loaded.

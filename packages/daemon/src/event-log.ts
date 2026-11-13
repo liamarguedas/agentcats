@@ -5,6 +5,7 @@ import {
   applyEvent,
   type BoardState,
   emptyBoard,
+  redactDeep,
   SNAPSHOT_EVENT_LIMIT,
 } from '@agentcats/protocol';
 
@@ -64,8 +65,9 @@ export class EventLog {
    *   daemon bug, so it fails loudly instead of sending bad data to the UI.
    */
   append(draft: EventDraft): AgentcatsEvent {
+    // The one door into the log: nothing stored, shown or exported keeps a secret.
     const event = AgentcatsEvent.parse({
-      ...draft,
+      ...redactDeep(draft),
       id: randomUUID(),
       seq: this.#seq + 1,
       ts: this.now(),

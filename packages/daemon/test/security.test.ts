@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { Snapshot, WS_PATH, WS_PROTOCOL } from '@agentcats/protocol';
@@ -147,5 +147,23 @@ describe('WebSocket security', () => {
       });
     });
     expect(status).toBe(401);
+  });
+});
+
+describe('secrets', () => {
+  it('never stores or shows a key typed into a task or echoed by an agent', async () => {
+    t = await startTestDaemon();
+    const key = 'sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWx-1234';
+    const res = await t.api('POST', '/api/tasks', {
+      title: 'Deploy',
+      description: `Use ANTHROPIC_API_KEY=${key} for the deploy`,
+    });
+    expect(res.status).toBe(201);
+    const snapshot = JSON.stringify((await t.api('GET', '/api/snapshot')).body);
+    expect(snapshot).not.toContain(key);
+    expect(snapshot).toContain('ANTHROPIC_API_KEY=[redacted]');
+    // The database file on disk has no copy either.
+    const db = await readFile(join(t.projectPath, '.agentcats', 'agentcats.db'));
+    expect(db.includes(Buffer.from(key))).toBe(false);
   });
 });
