@@ -283,7 +283,7 @@ function AdapterBadge({ adapter, id }: { adapter: AdapterInfo | undefined; id: s
       data-testid="adapter-badge"
       title={
         sandboxed
-          ? `${adapter.displayName} enforces its own sandbox: it may run commands in its worktree without asking, so allowed commands and level gates are not checked one by one. It still asks before network access and writes outside its worktree.`
+          ? `${adapter.displayName} enforces its own sandbox: it runs commands in its worktree without asking, so allowed commands, level gates and always-ask rules are not checked one by one. Its sandbox, not an approval, keeps the network and the rest of the disk out of reach.`
           : `Runs on ${adapter?.displayName ?? id}`
       }
     >

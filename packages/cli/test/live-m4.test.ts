@@ -100,7 +100,8 @@ describe.runIf(LIVE)('M4 live', () => {
   it(
     'a Claude lead and a Codex worker produce a reviewable branch',
     async () => {
-      const r = await run({ workers: { adapter: 'codex', max: 1 } });
+      // The cheapest Codex model, to stay inside a small API budget.
+      const r = await run({ workers: { adapter: 'codex', max: 1, model: 'gpt-5.4-mini' } });
       const log = ['# Claude lead, Codex worker', ''];
       try {
         await r.api('POST', '/api/chat', {
@@ -134,7 +135,8 @@ describe.runIf(LIVE)('M4 live', () => {
       const log = ['', '# Claude vs Codex interview (add-function)', ''];
       try {
         const { interview } = (await r.api('POST', '/api/interviews', {
-          role: { description: 'Writes small, careful changes with tests', tier: 'balanced' },
+          // The fast tier: haiku for Claude, gpt-5.4-mini for Codex.
+          role: { description: 'Writes small, careful changes with tests', tier: 'fast' },
           sampleId: 'add-function',
           adapters: ['claude', 'codex'],
         })) as { interview: Interview };

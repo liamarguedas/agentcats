@@ -75,7 +75,8 @@ Every cat runs on an agent, shown as a small badge on its card:
 
 - **Claude** (Claude Code, through your installed `claude`). agentcats checks every action before it runs, so allowed commands, level gates and the always-ask rules apply exactly.
 - **Codex**, through [codex-acp](https://github.com/zed-industries/codex-acp) over the Agent Client Protocol, with your own Codex login and config (`~/.codex`). Two differences:
-  - **Sandbox instead of per-action checks.** Codex lets an agent edit files and run commands in its worktree without asking, and asks before network access and writes elsewhere. So agentcats cannot check each command, and its allowed commands and level gates do not apply one by one. Codex cats carry a ⚠ badge that says so.
+  - **Sandbox instead of per-action checks.** Codex lets an agent edit files and run commands in its worktree without asking; its sandbox is what keeps the network and the rest of your disk out of reach. agentcats cannot check each command, so its allowed commands, level gates and always-ask rules do not apply one by one, and a network command is not asked about: on Windows it runs and fails in the sandbox. Codex cats carry a ⚠ badge that says so.
+  - **Windows sandbox.** codex-acp bundles its own, older Codex build, which cannot start the `elevated` Windows sandbox a newer Codex CLI sets up. agentcats therefore runs Codex with the `unelevated` sandbox on Windows, which is weaker. Set `"codex": { "windowsSandbox": "codex_config" }` to use your Codex config as it is.
   - **No cost.** Codex reports no dollar cost, so its cats show "cost unknown" and get a **time budget** instead: 60 minutes of working time per cat by default (`budget.perCatMinutes`), with a warning at 80 percent and a pause at 100.
 - **Mock**: plays scripted cats, spends nothing.
 

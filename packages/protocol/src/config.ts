@@ -153,6 +153,18 @@ export const AgentcatsConfig = z.strictObject({
   port: z.int().min(0).max(65_535).default(0),
   /** Where worktrees go. `null` is `~/.agentcats/worktrees/<project>`, outside the repo. */
   worktreesDir: z.string().min(1).nullable().default(null),
+  codex: z
+    .strictObject({
+      /**
+       * Windows sandbox for Codex cats. `unelevated` (the default) is the one
+       * codex-acp's bundled Codex build can start; it is weaker than
+       * `elevated`. `codex_config` uses `~/.codex/config.toml` as is, which
+       * only works if codex-acp's build supports the sandbox set up there.
+       * Ignored on macOS and Linux.
+       */
+      windowsSandbox: z.enum(['unelevated', 'codex_config']).default('unelevated'),
+    })
+    .prefault({}),
   claude: z
     .strictObject({
       /** Path to the `claude` executable. `null` resolves `claude` on PATH. */

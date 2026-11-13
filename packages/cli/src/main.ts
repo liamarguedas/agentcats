@@ -136,7 +136,7 @@ async function createAdapters(config: AgentcatsConfig, io: CliIo): Promise<Adapt
     if (id === 'mock') adapters.push(createMockAdapter());
     if (id === 'codex') {
       // Codex starts only when a Codex cat does; codex-acp uses the user's Codex login.
-      adapters.push(createCodexAdapter());
+      adapters.push(createCodexAdapter({ windowsSandbox: config.codex.windowsSandbox }));
       if (required.has('codex')) {
         io.out(
           `Using Codex through codex-acp ${TESTED_CODEX_ACP_VERSION}, with your Codex login. It reports no cost, so Codex cats get a time budget.`,

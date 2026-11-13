@@ -26,6 +26,12 @@ export interface ConformanceTarget {
     readonly reply: string;
     /** A turn that needs an approval before a tool runs. */
     readonly approval: string;
+    /**
+     * The permission mode the approval turn runs in. Default
+     * `accept_edits`; an agent that asks only in a stricter mode (Codex asks
+     * before edits in `ask`) sets it.
+     */
+    readonly approvalMode?: 'ask' | 'accept_edits' | 'auto';
     /** A turn that creates `conformance.txt` in the working directory. */
     readonly write: string;
   };
@@ -106,7 +112,9 @@ export function describeConformance(target: ConformanceTarget): void {
         await rm(dir, { recursive: true, force: true, maxRetries: 5 });
     });
 
-    async function start(): Promise<{ probe: Probe; cwd: string }> {
+    async function start(
+      permissionMode: 'ask' | 'accept_edits' | 'auto' = 'accept_edits',
+    ): Promise<{ probe: Probe; cwd: string }> {
       adapter = target.create();
       const cwd = await mkdtemp(join(tmpdir(), 'agentcats-conformance-'));
       dirs.push(cwd);
@@ -116,7 +124,7 @@ export function describeConformance(target: ConformanceTarget): void {
         model: target.model ?? null,
         systemPrompt:
           'You are being tested by the agentcats conformance suite. Keep answers short.',
-        permissionMode: 'accept_edits',
+        permissionMode,
         policy: target.policy ?? WORKER_POLICY(cwd),
       });
       sessions.push(session);
@@ -147,7 +155,7 @@ export function describeConformance(target: ConformanceTarget): void {
 
     for (const decision of ['allow', 'deny'] as const) {
       it(`round-trips an approval: ${decision}`, async () => {
-        const { probe } = await start();
+        const { probe } = await start(target.prompts.approvalMode);
         if (!adapter.capabilities.approvals) return;
         const from = probe.events.length;
         await probe.session.send(target.prompts.approval);

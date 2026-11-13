@@ -38,6 +38,7 @@ describe('AgentcatsConfig', () => {
       approvalTimeoutMs: 300_000,
       port: 0,
       worktreesDir: null,
+      codex: { windowsSandbox: 'unelevated' },
       claude: { executablePath: null },
       mock: { scenario: 'happy-path' },
     });

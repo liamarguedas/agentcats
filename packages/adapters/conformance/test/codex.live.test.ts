@@ -17,9 +17,11 @@ describe.runIf(LIVE)('live', () => {
     model: process.env['AGENTCATS_LIVE_CODEX_MODEL'] ?? 'gpt-5.4-mini',
     prompts: {
       reply: 'Reply with the single word: ok',
-      // Codex asks before network access in its auto mode.
+      // Codex does not ask before network commands (its sandbox blocks them,
+      // verified in M4); it asks before edits in its read-only mode.
       approval:
-        'Run exactly this shell command: curl -sI https://example.com . If it is denied, reply "denied" and stop.',
+        'Create a file named approval.txt in the current directory containing: ok . If that is denied, reply "denied" and stop.',
+      approvalMode: 'ask',
       write: 'Create a file named conformance.txt in the current directory containing: ok',
     },
     timeoutMs: 180_000,
