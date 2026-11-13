@@ -4,6 +4,9 @@
   "description": "A local whiteboard where coding agents are cats.",
   "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
   "bin": {
     "agentcats": "./bin/agentcats.mjs"
   },

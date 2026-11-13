@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { Snapshot } from '@agentcats/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { MINIMUM, nodeVersionProblem } from '../bin/check-node.mjs';
+import cliPackage from '../package.json' with { type: 'json' };
 import { type CliIo, main, parseCliArgs } from '../src/main.js';
 
 let project = '';
@@ -160,5 +162,20 @@ describe('main', () => {
     } finally {
       process.env['PATH'] = path;
     }
+  });
+});
+
+describe('the Node version check', () => {
+  it('explains an old Node before anything loads, and accepts the minimum and newer', () => {
+    expect(nodeVersionProblem('v20.11.0')).toMatch(
+      /needs Node.js 22.13 or newer .* this is Node.js v20.11.0/,
+    );
+    expect(nodeVersionProblem('v22.12.0')).not.toBeNull();
+    expect(nodeVersionProblem('v22.13.0')).toBeNull();
+    expect(nodeVersionProblem('v24.1.0')).toBeNull();
+  });
+
+  it('matches engines in package.json', () => {
+    expect(cliPackage.engines.node).toBe(`>=${MINIMUM.join('.')}`);
   });
 });

@@ -10,7 +10,7 @@ import { isProcessAlive, killProcessTree } from '@agentcats/kit';
 import { AgentcatsConfig, Snapshot, type Task } from '@agentcats/protocol';
 import { describe, expect, it, vi } from 'vitest';
 
-import { startDaemon } from '../src/index.js';
+import { lockPath, runningDaemon, startDaemon } from '../src/index.js';
 import { tempDir, tempProject } from './harness.js';
 
 const pidsFile = (projectPath: string) => join(projectPath, '.agentcats', 'run', 'pids.json');
@@ -199,5 +199,64 @@ describe('agent process cleanup', () => {
       }),
     ).rejects.toThrow(/not a git repository/);
     await cleanup(dir);
+  });
+});
+
+describe('one daemon per project', () => {
+  const start = (projectPath: string, worktreesDir: string, port = 0) =>
+    startDaemon({
+      projectPath,
+      adapter: createMockAdapter({ timeScale: 0 }),
+      config: AgentcatsConfig.parse({ adapter: 'mock', worktreesDir, port }),
+    });
+
+  it('refuses a second daemon on the same project, and frees the project on close', async () => {
+    const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
+    const first = await start(projectPath, worktreesDir);
+    try {
+      await expect(start(projectPath, worktreesDir)).rejects.toThrow(
+        new RegExp(`already running for this project .*${first.url}`),
+      );
+      expect(await runningDaemon(projectPath)).toMatchObject({ pid: process.pid, url: first.url });
+    } finally {
+      await first.close();
+    }
+    expect(await runningDaemon(projectPath)).toBeNull();
+    const second = await start(projectPath, worktreesDir);
+    await second.close();
+    await cleanup(projectPath, worktreesDir);
+  });
+
+  it('replaces a lock left by a daemon that died', async () => {
+    const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
+    const dead = spawn(process.execPath, ['-e', '']);
+    await new Promise((r) => dead.once('exit', r));
+    await mkdir(join(projectPath, '.agentcats', 'run'), { recursive: true });
+    await writeFile(
+      lockPath(projectPath),
+      JSON.stringify({ pid: dead.pid, startedAt: Date.now(), url: 'http://127.0.0.1:1' }),
+    );
+    expect(await runningDaemon(projectPath)).toBeNull();
+    const daemon = await start(projectPath, worktreesDir);
+    await daemon.close();
+    await cleanup(projectPath, worktreesDir);
+  });
+
+  it('says plainly when the port is in use, and leaves no lock behind', async () => {
+    const projectPath = await tempProject();
+    const worktreesDir = await tempDir('agentcats-wt-');
+    const otherPath = await tempProject();
+    const other = await start(otherPath, worktreesDir);
+    try {
+      await expect(start(projectPath, worktreesDir, other.port)).rejects.toThrow(
+        `Port ${String(other.port)} is in use. Pick another with --port`,
+      );
+      expect(await runningDaemon(projectPath)).toBeNull();
+    } finally {
+      await other.close();
+    }
+    await cleanup(projectPath, otherPath, worktreesDir);
   });
 });

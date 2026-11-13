@@ -12,7 +12,14 @@ import {
 } from '@agentcats/adapter-claude';
 import { createCodexAdapter, TESTED_CODEX_ACP_VERSION } from '@agentcats/adapter-codex';
 import { createMockAdapter } from '@agentcats/adapter-mock';
-import { ConfigError, consoleLogger, GitError, loadConfig, startDaemon } from '@agentcats/daemon';
+import {
+  ConfigError,
+  consoleLogger,
+  DaemonRunningError,
+  GitError,
+  loadConfig,
+  startDaemon,
+} from '@agentcats/daemon';
 import type { AgentcatsConfig } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
@@ -212,7 +219,11 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     await daemon.close();
     return 0;
   } catch (error) {
-    if (error instanceof ConfigError || error instanceof GitError) {
+    if (
+      error instanceof ConfigError ||
+      error instanceof GitError ||
+      error instanceof DaemonRunningError
+    ) {
       io.err(error.message);
       return 1;
     }

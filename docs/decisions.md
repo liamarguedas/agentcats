@@ -618,3 +618,26 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 5. **Pass the conformance suite:** a `describeConformance` target in `packages/adapters/conformance/test/`. Scripted or mock targets run in CI; live targets are gated by their own environment variable.
 6. **Register it:** an id in `AdapterId` (`packages/protocol/src/config.ts`) and creation in `createAdapters` in `packages/cli/src/main.ts`.
 7. **Document** its policy model and cost behavior in the README's agents section, and record its verification in `docs/decisions.md`.
+
+## 2026-11-13 - Step 0 for M5: name, packaging, licenses, tooling
+
+- **Name:** `agentcats` is free on npm (404 on the registry). The GitHub repo `liamarguedas/agentcats` exists and is **private**. npm is not logged in on this machine; publishing needs the user's account.
+- **Packaging today:** only `agentcats` (the CLI) is meant to ship; it depends on eight `workspace:*` packages, and the UI is `private`. `npx agentcats` needs either a single bundled package or every `@agentcats/*` package published under an npm scope.
+- **SQLite:** the daemon uses `node:sqlite` (built in), so there is no native module to ship. Node >= 22.13 stays the floor.
+- **Licenses of what we would ship:**
+  - `@anthropic-ai/claude-agent-sdk`: "SEE LICENSE IN README.md", which points to Anthropic's Commercial Terms. Not an open source license, so it must stay an npm dependency the user installs, never bundled into our package. Its platform binaries are optional dependencies.
+  - `@agentclientprotocol/sdk` and `@zed-industries/codex-acp`: Apache-2.0.
+  - All our packages: MIT.
+- **Art:** the cats are SVG placeholders (`packages/ui/src/components/Cat.tsx`). Step 0.3 decided to study the reference projects only and draw fresh, so no third-party art is in the repo.
+- **Theme:** the UI follows `prefers-color-scheme` but has no switch.
+- **CLI:** no `doctor`, `cleanup` or `--demo` yet.
+- **CI:** Linux and Windows, Node 22 and 24. M5 asks for Linux and macOS. On a private repo, macOS minutes count ten times against the free quota.
+- **Tools available, at least two weeks old:** `@changesets/cli` 3.0.3 (2026-09-14), `esbuild` 0.28.2 (2026-08-08), `gifenc` 1.0.3 (MIT, 2021). There is no ffmpeg on this machine, so a demo GIF would be encoded in Node from Playwright frames.
+
+## 2026-11-13 - M5 planning answers
+
+- **Art: meme cats, with the background removed.** The user will provide the source images. Deviation from Step 0.3's "draw fresh": accepted, on one condition. Only images with a clear license go in: CC0 or CC-BY (for example Wikimedia Commons), the user's own photos, or photos used with permission. Meme photos are usually copyrighted by the photographer, and "widely shared" is not a license. Each image gets its source, author and license in `docs/assets.md`; one without them is not shipped.
+- **Packaging: one bundled `agentcats` package.** esbuild inlines our workspace packages and the built UI. The Claude Agent SDK (Anthropic Commercial Terms), the ACP SDK and codex-acp stay ordinary npm dependencies.
+- **CI: Linux, macOS and Windows.** Windows stays because the user develops on it. The repo goes public at release; until then macOS runs only on pushes to `main`, to spare private-repo minutes.
+- **Adapter criterion:** tested by a fresh agent given only the docs and a blank folder, run when that step comes.
+- **Publishing, tagging and making the repo public** are outward-facing: each waits for the user's explicit go-ahead.

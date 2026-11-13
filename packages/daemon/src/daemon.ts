@@ -5,7 +5,8 @@ import { type AgentcatsConfig, RUNTIME_DIR_NAME, TOKEN_FRAGMENT_KEY } from '@age
 import type { Adapter } from '@agentcats/protocol/adapter';
 
 import { CatManager } from './cat-manager.js';
-import { loadConfig } from './config.js';
+import { ConfigError, loadConfig } from './config.js';
+import { acquireDaemonLock, type DaemonLock } from './daemon-lock.js';
 import { EventLog } from './event-log.js';
 import { createHttpServer } from './http-server.js';
 import { type Logger, silentLogger } from './logger.js';
@@ -46,8 +47,9 @@ export interface RunningDaemon {
  * from `.agentcats/agentcats.db` (marking in-flight tasks `interrupted`), and
  * listen on 127.0.0.1.
  *
- * @throws ConfigError if the project config is invalid.
+ * @throws ConfigError if the project config is invalid or the port is in use.
  * @throws GitError if the project is not a git repository with a commit.
+ * @throws DaemonRunningError if another daemon runs for the project.
  */
 export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon> {
   const projectPath = resolve(options.projectPath);
@@ -60,7 +62,27 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
     config.worktreesDir ?? defaultWorktreesRoot(projectPath),
   );
   await worktrees.verifyRepo();
+  const lock = await acquireDaemonLock(projectPath);
+  try {
+    return await startLocked(options, { projectPath, logger, config, runtimeDir, worktrees, lock });
+  } catch (error) {
+    await lock.release();
+    throw error;
+  }
+}
 
+async function startLocked(
+  options: DaemonOptions,
+  ctx: {
+    projectPath: string;
+    logger: Logger;
+    config: AgentcatsConfig;
+    runtimeDir: string;
+    worktrees: WorktreeManager;
+    lock: DaemonLock;
+  },
+): Promise<RunningDaemon> {
+  const { projectPath, logger, config, runtimeDir, worktrees, lock } = ctx;
   const pids = new PidRegistry(join(runtimeDir, 'run', 'pids.json'));
   const reaped = await pids.reapOrphans();
   if (reaped.length > 0) {
@@ -109,12 +131,20 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
   } catch (error) {
     await manager.close();
     store.close();
+    if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
+      throw new ConfigError(
+        `Port ${String(config.port)} is in use. Pick another with --port, or set "port": 0 in the config for any free port.`,
+      );
+    }
     throw error;
   }
   const address = server.address();
   const port = typeof address === 'object' && address ? address.port : config.port;
   const url = `http://127.0.0.1:${String(port)}`;
   mcpUrl = `${url}${MCP_PATH}`;
+  await lock.setUrl(url).catch((error: unknown) => {
+    logger.warn(`Could not record the daemon URL: ${String(error)}`);
+  });
 
   let closing: Promise<void> | null = null;
   return {
@@ -132,6 +162,7 @@ export async function startDaemon(options: DaemonOptions): Promise<RunningDaemon
           });
         });
         store.close();
+        await lock.release();
       })()),
   };
 }
