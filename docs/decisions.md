@@ -551,3 +551,60 @@ Where Claude-specific assumptions leaked into lifecycle code (M4 will expose the
 4. **No one-shot call** (`complete()`) in ACP.
 5. **Billing is unknown** for Codex.
 6. **The Claude-specific defaults** from the M3 handoff notes.
+
+## 2026-11-13 - M4 implementation decisions and the leaks found
+
+**Architecture.**
+- `packages/adapters/acp` drives any ACP agent over stdio, under the guardian, and maps:
+  - `session/new` or `session/resume`, then `session/set_mode` and the model option;
+  - `session/prompt`, one per turn, whose response ends the turn;
+  - `session/update` to text, thoughts, tool calls and usage;
+  - `session/request_permission` to approvals, `session/cancel` to interrupt.
+- `packages/adapters/codex` only says how to start codex-acp and maps its modes and tiers.
+- The daemon holds an adapter registry, and each cat runs on its own adapter: config `adapter` (default), `orchestrator.adapter`, `workers.adapter`, changeable per cat on the board. The CLI also offers Claude and Codex on a real project, so interviews can compare them; Codex starts only when a Codex cat does.
+- `packages/adapters/conformance` is the contract suite. CI runs it against the mock, and against the ACP adapter driving a scripted ACP agent (`packages/adapters/acp/test/fake-agent.mjs`). Live runs are gated: Claude with `AGENTCATS_LIVE_CLAUDE=1`, Codex with its own `AGENTCATS_LIVE_CODEX=1`, because it bills per token on an API-key login.
+- ESLint keeps each agent SDK (Claude, ACP, Codex) inside its own package, in one rule; separate blocks would override each other.
+
+**Every abstraction leak found, and its fix** (each through the protocol or the adapter interface, never a daemon special case):
+
+| #   | Leak | Fix |
+| --- | ---- | --- |
+| 1   | Policy enforcement assumed per-call hooks (Claude PreToolUse). ACP agents decide what needs approval; Codex relies on its sandbox and runs workspace commands without asking. | `AdapterCapabilities.policyEnforcement` (`hooks`, `sandbox`, `none`). Codex is `sandbox`; the board shows a warning badge on such cats explaining that allowed commands and level gates are not checked one by one. The lead uses `read-only` mode either way. |
+| 2   | The worker prompt went in as a system prompt; ACP has none. | The ACP adapter sends it as standing instructions ahead of the first message only, and not again after a resume. One worker prompt serves both agents; no fork was needed. |
+| 3   | Cost: budgets, scores and estimates assumed dollars. ACP and Codex report none. | `reportsCost: false` gives a cat "cost unknown" and a working-time budget (`Budget.maxMinutes`, `budget.perCatMinutes`, default 60). The daemon measures working time (`Usage.activeMs`, including the running turn, refreshed every 30 s). An unknown cost scores 50 in interviews; an interview with such a candidate has an unknown estimate. The ACP adapter still maps a `usage_update` cost whenever an agent sends one. |
+| 4   | `Adapter.complete()` (debriefs) assumed a tool-less one-shot mode. | The ACP adapter runs it as a short read-only session. `capabilities.complete` lets an adapter opt out, and debriefs then fail with a notice. Debriefs run on the default adapter and charge only a cat on that same adapter. |
+| 5   | Billing (metered or plan) came from a Claude account call. | ACP adapters report `unknown`, which counts as enforced for interview budgets; time budgets apply to cost-blind cats regardless of billing. |
+| 6   | Claude names and prices in shared code: `workers.model: "sonnet"`, `memory.model: "haiku"`, $0.05, $0.25 and $1.25 per candidate in the daemon. | Model defaults are `null` and resolve to the adapter's tiers (`Adapter.modelTiers`); estimates come from `Adapter.estimateUsd(tier)` or history per adapter. |
+| 7   | One adapter per daemon: `CatAgent` and the manager used `options.adapter` everywhere. | The registry, `Cat.adapter` per cat, `CatAgentDeps.adapterFor`. A cat from an earlier run on an adapter this run lacks falls back to the default, with a warning. |
+| 8   | Kill was reported as a crash (mock, Claude and ACP adapters): the process exit handler ran before `kill()` finished. Found by the conformance suite. | Each adapter sets a killing flag before killing; an exit during a kill is `killed`. |
+| 9   | A crash mid-turn in an ACP agent rejected the pending prompt before Node reported the exit, so it read as an ordinary turn error. | A prompt failure with the connection closed is a fatal error, followed by `session.ended: crashed`. |
+| 10  | The role adapters in the config only accepted built-in ids. | Any adapter id; the daemon checks it exists at start. Built-in ids are still checked by the CLI. |
+| 11  | Tool names in bubbles: ACP gives a title and a kind, not a tool name. | The title is the tool name; the ACP kinds map one to one onto ours (`switch_mode` becomes `other`). The input summary takes `command`, `path`, `url` or the first location. |
+| 12  | Session resume: ACP has `session/load` (replays history) and `session/resume` (does not). | The ACP adapter uses `resume` when the agent offers it, so a resumed cat sees no replayed events. |
+
+**Fixed on the way:**
+- `stats.json` could be overwritten by a cat's state from when it was hired, and two writes could share a temp file. Writes are now serialized per cat and read the board at write time.
+- Saving a cat's panel dropped its time budget: the budget was sent without `maxMinutes`, and the server filled in "no limit".
+- The card's name row overflowed with a long adapter badge.
+
+## 2026-11-13 - M4 live verification
+
+- **Claude, conformance suite live** (`claude.live.test.ts`, `haiku`, the user's Pro plan): 8 of 8 passed. Valid turn, follow-up, approval allow and deny (the network hook), kill with no process left, cost reported, working directory, crash reported.
+- **Codex: not run live.** The user chose mock-only because their Codex login is an API key (billed per token). Covered without cost:
+  - the free `codex-acp` handshake (Step 0);
+  - the ACP adapter's own tests and the conformance suite against a scripted ACP agent, which exercises the same code path;
+  - mixed-team and cross-adapter interview tests on two mock adapters.
+- **Gated Codex runs are ready** for when the user approves: `AGENTCATS_LIVE_CODEX=1` for the suite, and `AGENTCATS_LIVE_CLAUDE=1 AGENTCATS_LIVE_CODEX=1` for `packages/cli/test/live-m4.test.ts` (a Claude lead with a Codex worker, and a Claude vs Codex interview). Expected cost on `gpt-5.4-mini` and `gpt-5.4`: well under $1.
+- **Acceptance criteria 1 to 3 stay unchecked until then.**
+
+## M5 handoff notes
+
+What a contributor needs to add a third adapter, for M5's contributor guide:
+
+1. **The contract:** `packages/protocol/src/adapter.ts` (`Adapter`, `Session`, `AgentEvent`, `AdapterCapabilities`, `AgentPolicy`, `CompleteOptions`). The event stream guarantees are listed on `Session` and checked by `checkSessionInvariants`.
+2. **For an ACP agent** (Kiro, Gemini CLI and others): usually no new adapter, only a package like `packages/adapters/codex`. That means an `AcpAgentConfig` with the start command, the capabilities (be honest about `policyEnforcement` and `reportsCost`), `modelTiers`, `modeFor` and `modelOption`. Kiro's `kiro-cli acp` is the obvious next one; check the orphaned-process report first.
+3. **For a non-ACP agent:** implement `Adapter` directly, like `packages/adapters/claude`. Keep its SDK inside the package and add it to `AGENT_SDKS` in `eslint.config.js`.
+4. **Start every process with `spawnGuarded`** from `@agentcats/kit`, and kill the whole tree. Set a killing flag before killing, so the exit is not reported as a crash (leak 8).
+5. **Pass the conformance suite:** a `describeConformance` target in `packages/adapters/conformance/test/`. Scripted or mock targets run in CI; live targets are gated by their own environment variable.
+6. **Register it:** an id in `AdapterId` (`packages/protocol/src/config.ts`) and creation in `createAdapters` in `packages/cli/src/main.ts`.
+7. **Document** its policy model and cost behavior in the README's agents section, and record its verification in `docs/decisions.md`.

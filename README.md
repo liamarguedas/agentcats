@@ -3,17 +3,18 @@
 A local whiteboard where coding agents are cats.
 You tell the lead cat what you want built. It splits the work and hands it to worker cats, who each code on their own git branch, in parallel. You watch them think, work and ask for permission, then you review their branches and merge what you like.
 
-Status: **milestone M3**.
+Status: **milestone M4** (Codex verified with scripted tests; its live runs are pending).
 A lead cat and up to three workers, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
 Workers remember what they learn in your repo, earn XP from your reviews, and get more autonomy as they level up.
 You hire new cats through an interview and retire the ones you no longer need.
-A second agent and polish arrive in M4 and M5 (see `docs/milestones/`).
+Cats can run on Claude Code or Codex, and one team can mix them.
+Polish and release arrive in M5 (see `docs/milestones/`).
 
 ## Requirements
 
 - Node.js 22.13 or newer, and pnpm 11.
 - Your project must be a git repository with at least one commit. Workers branch from it.
-- For real runs: [Claude Code](https://code.claude.com) installed and logged in (`claude` on your PATH).
+- For real runs: [Claude Code](https://code.claude.com) installed and logged in (`claude` on your PATH), and/or a Codex login (`codex login`) for Codex cats.
 
 ## Quick start
 
@@ -68,6 +69,20 @@ Every worker has a folder, `.agentcats/cats/<name>/`:
 "Most relevant" means the lines that share the most words with the task, newer lines first on a tie.
 At every level, network access, package installs and destructive commands (`rm -rf`, `git reset --hard`, `git clean`, ...) ask for your approval, and pushing is refused.
 
+## Agents
+
+Every cat runs on an agent, shown as a small badge on its card:
+
+- **Claude** (Claude Code, through your installed `claude`). agentcats checks every action before it runs, so allowed commands, level gates and the always-ask rules apply exactly.
+- **Codex**, through [codex-acp](https://github.com/zed-industries/codex-acp) over the Agent Client Protocol, with your own Codex login and config (`~/.codex`). Two differences:
+  - **Sandbox instead of per-action checks.** Codex lets an agent edit files and run commands in its worktree without asking, and asks before network access and writes elsewhere. So agentcats cannot check each command, and its allowed commands and level gates do not apply one by one. Codex cats carry a ⚠ badge that says so.
+  - **No cost.** Codex reports no dollar cost, so its cats show "cost unknown" and get a **time budget** instead: 60 minutes of working time per cat by default (`budget.perCatMinutes`), with a warning at 80 percent and a pause at 100.
+- **Mock**: plays scripted cats, spends nothing.
+
+The default agent is `adapter` in the config, or `--adapter claude|codex|mock`. The lead and the workers can use different ones (`orchestrator.adapter`, `workers.adapter`), and any cat can be moved to another agent in its ⚙ panel; the lead needs an agent with MCP support (both Claude and Codex have it). In the hire dialog, each candidate can run on a different agent, so one interview can compare Claude and Codex on the same task.
+
+If your Codex login uses an API key, Codex cats are billed per token by OpenAI. A ChatGPT login uses your plan instead.
+
 ## Hire and fire
 
 **Hiring.** Click **Hire a cat**, describe the role, pick a model tier (fast, balanced or best), the number of candidates (1 to 3) and an interview task. agentcats shows the estimated cost first; nothing runs until you click **Start interview**.
@@ -94,17 +109,24 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 ```json
 {
   "adapter": "claude",
-  "orchestrator": { "model": null },
+  "orchestrator": { "adapter": null, "model": null },
   "workers": {
     "max": 3,
-    "model": "sonnet",
+    "adapter": null,
+    "model": null,
     "permissionMode": "accept_edits",
     "allowedCommands": ["npm test", "npm run lint"]
   },
-  "budget": { "perCatUsd": 2, "globalUsd": 10, "perCatTokens": null, "enforce": "metered" },
+  "budget": {
+    "perCatUsd": 2,
+    "globalUsd": 10,
+    "perCatTokens": null,
+    "perCatMinutes": 60,
+    "enforce": "metered"
+  },
   "interviews": { "candidates": 2, "tier": "balanced", "budgetUsd": 3, "projectCheck": null },
   "xp": { "accepted": 10, "testsFirstTry": 5, "underCost": 3, "rejectedPenalty": 10 },
-  "memory": { "debrief": true, "model": "haiku", "cap": 30, "autoAcceptAfter": null },
+  "memory": { "debrief": true, "model": null, "cap": 30, "autoAcceptAfter": null },
   "attribution": false,
   "stuckTimeoutMs": 300000,
   "approvalTimeoutMs": 300000,
@@ -122,7 +144,9 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 - `memory.debrief`: turn the debrief off. `memory.model`: the model for debriefs and consolidations. `memory.cap`: the most lines a learnings file may hold. `memory.autoAcceptAfter`: keep a cat's suggestions without asking once it has this many accepted tasks (`null`, the default, always asks; consolidations always ask).
 - `attribution`: whether agents may add their own attribution, such as Claude Code's `Co-Authored-By` trailer, to the commits they make in your repo. Off by default.
 - `stuckTimeoutMs`: a worker that shows no activity for this long is marked blocked, so you can nudge or stop it.
-- Model `null` uses your Claude Code default.
+- `adapter`, `orchestrator.adapter`, `workers.adapter`: which agent runs cats (`claude`, `codex` or `mock`; `null` means the default `adapter`).
+- `budget.perCatMinutes`: the working-time budget for cats whose agent reports no cost (Codex).
+- Models: `null` for workers means the agent's balanced tier (`sonnet` for Claude, `gpt-5.4` for Codex), for the lead the agent's own default, and for debriefs the fast tier (`haiku` for Claude).
 
 ## What workers may and may not do
 

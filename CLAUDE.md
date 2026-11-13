@@ -27,7 +27,8 @@ Pin dependencies to exact versions at least two weeks old.
 ## Rules
 
 - Every event or command change goes through `packages/protocol` first. The daemon and UI import types and schemas from there and never redefine them.
-- No Claude-specific types outside `packages/adapters/claude`. ESLint blocks `@anthropic-ai/*` imports elsewhere. The adapter contract is `@agentcats/protocol/adapter`.
+- No agent-specific types outside their adapter package: Claude in `packages/adapters/claude`, ACP in `packages/adapters/acp`, Codex in `packages/adapters/codex`. ESLint blocks their SDKs elsewhere (`AGENT_SDKS` in `eslint.config.js`). The adapter contract is `@agentcats/protocol/adapter`.
+- Every adapter passes the conformance suite (`packages/adapters/conformance`). Mock and scripted targets run in CI; live targets are gated (`AGENTCATS_LIVE_CLAUDE=1`, `AGENTCATS_LIVE_CODEX=1`, which bills OpenAI on an API-key login).
 - New behavior needs a test that uses the mock adapter. Tests never need an API key or spend tokens, except the live tests gated by `AGENTCATS_LIVE_CLAUDE=1`.
 - Agent processes are always started with `spawnGuarded` from `@agentcats/kit`, so they cannot outlive the daemon.
 - Everything a level changes, and the rules that ask at every level (network, installs, destructive commands, pushes), lives in `packages/protocol/src/levels.ts`. Adapters enforce it; nobody redefines it.

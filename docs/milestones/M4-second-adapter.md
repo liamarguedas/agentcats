@@ -49,9 +49,9 @@ Expected trouble spots: prompt injection of learnings, permission modes, cost ac
 - [ ] Conformance suite passes for mock, Claude Code and Codex adapters.
 - [ ] A task runs end to end with a Claude orchestrator and a Codex worker, producing a reviewable branch.
 - [ ] An interview compares one Claude and one Codex candidate on the same sample task with a score breakdown.
-- [ ] A cat on an adapter without cost reporting shows "cost unknown" and respects a time budget.
-- [ ] No Codex-specific type appears outside `packages/adapters/codex`.
-- [ ] `docs/decisions.md` lists every abstraction leak found and the fix.
+- [x] A cat on an adapter without cost reporting shows "cost unknown" and respects a time budget.
+- [x] No Codex-specific type appears outside `packages/adapters/codex`.
+- [x] `docs/decisions.md` lists every abstraction leak found and the fix.
 
 ## Out of scope
 Kiro (unless the ACP route makes it nearly free), art, replay.
