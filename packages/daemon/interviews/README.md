@@ -21,3 +21,5 @@ The task, exactly as candidates read it.
 - `<id>/hidden/`: files copied over each candidate's work before the checks run, such as tests candidates never saw. They overwrite whatever the candidate wrote at the same path.
 
 Add your own samples the same way in your project's `.agentcats/interviews/`.
+
+Hidden tests must check only what the task text asks for. A hidden test that expects a behavior the text leaves open fails good candidates: the first live interview found one (the slugify sample expected `ÜBER` to lose its `Ü`, though the task says to keep letters).
