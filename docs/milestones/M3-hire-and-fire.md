@@ -59,11 +59,11 @@ Add `cat.retired`, `cat.resurrected`, `interview.started`, `interview.candidate_
 - Cleanup test: losing candidates leave no worktrees or processes behind.
 
 ## Acceptance criteria
-- [ ] Retiring a cat with an open task warns, then archives cleanly; no worktree or process left behind.
-- [ ] Resurrecting restores learnings, XP and level.
-- [ ] A real interview with 2 candidates on a bundled sample task completes, shows a score breakdown, and lets you pick a winner who then appears on the board.
-- [ ] The cost estimate is shown and confirmed before candidates start.
-- [ ] A candidate whose tests fail cannot win regardless of other scores.
+- [x] Retiring a cat with an open task warns, then archives cleanly; no worktree or process left behind.
+- [x] Resurrecting restores learnings, XP and level.
+- [x] A real interview with 2 candidates on a bundled sample task completes, shows a score breakdown, and lets you pick a winner who then appears on the board.
+- [x] The cost estimate is shown and confirmed before candidates start.
+- [x] A candidate whose tests fail cannot win regardless of other scores.
 
 ## Out of scope
 New adapters, polish, replay.

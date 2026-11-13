@@ -469,3 +469,56 @@ The user read the learnings file from the second live run and accepted it: all f
 - **Interview defaults:** 2 candidates on the balanced tier (`sonnet` for Claude), and $3 per interview, enforced like the other budgets (`budget.enforce`).
 - **Archive path:** retired cats go to `.agentcats/retired/<name>-<id8>/`, not `retired/<name>/` as the plan says, because a retired name can be reused by a new hire and two retired cats with the same name would collide.
 - **Model tiers** (`fast`, `balanced`, `best`) are mapped to model names by each adapter, so hiring stays agent-neutral for M4.
+
+## 2026-11-12 - M3 implementation decisions
+
+**Lifecycle.**
+- A retired cat keeps its id. Its XP, level, stats and learnings stay in the log. `cat.retired` moves the whole cat into `board.retired`, and `cat.resurrected` moves it back, so bringing a cat back needs no reconstruction.
+- The folder moves to `.agentcats/retired/<name>-<id8>/` with `retired.json` (the id suffix is logged in the planning answers). The file watcher is closed first, because Windows cannot move a watched folder.
+- A cat with an open task retires after the task (it gets no new tasks meanwhile), or after the task is cancelled; the user chooses. Its pending learning suggestions are superseded.
+- `GET /cats/:id/retire-check` lists the open task and any worktrees with uncommitted changes, so the dialog can warn before anything happens. Those worktrees are kept, not deleted.
+- A cat comes back under its old name unless another cat has it now.
+- XP for a task reviewed after its cat retired is not awarded, because the cat is not on the board.
+
+**Interviews.**
+- Candidates are cats with the new `candidate` role. The scheduler never gives them tasks, and their turn and session ends go to the interview manager, not to task review.
+- Each candidate gets its own fresh git copy of the fixture (`<worktreesDir>/interviews/<interview>/<cat>`), or a throwaway worktree for project samples.
+- Candidates start one after another, in hiring order, each start being a quick copy, so mock tests are deterministic.
+- After a candidate finishes, the daemon measures its diff against the base, copies the hidden files in, and runs the check, lint and typecheck under the guardian with `checkTimeoutMs`. The candidate's own claims are never used.
+- Partial results are logged as they arrive (`score: null`). Once every candidate is done, all are scored together, because the parts are relative to the best passing candidate.
+- The estimate is the median earlier cost for the same sample and tier (needs 2), or a default per tier.
+- The budget refuses an interview whose estimate is over `interviews.budgetUsd`, and stops candidates whose combined spending reaches it. Unknown billing (no session yet) counts as enforced.
+- A full team refuses new interviews and picks.
+- The winner becomes a worker (`cat.hired`). Its role becomes the persona in `profile.md`, and its starting learnings are written. It starts idle.
+- Losers leave the board with `interview.completed`. Their repos are deleted; a project interview's winner keeps its branch. A daemon restart cancels interviews that were running.
+
+**Bundled samples** are verified to fail unsolved and pass with a reference solution. The first live interview found that a hidden test expected more than the task text said (`ÜBER` losing its `Ü`); it was removed, and the samples README now says hidden tests check only what the task asks.
+
+**Protocol:** the `candidate` role, `hiring.ts`, nine events, nine routes, `interviews` and `workers.autoHire` config, `Adapter.modelTiers`.
+
+**Fixes found on the way:**
+- A UI crash: the hire toast called a function declared further down the component.
+- A just-hired cat still showed its interview's "done".
+- Empty check output read as "The check failed:".
+
+## 2026-11-12 - M3 live verification
+
+Real Claude Code 2.1.302 on the user's Pro login, `sonnet` candidates (balanced tier), bundled sample "Add a slugify function", `packages/cli/test/live-m3.test.ts`.
+
+- The estimate ($0.50 for 2 candidates) was shown before anything started.
+- Both candidates finished in about 23 s, at $0.08 each (API-equivalent, plan usage). Each raised one approval, for `npm test | tail; npm run lint | tail`: level 1 cats ask for scripts.
+- Both passed the daemon's own check with clean lint and +17 -1 diffs, and scored 98.1 and 100. The winner was hired and appears as a worker.
+- No candidate was left on the board, no interview folder on disk, and no agent process running.
+- The first attempt had both candidates fail on the unfair hidden test above, which showed the hard gate working on real output: neither could be hired.
+
+## M4 handoff notes
+
+Where Claude-specific assumptions leaked into lifecycle code (M4 will expose these):
+
+- **Default models in the protocol config:** `workers.model: "sonnet"` and `memory.model: "haiku"` are Claude names. Another adapter needs its own defaults, or these should become tiers resolved through `Adapter.modelTiers`.
+- **Per-tier cost defaults** for interview estimates (`DEFAULT_CANDIDATE_USD` in `interviews.ts`: $0.05, $0.25, $1.25) are Claude prices. They should come from the adapter, or from history only.
+- **Billing detection:** `metered` versus `subscription` comes from the Claude SDK's account info. An adapter that cannot tell reports `unknown`, which now counts as enforced for budgets. That is safe, but noisy on a flat plan.
+- **`Adapter.complete()`** (debriefs and consolidation) is implemented with Claude Code's tool-less one-shot mode. A second adapter needs an equivalent; without one, debriefs fail with a notice and nothing else breaks.
+- **Session resume** after a crash uses `capabilities.resume`. Interview candidates never resume; they fail and are scored as failed.
+- **Cost reporting:** scoring treats an unknown cost as 50 out of 100, so an adapter that reports no cost is neither rewarded nor punished.
+- **The worker summary format** (`## Summary` with Changed, Tests, Open issues, Learned) is parsed for the test result, which is self-reported, and for the debrief's hint. Interviews no longer depend on it. A different agent that ignores the format still works, but loses the hint.

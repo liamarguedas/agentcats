@@ -3,10 +3,11 @@
 A local whiteboard where coding agents are cats.
 You tell the lead cat what you want built. It splits the work and hands it to worker cats, who each code on their own git branch, in parallel. You watch them think, work and ask for permission, then you review their branches and merge what you like.
 
-Status: **milestone M2**.
+Status: **milestone M3**.
 A lead cat and up to three workers, driven by your own Claude Code, or by a built-in mock that needs no agent and spends nothing.
 Workers remember what they learn in your repo, earn XP from your reviews, and get more autonomy as they level up.
-Hiring, firing and more agents arrive in M3 to M5 (see `docs/milestones/`).
+You hire new cats through an interview and retire the ones you no longer need.
+A second agent and polish arrive in M4 and M5 (see `docs/milestones/`).
 
 ## Requirements
 
@@ -67,6 +68,25 @@ Every worker has a folder, `.agentcats/cats/<name>/`:
 "Most relevant" means the lines that share the most words with the task, newer lines first on a tie.
 At every level, network access, package installs and destructive commands (`rm -rf`, `git reset --hard`, `git clean`, ...) ask for your approval, and pushing is refused.
 
+## Hire and fire
+
+**Hiring.** Click **Hire a cat**, describe the role, pick a model tier (fast, balanced or best), the number of candidates (1 to 3) and an interview task. agentcats shows the estimated cost first; nothing runs until you click **Start interview**.
+
+- Every candidate does the same task in its own throwaway copy of a repo, at the same time.
+- When a candidate finishes, agentcats measures its diff, copies in hidden tests the candidates never saw, and runs the task's check, lint and typecheck commands itself. It does not trust what the candidate says about its own work.
+- Passing the check is required to be hired. Among those who pass, the score weighs diff size, cost, time and clean lint and typecheck against the best candidate. The raw numbers are shown next to the score, so you can disagree with it.
+- You pick the winner. It joins as a worker, with your role description as its persona and any starting learnings you gave. The others get a kind note and are cleaned up: no repos or processes are left.
+
+Three interview tasks ship with agentcats, on a tiny sample library: add a function with tests, fix a failing test, and a small refactor. Add your own in `.agentcats/interviews/` (the format is in `packages/daemon/interviews/README.md`), or re-run one of your recent accepted tasks on your project.
+
+**Quick hires.** When a task waits and there is room on the team, a worker is still hired straight away, without an interview, unless you set `"workers": { "autoHire": false }`.
+
+**Retiring.** Open a worker's ⚙ panel and click **Retire…**. If it is working on a task, choose to let it finish first or cancel the task now; worktrees with uncommitted changes are listed and kept. Its folder moves to `.agentcats/retired/<name>-<id>/`, and it appears in the **Retired** list on the board. **Bring back** restores it with its learnings, XP and level.
+
+The lead cat can suggest a retirement or an interview. Both wait on the board for you to confirm.
+
+**Limit: interview checks run candidate code.** The check, lint and typecheck commands run the code candidates wrote, without an approval prompt, in throwaway copies and with a time limit, after you started the interview. On native Windows there is no sandbox around them.
+
 ## Configuration
 
 Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a default.
@@ -82,6 +102,7 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
     "allowedCommands": ["npm test", "npm run lint"]
   },
   "budget": { "perCatUsd": 2, "globalUsd": 10, "perCatTokens": null, "enforce": "metered" },
+  "interviews": { "candidates": 2, "tier": "balanced", "budgetUsd": 3, "projectCheck": null },
   "xp": { "accepted": 10, "testsFirstTry": 5, "underCost": 3, "rejectedPenalty": 10 },
   "memory": { "debrief": true, "model": "haiku", "cap": 30, "autoAcceptAfter": null },
   "attribution": false,
@@ -96,6 +117,7 @@ Optional: `<your repo>/.agentcats/agentcats.config.json`. Every field has a defa
 - `workers.allowedCommands`: commands workers may run without asking, usually your test and lint commands. Committing to their own branch is always allowed.
 - `workers.permissionMode`: `ask` (approve everything that changes something), `accept_edits` (file edits in the worktree run without asking), or `auto` (Claude decides what is safe). There is no bypass mode.
 - `budget`: dollar limits, from the cost Claude reports. With `"enforce": "metered"` they apply only to cats billed per use (an API key, Bedrock or Vertex). At 80 percent you get a warning; at 100 percent the cat pauses until you raise its budget and resume it. On a subscription plan the cost shown is an API-equivalent estimate and is not enforced unless you set `"enforce": "always"`.
+- `interviews.budgetUsd`: what one interview may spend, enforced like `budget`. An interview whose estimate is over it is refused. `interviews.projectCheck`: the check for re-running one of your tasks as an interview; by default your `package.json` test script. Score weights are in `interviews.weights`.
 - `xp`: XP per outcome. The level thresholds are fixed in `levels.ts`.
 - `memory.debrief`: turn the debrief off. `memory.model`: the model for debriefs and consolidations. `memory.cap`: the most lines a learnings file may hold. `memory.autoAcceptAfter`: keep a cat's suggestions without asking once it has this many accepted tasks (`null`, the default, always asks; consolidations always ask).
 - `attribution`: whether agents may add their own attribution, such as Claude Code's `Co-Authored-By` trailer, to the commits they make in your repo. Off by default.
