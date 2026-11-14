@@ -2726,7 +2726,7 @@ button.team-spend:focus-visible {
   border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow);
-  translate: calc(-50% + var(--card-shift, 0px)) 0;
+  translate: calc(-50% + var(--card-shift, 0px)) var(--card-nudge, 0px);
   pointer-events: auto;
 }
 

@@ -139,6 +139,7 @@ for (const limit of ['min', 'max'] as const) {
     page,
   }) => {
     test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1280, height: 680 });
     await openBoard(page, BASE);
     await showPanel(page, 'Chat');
     await zoomTo(page, limit);

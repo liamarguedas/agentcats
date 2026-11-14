@@ -206,6 +206,7 @@ function Walker({
 }) {
   const previous = useRef(spot);
   const [walking, setWalking] = useState(false);
+  const touched = useRef(false);
   useEffect(() => {
     if (previous.current.x === spot.x && previous.current.y === spot.y) return;
     previous.current = spot;
@@ -222,13 +223,18 @@ function Walker({
       className={`office__cat${walking ? ' office__cat--walking' : ''}`}
       data-area={area}
       style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
-      onPointerEnter={() => {
-        onEnter(false);
+      // No hover card for a touch: a tap opens the cat's details, and a card
+      // sliding in under the finger would take the tap.
+      onPointerDown={(e) => {
+        touched.current = e.pointerType === 'touch';
+      }}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'touch') onEnter(false);
       }}
       onPointerLeave={onLeave}
       // Only keyboard focus brings the cat into view: a click must not move it away.
       onFocus={(e) => {
-        onEnter(e.target.matches(':focus-visible'));
+        if (!touched.current) onEnter(e.target.matches(':focus-visible'));
       }}
       onBlur={onLeave}
     >
@@ -306,6 +312,7 @@ function arrange(overlay: HTMLElement, visible: Rect): void {
       '--card-shift',
       '--card-rise',
       '--card-drop',
+      '--card-nudge',
       '--leader-length',
       '--leader-angle',
     ]) {
@@ -409,6 +416,12 @@ function arrange(overlay: HTMLElement, visible: Rect): void {
     if (rect.left < visible.left + EDGE) shift = visible.left + EDGE - rect.left;
     else if (rect.right > visible.right - EDGE) shift = visible.right - EDGE - rect.right;
     if (shift !== 0) anchor.style.setProperty('--card-shift', `${String(shift)}px`);
+    // Room on neither side (zoomed far in on a short screen): slide it into view,
+    // over the cat if it must.
+    let nudge = 0;
+    if (rect.bottom > visible.bottom - EDGE) nudge = visible.bottom - EDGE - rect.bottom;
+    if (rect.top + nudge < visible.top + EDGE) nudge = visible.top + EDGE - rect.top;
+    if (nudge !== 0) anchor.style.setProperty('--card-nudge', `${String(nudge)}px`);
   }
 }
 
