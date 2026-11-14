@@ -5,6 +5,8 @@ import {
   levelSpec,
   prepareExport,
   type Task,
+  usagePoints,
+  catNames,
 } from '@agentcats/protocol';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
@@ -14,6 +16,7 @@ import { ChatPanel } from './components/ChatPanel.js';
 import { CatDrawer, TaskDrawer } from './components/Drawers.js';
 import { EventLog, xpText } from './components/EventLog.js';
 import {
+  Dialog,
   HireDialog,
   InterviewPanel,
   hireAnnouncement,
@@ -22,6 +25,7 @@ import {
 } from './components/Hiring.js';
 import { LearningsSection, LevelSection, levelPerks } from './components/Learnings.js';
 import { ReplayBar, SessionPicker } from './components/Replay.js';
+import { SpendMeter } from './components/SpendMeter.js';
 import { TaskCard } from './components/TaskCard.js';
 import { ReplayPlayer } from './replay.js';
 
@@ -125,6 +129,7 @@ function undoVersionOf(events: readonly AgentcatsEvent[], catId: string): string
 export function App({ client }: { client: BoardClient }) {
   const [replay, setReplay] = useState<Replay | null>(null);
   const [picking, setPicking] = useState(false);
+  const [meter, setMeter] = useState(false);
   const source = replay?.player ?? client;
   const view = useSyncExternalStore(source.subscribe, source.getView);
   useEffect(() => () => replay?.player.dispose(), [replay]);
@@ -280,6 +285,18 @@ export function App({ client }: { client: BoardClient }) {
     [client, openTaskId, replay],
   );
 
+  // In a replay, spending comes from the replayed events, not from the live daemon.
+  const loadUsage = useCallback(
+    async () =>
+      replay
+        ? {
+            points: usagePoints(replay.player.getView().events),
+            names: catNames(replay.player.getView().events),
+          }
+        : client.request('usage'),
+    [client, replay],
+  );
+
   const loadSessions = useCallback(
     async () => (await client.request('sessions')).sessions,
     [client],
@@ -364,12 +381,16 @@ export function App({ client }: { client: BoardClient }) {
               Hire a cat
             </button>
           )}
-          <span
+          <button
+            type="button"
             className="team-spend"
-            title={estimated ? 'Includes API-equivalent estimates' : 'Reported cost'}
+            title={`${estimated ? 'Includes API-equivalent estimates. ' : ''}Open the cost meter`}
+            onClick={() => {
+              setMeter(true);
+            }}
           >
             Team spend {estimated ? '≈ ' : ''}${spent.toFixed(2)}
-          </span>
+          </button>
           <span className={`connection connection--${view.connection}`} data-testid="connection">
             {CONNECTION_LABEL[view.connection]}
           </span>
@@ -663,6 +684,17 @@ export function App({ client }: { client: BoardClient }) {
             </>
           )}
         </CatDrawer>
+      )}
+      {meter && (
+        <Dialog
+          title="Spend"
+          wide
+          onClose={() => {
+            setMeter(false);
+          }}
+        >
+          <SpendMeter board={board} adapters={view.adapters} loadUsage={loadUsage} />
+        </Dialog>
       )}
       {picking && (
         <SessionPicker

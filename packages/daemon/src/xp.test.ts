@@ -11,6 +11,7 @@ const result = (tests: TaskResult['tests'], costUsd: number | null): TaskResult 
   diffStat: { files: 1, insertions: 1, deletions: 0 },
   tests,
   costUsd,
+  activeMs: null,
 });
 
 describe('xpForVerdict', () => {

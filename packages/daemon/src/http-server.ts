@@ -20,7 +20,9 @@ import {
   PROTOCOL_VERSION,
   type RouteName,
   routes,
+  catNames,
   splitSessions,
+  usagePoints,
   tokenFromWsProtocolHeader,
   WS_PATH,
   WS_PROTOCOL,
@@ -43,6 +45,8 @@ export interface HttpServerOptions {
   readonly logger: Logger;
   /** The project, for hiding its path in exported sessions. */
   readonly projectPath: string;
+  /** The team budget, for the cost meter. */
+  readonly globalBudgetUsd: number | null;
 }
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -211,6 +215,14 @@ export function createHttpServer(options: HttpServerOptions): {
       const taskId = param(params, 'taskId');
       manager.task(taskId);
       return Promise.resolve({ events: log.taskEvents(taskId) });
+    },
+    usage: () => {
+      const events = log.allEvents();
+      return Promise.resolve({
+        points: usagePoints(events),
+        globalBudgetUsd: options.globalBudgetUsd,
+        names: catNames(events),
+      });
     },
     sessions: () => Promise.resolve({ sessions: splitSessions(log.allEvents()) }),
     sessionEvents: (params) => {

@@ -146,6 +146,28 @@ export type PickCandidateRequest = z.infer<typeof PickCandidateRequest>;
 export const TaskEventsResponse = z.strictObject({ events: z.array(AgentcatsEvent) });
 export type TaskEventsResponse = z.infer<typeof TaskEventsResponse>;
 
+/** A cat's cumulative usage at one moment, from a `usage.updated` event. */
+export const UsagePoint = z.strictObject({
+  ts: Timestamp,
+  catId: Id,
+  /** `null` when the cat's agent reports no cost. */
+  costUsd: z.number().nonnegative().nullable(),
+  activeMs: z.int().nonnegative(),
+  tokens: z.int().nonnegative(),
+});
+export type UsagePoint = z.infer<typeof UsagePoint>;
+
+/** Spending over time, for the cost meter. */
+export const UsageResponse = z.strictObject({
+  /** Oldest first; at most one point per cat per minute, plus each cat's latest. */
+  points: z.array(UsagePoint),
+  /** The team budget (`budget.globalUsd`), `null` for none. */
+  globalBudgetUsd: z.number().positive().nullable(),
+  /** Every cat's name, including candidates no longer on the board. */
+  names: z.record(Id, z.string()),
+});
+export type UsageResponse = z.infer<typeof UsageResponse>;
+
 /** Every session in the log, oldest first, for replay. */
 export const SessionsResponse = z.strictObject({ sessions: z.array(SessionSummary) });
 export type SessionsResponse = z.infer<typeof SessionsResponse>;
@@ -421,6 +443,13 @@ export const routes = {
     response: AcceptedResponse,
     successStatus: 202,
   },
+  usage: {
+    method: 'GET',
+    path: `${API_PREFIX}/usage`,
+    body: null,
+    response: UsageResponse,
+    successStatus: 200,
+  },
   sessions: {
     method: 'GET',
     path: `${API_PREFIX}/sessions`,
@@ -457,4 +486,31 @@ export function buildPath(path: string, params: Readonly<Record<string, string>>
     if (value === undefined) throw new Error(`Missing path param "${name}" for ${path}`);
     return encodeURIComponent(value);
   });
+}
+
+/** Usage over time: the last point of each cat in each minute, so a long log stays small. */
+export function usagePoints(events: readonly AgentcatsEvent[]): UsagePoint[] {
+  const byBucket = new Map<string, UsagePoint>();
+  for (const event of events) {
+    if (event.type !== 'usage.updated') continue;
+    const u = event.payload;
+    byBucket.set(`${event.catId}:${String(Math.floor(event.ts / 60_000))}`, {
+      ts: event.ts,
+      catId: event.catId,
+      costUsd: u.costUsd,
+      activeMs: u.activeMs,
+      // As on the cat card: cache reads and writes are not counted.
+      tokens: u.inputTokens + u.outputTokens,
+    });
+  }
+  return [...byBucket.values()].sort((a, b) => a.ts - b.ts);
+}
+
+/** Every cat's name from its `cat.created` event, so cats gone from the board keep theirs. */
+export function catNames(events: readonly AgentcatsEvent[]): Record<string, string> {
+  const names: Record<string, string> = {};
+  for (const event of events) {
+    if (event.type === 'cat.created') names[event.catId] = event.payload.name;
+  }
+  return names;
 }

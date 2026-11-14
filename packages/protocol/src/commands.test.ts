@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AcceptedResponse,
   buildPath,
+  catNames,
   ChatRequest,
   CreateTaskRequest,
   CreateTaskResponse,
@@ -12,6 +13,7 @@ import {
   routes,
   Snapshot,
   UpdateCatRequest,
+  usagePoints,
 } from './commands.js';
 import { PROTOCOL_VERSION } from './common.js';
 import { sampleLog } from './fixtures.test-util.js';
@@ -125,6 +127,7 @@ describe('routes', () => {
       'POST /api/interviews/:interviewId/cancel',
       'POST /api/interviews/:interviewId/pick',
       'POST /api/chat',
+      'GET /api/usage',
       'GET /api/sessions',
       'GET /api/sessions/:index/events',
       'GET /api/snapshot',
@@ -137,5 +140,43 @@ describe('routes', () => {
 
   it('throws when a path param is missing', () => {
     expect(() => buildPath(routes.resolveApproval.path)).toThrow(/approvalId/);
+  });
+});
+
+describe('usagePoints and catNames', () => {
+  const usage = (seq: number, ts: number, catId: string, costUsd: number | null) =>
+    ({
+      id: `u${String(seq)}`,
+      seq,
+      ts,
+      type: 'usage.updated',
+      catId,
+      payload: {
+        inputTokens: 10,
+        outputTokens: 5,
+        cacheReadTokens: 100,
+        cacheWriteTokens: 0,
+        costUsd,
+        costSource: 'reported',
+        activeMs: seq * 1000,
+      },
+    }) as const;
+
+  it('keeps each cat’s last point per minute, oldest first, without cache tokens', () => {
+    const points = usagePoints([
+      usage(1, 1_000, 'a', 0.1),
+      usage(2, 30_000, 'a', 0.2),
+      usage(3, 61_000, 'a', 0.3),
+      usage(4, 2_000, 'b', null),
+    ]);
+    expect(points).toEqual([
+      { ts: 2_000, catId: 'b', costUsd: null, activeMs: 4_000, tokens: 15 },
+      { ts: 30_000, catId: 'a', costUsd: 0.2, activeMs: 2_000, tokens: 15 },
+      { ts: 61_000, catId: 'a', costUsd: 0.3, activeMs: 3_000, tokens: 15 },
+    ]);
+  });
+
+  it('names every created cat', () => {
+    expect(catNames(sampleLog)).toMatchObject({ 'cat-1': 'Mochi' });
   });
 });

@@ -123,6 +123,7 @@ async function startLocked(
     uiDir: options.uiDir ?? null,
     logger,
     projectPath,
+    globalBudgetUsd: config.budget.globalUsd,
   });
   try {
     await new Promise<void>((resolveListen, rejectListen) => {

@@ -135,7 +135,8 @@ export class CatManager {
   /** Task prompts not sent yet because the cat was paused while its session started. */
   readonly #heldPrompts = new Map<string, string>();
   /** The cat's total cost when a task first started, to get the task's own cost. */
-  readonly #costBase = new Map<string, number | null>();
+  /** The cat's usage when a task first started, to tell what the task itself spent. */
+  readonly #taskBase = new Map<string, { costUsd: number; activeMs: number }>();
   #notifications: string[] = [];
   /** Work started from agent hooks; `close()` waits for it before the store closes. */
   readonly #background = new Set<Promise<unknown>>();
@@ -549,7 +550,7 @@ export class CatManager {
     this.#transition(taskId, decision === 'accept' ? 'done' : 'rejected', 'user', {
       statusReason: decision === 'accept' ? 'Accepted by you' : rejected,
     });
-    this.#costBase.delete(taskId);
+    this.#taskBase.delete(taskId);
     const leveledUp = this.#awardXp(task, decision);
     if (task.assigneeCatId) this.#track(this.#memory.writeStats(task.assigneeCatId));
     this.#memory.afterReview(this.task(taskId), { decision, note }, leveledUp);
@@ -886,8 +887,12 @@ export class CatManager {
         statusReason: null,
       });
       const cat = worker.cat;
-      if (!this.#costBase.has(taskId)) {
-        this.#costBase.set(taskId, this.o.log.board.usage[cat.id]?.costUsd ?? 0);
+      if (!this.#taskBase.has(taskId)) {
+        const usage = this.o.log.board.usage[cat.id];
+        this.#taskBase.set(taskId, {
+          costUsd: usage?.costUsd ?? 0,
+          activeMs: usage?.activeMs ?? 0,
+        });
       }
       const options: Omit<SpawnOptions, 'catId'> = {
         cwd: tree.path,
@@ -980,7 +985,7 @@ export class CatManager {
         branch,
         diffStat,
         tests: testsFromSummary(summary),
-        costUsd: this.#taskCost(task.id, worker.catId),
+        ...this.#taskSpend(task.id, worker.catId),
       };
     } catch (error) {
       this.o.logger.warn(`Could not read the result of task ${task.id}: ${errorMessage(error)}`);
@@ -1462,12 +1467,15 @@ export class CatManager {
     };
   }
 
-  /** What a task cost: the cat's spending since the task first started. */
-  #taskCost(taskId: string, catId: string): number | null {
-    const base = this.#costBase.get(taskId);
-    const now = this.o.log.board.usage[catId]?.costUsd;
-    if (base === undefined || base === null || now === undefined || now === null) return null;
-    return Math.max(0, now - base);
+  /** What a task spent: the cat's cost and working time since the task first started. */
+  #taskSpend(taskId: string, catId: string): { costUsd: number | null; activeMs: number | null } {
+    const base = this.#taskBase.get(taskId);
+    const now = this.o.log.board.usage[catId];
+    if (!base || !now) return { costUsd: null, activeMs: null };
+    return {
+      costUsd: now.costUsd === null ? null : Math.max(0, now.costUsd - base.costUsd),
+      activeMs: Math.max(0, now.activeMs - base.activeMs),
+    };
   }
 
   #agent(catId: string): CatAgent {

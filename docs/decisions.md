@@ -663,3 +663,10 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
   - summaries, to 500;
   - user messages, to 500.
 - **Import never touches the daemon**: a file is validated against `SessionExport` and replayed locally.
+
+## 2026-11-13 - M5 cost meter decisions
+
+- **Opened from "Team spend" in the header.** Stat tiles show what was spent, the team budget left, and the working time of cats whose cost is unknown. Below them come a chart of cost over time per cat, a per-cat table (also the chart's table view), and the most expensive tasks.
+- **"Cost unknown" is never drawn as $0.** A cat counts as cost-unknown by the same rule as its card: its agent reports no cost. Such cats are counted by working time, their budgets are time budgets, and their tasks are ranked by working time. Tasks now record that time (`TaskResult.activeMs`).
+- **History comes from the event log** (`GET /api/usage`), thinned to the last point per cat per minute, with names for cats no longer on the board. A replay builds the same view from its own events.
+- **Colors:** the data-viz reference palette, run through its validator on our light and dark surfaces. Both pass. Three light slots sit below 3:1 contrast, which is why the chart always has a legend and the table, and direct labels when there are up to four lines. Past seven cats, the cheapest fold into "Other".

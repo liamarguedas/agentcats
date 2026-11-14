@@ -25,10 +25,13 @@ export function Dialog({
   title,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** For tables and charts. */
+  wide?: boolean;
 }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -42,7 +45,7 @@ export function Dialog({
   return (
     <div className="drawer-backdrop dialog-backdrop" onClick={onClose}>
       <section
-        className="dialog"
+        className={`dialog${wide ? ' dialog--wide' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}

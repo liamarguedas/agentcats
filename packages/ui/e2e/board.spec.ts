@@ -279,6 +279,28 @@ test('a cat moved to an agent without cost reporting shows cost unknown, its tim
   await card.screenshot({ path: `${SHOTS}/cost-unknown.png`, animations: 'disabled' });
 });
 
+test('the cost meter shows spend, budgets, cost over time and the most expensive tasks', async ({
+  page,
+}) => {
+  await openBoard(page);
+  await page.getByRole('button', { name: /Team spend/ }).click();
+  const meter = page.getByRole('dialog', { name: 'Spend' });
+  await expect(meter.getByText('Team budget left')).toBeVisible();
+  // Mochi now runs on an agent without cost reporting: counted by working time, not as $0.
+  await expect(meter.getByText('Cost unknown', { exact: true })).toBeVisible();
+  await expect(meter.getByRole('row', { name: /Mochi/ })).toContainText('Cost unknown');
+  const chart = meter.getByRole('img', { name: 'Cost per cat over time' });
+  await expect(chart).toBeVisible();
+  const box = (await chart.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2);
+  await expect(meter.locator('.spend-chart__tooltip')).toContainText('Tux');
+  await expect(meter.getByRole('list', { name: 'Legend' })).toContainText('Tux');
+  await expect(meter.locator('.cost-meter__tasks li').first()).toBeVisible();
+  await meter.screenshot({ path: `${SHOTS}/cost-meter.png`, animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await expect(meter).toBeHidden();
+});
+
 test('the board resyncs after a reload', async ({ page }) => {
   await openBoard(page);
   await page.reload();

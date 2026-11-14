@@ -88,6 +88,8 @@ export const TaskResult = z.strictObject({
    * example after a daemon restart in the middle of the task.
    */
   costUsd: z.number().nonnegative().nullable().default(null),
+  /** The worker's working time on the task, measured by the daemon. `null` when unknown. */
+  activeMs: z.int().nonnegative().nullable().default(null),
 });
 export type TaskResult = z.infer<typeof TaskResult>;
 
