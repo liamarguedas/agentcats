@@ -244,7 +244,9 @@ test('hiring runs an interview after the estimate is confirmed, and only a passi
   );
   await shot(page, 'hire-estimate');
   await dialog.getByRole('button', { name: /Start interview/ }).click();
-  await expect(dialog).toBeHidden();
+  // Starting hires three candidates on the daemon before it answers; on a busy
+  // CI runner that round trip once took over the default 5 s.
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
 
   const panel = page.getByRole('region', { name: /^Interview:/ });
   await expect(panel).toContainText('Scored: pick one to hire', { timeout: 30_000 });
