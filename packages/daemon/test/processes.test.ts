@@ -187,7 +187,7 @@ describe('agent process cleanup', () => {
     await daemon.close();
     await killProcessTree(reused);
     await cleanup(projectPath, worktreesDir);
-  }, 30_000);
+  }, 60_000);
 
   it('refuses to start outside a git repository, with a clear message', async () => {
     const dir = await tempDir();

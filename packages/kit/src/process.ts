@@ -60,7 +60,10 @@ export async function killProcessTree(pid: number, timeoutMs = 5_000): Promise<v
   if (!isProcessAlive(pid)) return;
   if (isWindows) {
     // Exit code 128 means "not found", which is fine: it already exited.
-    await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F']).catch(() => undefined);
+    await execFileAsync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+      timeout: timeoutMs,
+      windowsHide: true,
+    }).catch(() => undefined);
   } else {
     try {
       process.kill(-pid, 'SIGKILL');
@@ -86,19 +89,34 @@ export async function killProcessTree(pid: number, timeoutMs = 5_000): Promise<v
  * Resolution is one second on POSIX.
  */
 export async function processStartTime(pid: number): Promise<number | null> {
-  try {
-    if (isWindows) {
-      const { stdout } = await execFileAsync('powershell.exe', [
-        '-NoProfile',
-        '-NonInteractive',
-        '-Command',
-        `(Get-Process -Id ${String(pid)} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
-      ]);
-      const ms = Date.parse(stdout.trim());
-      return Number.isNaN(ms) ? null : ms;
+  if (isWindows) {
+    // A cold PowerShell can stall on a busy machine (seen on CI): time out and
+    // try once more, warm, rather than hang the daemon's startup.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { stdout } = await execFileAsync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            `(Get-Process -Id ${String(pid)} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`,
+          ],
+          { timeout: START_TIME_TIMEOUT_MS, windowsHide: true },
+        );
+        const ms = Date.parse(stdout.trim());
+        return Number.isNaN(ms) ? null : ms;
+      } catch (error) {
+        // Only a timeout is worth a retry; an error means no such process.
+        if (!(error as { killed?: boolean }).killed) return null;
+      }
     }
+    return null;
+  }
+  try {
     const { stdout } = await execFileAsync('ps', ['-o', 'lstart=', '-p', String(pid)], {
       env: { ...process.env, LC_ALL: 'C', TZ: 'UTC' },
+      timeout: START_TIME_TIMEOUT_MS,
     });
     const ms = Date.parse(`${stdout.trim()} UTC`);
     return Number.isNaN(ms) ? null : ms;
@@ -106,3 +124,5 @@ export async function processStartTime(pid: number): Promise<number | null> {
     return null;
   }
 }
+
+const START_TIME_TIMEOUT_MS = 10_000;

@@ -677,3 +677,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Templates live in `.agentcats/captions.json`**, copied from `packages/daemon/captions/default.json` on first run. Placeholders: `{cat}`, `{task}`, `{level}`, `{cats}`. A kind missing from the file uses the defaults. An invalid file falls back to the defaults, with a warning on the board. The default lines are original.
 - **Serious mode:** `"captions": { "enabled": false }` stops captions at the source.
 - **On the board:** a caption sits on the cat's card in meme lettering for a few seconds. One about a cat no longer on the board, such as a retirement or rejected candidates, is a toast.
+
+## 2026-11-14 - M5 packaging decisions
+
+- **One package, built into `packages/cli/pack/`** by `pnpm -F agentcats pack:build`. esbuild bundles all agentcats code into `dist/main.js`. The built UI and the files the code reads at runtime (prompts, interview samples, captions, the guardian) sit where their `import.meta.url` paths expect them. Third-party packages stay npm dependencies, at the single exact version every workspace package pins. The Claude Agent SDK has to stay one: its license does not allow bundling it. The tarball is about 650 KB.
+- **The workspace `package.json` is not the published one:** the pack writes its own manifest, so development keeps `workspace:*` links.
+- **CI tests what a stranger gets.** On Linux, macOS and Windows, with the oldest supported Node (22.13), it packs the package and installs it with plain npm in an empty folder. It then runs `npx agentcats --demo` until the scripted cats deliver a task for review (`packages/cli/scripts/smoke.mjs`). macOS runs on pushes to `main` only while the repo is private.
+- **A demo stopped without Ctrl+C** (a closed terminal) leaves its temp project. The next demo removes such leftovers, keeping any whose daemon still runs.
+- **Fixed on the way:** a process-cleanup test hung on a CI Windows runner because `processStartTime` called PowerShell with no timeout. Every process call in the kit now has a timeout. A PowerShell timeout is retried once. Leftover PIDs are checked in parallel.

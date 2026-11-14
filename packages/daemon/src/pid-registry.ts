@@ -63,16 +63,19 @@ export class PidRegistry {
    * started. Changes nothing; only meaningful while no daemon runs.
    */
   async orphans(): Promise<number[]> {
-    const alive: number[] = [];
-    for (const record of await this.#load()) {
-      if (!isProcessAlive(record.pid)) continue;
-      const started = await processStartTime(record.pid);
-      if (started === null || Math.abs(started - record.startedAt) > START_TIME_TOLERANCE_MS) {
-        continue; // PID was reused by something else.
-      }
-      alive.push(record.pid);
-    }
-    return alive;
+    // In parallel: on Windows each check starts a PowerShell.
+    const checks = await Promise.all(
+      (await this.#load()).map(async (record) => {
+        if (!isProcessAlive(record.pid)) return null;
+        const started = await processStartTime(record.pid);
+        // A start time far from ours means the PID was reused by something else.
+        if (started === null || Math.abs(started - record.startedAt) > START_TIME_TOLERANCE_MS) {
+          return null;
+        }
+        return record.pid;
+      }),
+    );
+    return checks.filter((pid): pid is number => pid !== null);
   }
 
   async #load(): Promise<PidRecord[]> {
