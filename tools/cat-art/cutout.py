@@ -34,6 +34,9 @@ SIZE = 256
 PAD = 0.06
 # BiRefNet (MIT): cleaner masks than ISNet on close-up meme faces.
 MODEL = 'birefnet-general-lite'
+# A side of the photo that cuts through the cat is faded out over this much of it.
+FADE = 0.22
+TOUCH = 0.04
 
 
 def meme_name(file_name: str) -> str | None:
@@ -79,7 +82,7 @@ def cut_out(path: Path, session) -> Image.Image:
     PIL.Image.Image
         RGBA image, ``SIZE`` x ``SIZE``, the cat centered with a small margin.
     """
-    cat = keep_largest(remove(Image.open(path).convert('RGB'), session=session))
+    cat = fade_cut_edges(keep_largest(remove(Image.open(path).convert('RGB'), session=session)))
     box = cat.getchannel('A').point(lambda a: 255 if a > 24 else 0).getbbox()
     if box:
         cat = cat.crop(box)
@@ -87,6 +90,58 @@ def cut_out(path: Path, session) -> Image.Image:
     canvas = Image.new('RGBA', (side, side), (0, 0, 0, 0))
     canvas.paste(cat, ((side - cat.width) // 2, side - cat.height - int(side * PAD)))
     return canvas.resize((SIZE, SIZE), Image.LANCZOS)
+
+
+def fade_cut_edges(image: Image.Image, band: float = FADE, touch: float = TOUCH) -> Image.Image:
+    """Fade the cat out toward each side of the photo that cuts through it.
+
+    A meme photo often crops the cat: its body runs into the frame. Cut out,
+    that side ends in a hard straight line, which looks like a pasted
+    rectangle on the board. Each side the cat touches along more than
+    ``touch`` of its length gets a linear alpha ramp, from fully transparent
+    at the frame to unchanged ``band`` of the cat's extent inward.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+        RGBA cut-out at the source photo's size, before cropping.
+    band : float, default FADE
+        Ramp length as a fraction of the cat's width (left and right sides)
+        or height (top and bottom).
+    touch : float, default TOUCH
+        Fraction of a side's length the cat must cover for that side to
+        count as a cut. Lower values catch an ear or a paw grazing the frame.
+
+    Returns
+    -------
+    PIL.Image.Image
+        The same image with the ramps applied; unchanged if no side is cut.
+
+    Notes
+    -----
+    A mask's own soft rim covers a few pixels at most, so the 2 px border
+    strip tested here only shows real cuts.
+    """
+    rgba = np.array(image)
+    alpha = rgba[..., 3].astype(np.float32)
+    solid = alpha > 24
+    if not solid.any():
+        return image
+    ys, xs = np.nonzero(solid)
+    height, width = alpha.shape
+    ramp_x = max(2, int((xs.max() - xs.min()) * band))
+    ramp_y = max(2, int((ys.max() - ys.min()) * band))
+    sides = {
+        'left': (solid[:, :2].any(axis=1).mean(), np.arange(width)[None, :], ramp_x),
+        'right': (solid[:, -2:].any(axis=1).mean(), (width - 1 - np.arange(width))[None, :], ramp_x),
+        'top': (solid[:2, :].any(axis=0).mean(), np.arange(height)[:, None], ramp_y),
+        'bottom': (solid[-2:, :].any(axis=0).mean(), (height - 1 - np.arange(height))[:, None], ramp_y),
+    }
+    for covered, distance, ramp in sides.values():
+        if covered > touch:
+            alpha *= np.clip(distance / ramp, 0.0, 1.0)
+    rgba[..., 3] = alpha.round().astype(np.uint8)
+    return Image.fromarray(rgba)
 
 
 def keep_largest(image: Image.Image) -> Image.Image:
@@ -127,7 +182,7 @@ def main(dataset: Path) -> None:
         cut_out(source, session).save(OUT / f"{pick['id']}.webp", 'WEBP', quality=86, method=6)
         manifest.append({'id': pick['id'], 'name': meme_name(source.name)})
         print('cut', pick['id'])
-    MANIFEST.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf8')
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf8', newline='\n')
 
 
 if __name__ == '__main__':

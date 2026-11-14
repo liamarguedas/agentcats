@@ -18,10 +18,22 @@ const LIVE = process.env['AGENTCATS_LIVE_CLAUDE'] === '1';
 const MODEL = process.env['AGENTCATS_LIVE_MODEL'] ?? 'sonnet';
 /** `mock` dry-runs this test's own logic without spending tokens. */
 const ADAPTER = process.env['AGENTCATS_LIVE_ADAPTER'] === 'mock' ? 'mock' : 'claude';
-const REQUEST =
-  ADAPTER === 'mock'
-    ? 'Add a login endpoint and write tests for it\n/approval'
-    : 'Add a login endpoint and write tests for it';
+/**
+ * Two pieces of work the user wants split. M1's sentence, "Add a login
+ * endpoint and write tests for it", left the split to the lead, and haiku
+ * twice kept it in one task (the endpoint and its tests share files), a fair
+ * call that failed the parallelism check. This tests what agentcats owns:
+ * the lead follows the split and the workers run at once. Both features are
+ * fully specified: given a bare "POST /login", the lead rightly held it back
+ * to ask what a login should check.
+ */
+const WORK =
+  'Add two separate features, each as its own task with its own tests. ' +
+  '1) POST /login: takes JSON { "username", "password" }; returns 200 { "ok": true } for ' +
+  'username "admin" with password "secret" (hardcoded, this is a sample app), and 401 ' +
+  '{ "error": "invalid credentials" } otherwise. ' +
+  '2) GET /version: returns { "version": "1.0.0" }; add "version": "1.0.0" to package.json and read it from there.';
+const REQUEST = ADAPTER === 'mock' ? `${WORK}\n/approval` : WORK;
 const SHOTS = 'test-results/screenshots';
 const NETWORK =
   /\b(curl|wget|npm (i|install|add)|pnpm (add|install)|npx|pip|git (fetch|pull|clone|push))\b|WebFetch|WebSearch/i;
@@ -142,7 +154,7 @@ test.describe('live Claude team', () => {
     }
   });
 
-  test('"Add a login endpoint and write tests for it" gives two parallel workers and reviewable branches', async ({
+  test('two requested features give two parallel workers and reviewable branches', async ({
     page,
   }) => {
     repo = await sampleRepo();
@@ -270,7 +282,8 @@ test.describe('live Claude team', () => {
     expect(peak).toBeGreaterThanOrEqual(2);
     for (const t of branches) {
       expect(t.status).toBe('review');
-      expect(t.commits).toBeGreaterThan(0);
+      // The CLI's mock acts work out and never changes the repo.
+      if (ADAPTER !== 'mock') expect(t.commits).toBeGreaterThan(0);
     }
     expect(git(repo, 'status', '--porcelain')).toBe('');
     expect(git(repo, 'branch', '--show-current')).toBe('main');

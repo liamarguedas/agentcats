@@ -776,4 +776,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 ### Handoff
 
 - There is no milestone after M5. Next releases follow `docs/releasing.md`: a changeset per user-facing change, `pnpm changeset version`, `pnpm release:build`, the smoke test, then a manual `npm publish`.
-- Open items: the cat pictures' unclear rights (`docs/assets.md`); a few cutouts have a straight edge where the meme photo was cropped; the live test's parallelism assertion fails when the lead keeps the work in one task.
+- Open items after release: see "The open items after 0.1.0" below.
+
+## 2026-11-14 - The open items after 0.1.0
+
+- **Cat picture rights: accepted, not open.** Clearing them is not possible; these photos have circulated as memes for years and their photographers are mostly unknown. `docs/assets.md` keeps the disclosure and the way to remove an image, since a long history of sharing is not a license.
+- **Straight edges on cropped cats: fixed.** `cutout.py` fades the cat out over 22% of its size toward any side of the photo the cat touches along more than 4% of that side (`FADE`, `TOUCH`). 14% still showed a vertical end on `tabby-loaf`. 13 of the 17 pictures changed; the set is 179 KB, down from 212 KB. The manifest is now written with LF line endings on Windows.
+- **The live team test asks for two specified features.** M1's sentence left the split to the lead, and haiku twice kept the endpoint and its tests in one task, a fair call. With "two separate features" but a bare "POST /login", the lead queued the version endpoint and rightly held login back to ask what it should check. With both features specified, the run passed: two tasks, two workers at once, a commit on each branch, $0.02 API-equivalent, with the lead warning about the merge conflict in `src/app.js`. The test now checks what agentcats owns (the lead follows a requested split, workers run in parallel), not a model's judgment on how to split.
+- **The mock dry run of that test works again.** The CLI's mock never commits, so in mock mode the test skips the commit check; it had failed before this change too.

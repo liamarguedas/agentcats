@@ -12,9 +12,11 @@ The 17 files used are listed with their dataset paths in `tools/cat-art/picks.js
 **Known risk, recorded on purpose:** the uploader's description says they "collected cat faces from memes".
 The photos were taken by other people, so the uploader may not hold the rights the Apache 2.0 label claims to grant, and some meme cats are also trademarks of their owners.
 The maintainer chose to ship them on 2026-11-14 after this was raised (`docs/decisions.md`, M5 art decision).
+Clearing the rights is not possible: these photos have circulated as memes for years and their photographers are mostly unknown.
+The risk is accepted, not open; what stays is this note and a quick way out.
 If a rights holder objects, remove the image, drop its entry from `tools/cat-art/picks.json`, and rerun the cut-out tool; cats with that look fall back to another one.
 
-**How they were made:** `tools/cat-art/cutout.py` removes the background with rembg 2.0.86 (MIT) and the BiRefNet-lite model (MIT). It keeps only the largest piece of the mask, crops to the cat, and saves a 256 px WebP with transparency.
+**How they were made:** `tools/cat-art/cutout.py` removes the background with rembg 2.0.86 (MIT) and the BiRefNet-lite model (MIT). It keeps only the largest piece of the mask, fades the cat out toward any side of the photo that cut through it (so a cropped body does not end in a straight line), crops to the cat, and saves a 256 px WebP with transparency.
 Nothing was drawn or retouched by hand.
 
 **Names:** a source file that names its meme gives the cat a default name.
