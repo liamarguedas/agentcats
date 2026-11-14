@@ -747,3 +747,7 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Accepted on the user's decision:** a real run with Claude Code completes the M1 flow on the final art, with captions on. Tux choosing one task for an endpoint and its tests is a model's judgment. Parallel workers are covered by the mock team tests and were shown live in M1.
 - **The live test's parallelism assertion stays** as the record of what M1 asked for. Its failure now means the model kept the work in one task, not that the flow broke.
 
+## 2026-11-14 - Release 0.1.0: the repository is public
+
+- **The repository is public.** With macOS minutes free, macOS joins the `check` matrix (Node 22 and 24) on every push and pull request, and the package job runs it on pull requests too. The separate `check-macos` job, which ran on pushes to `main` only, is gone.
+

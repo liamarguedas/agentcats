@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         node: [22, 24]
     runs-on: ${{ matrix.os }}
     steps:
@@ -23,21 +23,6 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
 
-  # macOS minutes cost ten times as much on a private repo: pushes to main only
-  # until the repo is public (docs/decisions.md, M5 planning answers).
-  check-macos:
-    if: github.event_name == 'push'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v6.1.0
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm run check
-
   # The published package, installed with plain npm in an empty folder and run
   # with --demo: what a stranger gets from `npx agentcats --demo`.
   package:
@@ -45,8 +30,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        exclude:
-          - os: ${{ github.event_name == 'pull_request' && 'macos-latest' || 'none' }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
