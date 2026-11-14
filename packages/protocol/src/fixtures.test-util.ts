@@ -299,6 +299,13 @@ export const sampleEvents = {
     type: 'interview.completed',
     payload: { interviewId: 'i1', winnerCatId: 'cat-9', outcome: 'hired' },
   },
+  'daemon.started': {
+    id: 'e30',
+    seq: 30,
+    ts: 30_000,
+    type: 'daemon.started',
+    payload: { version: 'dev' },
+  },
 } as const satisfies { [T in EventType]: Extract<AgentcatsEvent, { type: T }> };
 
 /** The samples as an array ordered by seq. */

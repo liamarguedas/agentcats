@@ -8,6 +8,7 @@ import {
   type ServerResponse,
   STATUS_CODES,
 } from 'node:http';
+import { homedir } from 'node:os';
 import type { Duplex } from 'node:stream';
 import { extname, resolve, sep } from 'node:path';
 
@@ -17,6 +18,7 @@ import {
   PROTOCOL_VERSION,
   type RouteName,
   routes,
+  splitSessions,
   tokenFromWsProtocolHeader,
   WS_PATH,
   WS_PROTOCOL,
@@ -37,6 +39,8 @@ export interface HttpServerOptions {
   /** Directory with the built UI, or `null` to serve no UI. */
   readonly uiDir: string | null;
   readonly logger: Logger;
+  /** The project, for hiding its path in exported sessions. */
+  readonly projectPath: string;
 }
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -205,6 +209,19 @@ export function createHttpServer(options: HttpServerOptions): {
       const taskId = param(params, 'taskId');
       manager.task(taskId);
       return Promise.resolve({ events: log.taskEvents(taskId) });
+    },
+    sessions: () => Promise.resolve({ sessions: splitSessions(log.allEvents()) }),
+    sessionEvents: (params) => {
+      const index = Number(param(params, 'index'));
+      const session = splitSessions(log.allEvents())[index];
+      if (!Number.isInteger(index) || !session) {
+        throw new ApiError('not_found', `No session ${param(params, 'index')}`);
+      }
+      return Promise.resolve({
+        events: log.eventsBetween(session.firstSeq, session.lastSeq),
+        projectPath: options.projectPath,
+        homeDir: homedir(),
+      });
     },
     chat: async (_params, body) => {
       const { text, catId } = body as z.infer<typeof routes.chat.body>;

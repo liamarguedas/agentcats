@@ -21,6 +21,7 @@ describe('AgentcatsEvent', () => {
         'cat.status_changed',
         'cat.updated',
         'daemon.error',
+        'daemon.started',
         'interview.candidate_scored',
         'interview.completed',
         'interview.proposed',

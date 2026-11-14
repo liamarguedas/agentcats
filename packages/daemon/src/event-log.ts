@@ -86,6 +86,16 @@ export class EventLog {
     return this.#recent.slice(-limit);
   }
 
+  /** Every stored event, oldest first. */
+  allEvents(): AgentcatsEvent[] {
+    return this.store.allEvents();
+  }
+
+  /** Stored events with `from <= seq <= to`, oldest first. */
+  eventsBetween(from: number, to: number): AgentcatsEvent[] {
+    return this.store.allEvents().filter((e) => e.seq >= from && e.seq <= to);
+  }
+
   /** Every stored event about one task, oldest first. */
   taskEvents(taskId: string): AgentcatsEvent[] {
     return this.store.taskEvents(taskId);

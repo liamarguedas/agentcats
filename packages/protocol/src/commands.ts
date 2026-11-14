@@ -5,6 +5,7 @@ import { Cat, LearningDraft, Task } from './entities.js';
 import { HireRole, Interview, InterviewSample } from './hiring.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
+import { SessionSummary } from './session.js';
 import { API_PREFIX } from './transport.js';
 
 /** How many recent events `GET /api/snapshot` returns. */
@@ -144,6 +145,21 @@ export type PickCandidateRequest = z.infer<typeof PickCandidateRequest>;
 /** Every stored event about one task, oldest first, for the task drawer. */
 export const TaskEventsResponse = z.strictObject({ events: z.array(AgentcatsEvent) });
 export type TaskEventsResponse = z.infer<typeof TaskEventsResponse>;
+
+/** Every session in the log, oldest first, for replay. */
+export const SessionsResponse = z.strictObject({ sessions: z.array(SessionSummary) });
+export type SessionsResponse = z.infer<typeof SessionsResponse>;
+
+/**
+ * Every stored event of one session, for replay and export. The paths let
+ * the UI hide them in an export (`prepareExport`).
+ */
+export const SessionEventsResponse = z.strictObject({
+  events: z.array(AgentcatsEvent),
+  projectPath: z.string().min(1),
+  homeDir: z.string().min(1),
+});
+export type SessionEventsResponse = z.infer<typeof SessionEventsResponse>;
 
 /** Response for commands whose effect shows up later as events. */
 export const AcceptedResponse = z.strictObject({ accepted: z.literal(true) });
@@ -402,6 +418,20 @@ export const routes = {
     body: ChatRequest,
     response: AcceptedResponse,
     successStatus: 202,
+  },
+  sessions: {
+    method: 'GET',
+    path: `${API_PREFIX}/sessions`,
+    body: null,
+    response: SessionsResponse,
+    successStatus: 200,
+  },
+  sessionEvents: {
+    method: 'GET',
+    path: `${API_PREFIX}/sessions/:index/events`,
+    body: null,
+    response: SessionEventsResponse,
+    successStatus: 200,
   },
   snapshot: {
     method: 'GET',

@@ -44,6 +44,8 @@ function describe(event: AgentcatsEvent): string {
       return `${String(event.payload.inputTokens + event.payload.outputTokens)} tokens`;
     case 'daemon.error':
       return `${event.payload.code}: ${event.payload.message}`;
+    case 'daemon.started':
+      return `agentcats ${event.payload.version} started`;
     case 'xp.changed':
       return `${xpText(event.payload.delta)} XP, ${XP_REASON[event.payload.reason]} (now ${String(event.payload.xp)})`;
     case 'cat.level_changed':

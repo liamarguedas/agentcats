@@ -29,6 +29,8 @@ export interface DaemonOptions {
   /** Fixed token, for tests. Random when omitted. */
   readonly token?: string;
   readonly logger?: Logger;
+  /** agentcats version, recorded at the start of each session. Default `dev`. */
+  readonly version?: string;
 }
 
 export interface RunningDaemon {
@@ -91,6 +93,7 @@ async function startLocked(
 
   const store = new SqliteStore(join(runtimeDir, 'agentcats.db'));
   const log = new EventLog(store);
+  log.append({ type: 'daemon.started', payload: { version: options.version ?? 'dev' } });
   let mcpUrl = '';
   const manager = new CatManager({
     log,
@@ -119,6 +122,7 @@ async function startLocked(
     token,
     uiDir: options.uiDir ?? null,
     logger,
+    projectPath,
   });
   try {
     await new Promise<void>((resolveListen, rejectListen) => {

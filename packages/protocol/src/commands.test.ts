@@ -125,6 +125,8 @@ describe('routes', () => {
       'POST /api/interviews/:interviewId/cancel',
       'POST /api/interviews/:interviewId/pick',
       'POST /api/chat',
+      'GET /api/sessions',
+      'GET /api/sessions/:index/events',
       'GET /api/snapshot',
     ]);
   });

@@ -346,6 +346,16 @@ export const DaemonErrorEvent = z.strictObject({
   }),
 });
 
+/** The daemon started: the boundary between two sessions, for replay. */
+export const DaemonStartedEvent = z.strictObject({
+  ...envelope,
+  type: z.literal('daemon.started'),
+  payload: z.strictObject({
+    /** agentcats version, `dev` when run from sources. */
+    version: z.string().min(1).max(64),
+  }),
+});
+
 /**
  * Something the user should see that is not an error of the daemon itself:
  * a budget warning, a worktree with uncommitted work, an untested agent version.
@@ -391,6 +401,7 @@ export const AgentcatsEvent = z.discriminatedUnion('type', [
   InterviewCompletedEvent,
   NoticeEvent,
   DaemonErrorEvent,
+  DaemonStartedEvent,
 ]);
 export type AgentcatsEvent = z.infer<typeof AgentcatsEvent>;
 

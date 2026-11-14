@@ -10,7 +10,7 @@ describe('applyEvent', () => {
     const board = replay();
 
     expect(BoardState.parse(board)).toEqual(board);
-    expect(board.lastSeq).toBe(29);
+    expect(board.lastSeq).toBe(30);
     expect(board.cats['cat-1']).toMatchObject({
       name: 'Mochi',
       role: 'worker',

@@ -23,6 +23,7 @@ import {
 import type { AgentcatsConfig } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
+import cliPackage from '../package.json' with { type: 'json' };
 import { cleanup, doctor } from './maintenance.js';
 
 export const USAGE = `Usage: agentcats [command] [--project <path>] [options]
@@ -237,6 +238,7 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
       config,
       uiDir,
       logger: consoleLogger,
+      version: cliPackage.version,
     });
     // Warn only once the daemon is up, so a real error (no git repo, bad config) comes first.
     if (!uiDir) io.err('Warning: the UI is not built. Run `pnpm build` to get the board.');
