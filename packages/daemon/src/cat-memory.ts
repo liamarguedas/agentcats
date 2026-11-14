@@ -245,6 +245,19 @@ export class CatMemory {
     }
   }
 
+  /**
+   * Move a renamed cat's folder to its new name. Stops watching it first, as
+   * for {@link archive}. A cat without a folder yet is fine; one gets made.
+   */
+  async move(from: string, to: string): Promise<void> {
+    this.unwatch(from);
+    // A change of case only is the same folder on Windows and macOS.
+    if (from.toLowerCase() !== to.toLowerCase() && (await exists(this.dir(to)))) {
+      throw new Error(`.agentcats/cats/${to} already exists`);
+    }
+    if (await exists(this.dir(from))) await renameWithRetry(this.dir(from), this.dir(to));
+  }
+
   unwatch(name: string): void {
     this.#watchers.get(name)?.close();
     this.#watchers.delete(name);

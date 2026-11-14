@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { ApprovalDecision, Budget, Id, LearningText, PermissionMode, Timestamp } from './common.js';
-import { Cat, LearningDraft, Task } from './entities.js';
+import { Cat, CatName, LearningDraft, Task } from './entities.js';
 import { HireRole, Interview, InterviewSample } from './hiring.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
@@ -44,6 +44,8 @@ export type ChatRequest = z.infer<typeof ChatRequest>;
 /** Edit a cat's properties on the board. Takes effect from its next session. */
 export const UpdateCatRequest = z
   .strictObject({
+    /** Unique on the board. Workers and the lead; a candidate is renamed once hired. */
+    name: CatName.optional(),
     /** Applies from the cat's next session. */
     adapter: z.string().min(1).max(64).optional(),
     model: z.string().min(1).nullable().optional(),
@@ -506,11 +508,15 @@ export function usagePoints(events: readonly AgentcatsEvent[]): UsagePoint[] {
   return [...byBucket.values()].sort((a, b) => a.ts - b.ts);
 }
 
-/** Every cat's name from its `cat.created` event, so cats gone from the board keep theirs. */
+/** Every cat's latest name from the log, so cats gone from the board keep theirs. */
 export function catNames(events: readonly AgentcatsEvent[]): Record<string, string> {
   const names: Record<string, string> = {};
   for (const event of events) {
-    if (event.type === 'cat.created') names[event.catId] = event.payload.name;
+    if (event.type === 'cat.created' || event.type === 'cat.resurrected') {
+      names[event.catId] = event.payload.name;
+    } else if (event.type === 'cat.updated' && event.payload.name !== undefined) {
+      names[event.catId] = event.payload.name;
+    }
   }
   return names;
 }

@@ -124,13 +124,12 @@ export function createHttpServer(options: HttpServerOptions): {
       await manager.killCat(param(params, 'catId'));
       return accepted;
     },
-    updateCat: (params, body) =>
-      Promise.resolve({
-        cat: manager.updateCat(
-          param(params, 'catId'),
-          body as z.infer<typeof routes.updateCat.body>,
-        ),
-      }),
+    updateCat: async (params, body) => ({
+      cat: await manager.updateCat(
+        param(params, 'catId'),
+        body as z.infer<typeof routes.updateCat.body>,
+      ),
+    }),
     pauseCat: async (params) => {
       await manager.pauseCat(param(params, 'catId'), 'user');
       return accepted;

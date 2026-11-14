@@ -284,6 +284,9 @@ describe('interviews', () => {
       }
     ).processes.map((p) => p.pid);
     expect(pids.length).toBeGreaterThanOrEqual(2);
+    // A candidate keeps its name until it is hired: its trial branch carries it.
+    const candidate = (await board()).interviews[interview.id]!.candidates[0]!.catId;
+    expect((await t.api('PATCH', `/api/cats/${candidate}`, { name: 'Renamed' })).status).toBe(409);
 
     const res = await t.api('POST', `/api/interviews/${interview.id}/cancel`);
     expect(res.status).toBe(200);

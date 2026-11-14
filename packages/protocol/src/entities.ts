@@ -42,6 +42,24 @@ export const CatStats = z.strictObject({
 });
 export type CatStats = z.infer<typeof CatStats>;
 
+/**
+ * A name the user gives a cat. It names the cat's folder
+ * (`.agentcats/cats/<name>/`), so it must be a safe file name on every
+ * system: letters, digits, spaces and `' . _ -`, starting and ending with a
+ * letter or digit, and not a name Windows reserves.
+ */
+export const CatName = z
+  .string()
+  .trim()
+  .min(1, 'Give the cat a name')
+  .max(32, 'Keep the name to 32 characters')
+  .regex(
+    /^[\p{L}\p{N}](?:[\p{L}\p{N} '._-]*[\p{L}\p{N}])?$/u,
+    "Use letters, digits, spaces and ' . _ -, starting and ending with a letter or digit",
+  )
+  .refine((name) => !/^(con|prn|aux|nul|com\d|lpt\d)$/i.test(name), 'That name is reserved');
+export type CatName = z.infer<typeof CatName>;
+
 export const Cat = z.strictObject({
   id: Id,
   name: z.string().min(1).max(64),

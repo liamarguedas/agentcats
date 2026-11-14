@@ -3,7 +3,8 @@ import { type KeyboardEvent, type SyntheticEvent, useState } from 'react';
 export interface PromptBoxProps {
   readonly disabled: boolean;
   readonly placeholder: string;
-  readonly onSubmit: (text: string) => Promise<void>;
+  /** Resolves to whether it was sent; the text stays when it was not. */
+  readonly onSubmit: (text: string) => Promise<boolean>;
 }
 
 /** Enter sends, Shift+Enter adds a line. */
@@ -17,8 +18,7 @@ export function PromptBox({ disabled, placeholder, onSubmit }: PromptBoxProps) {
     if (!canSend) return;
     setSending(true);
     try {
-      await onSubmit(text.trim());
-      setText('');
+      if (await onSubmit(text.trim())) setText('');
     } finally {
       setSending(false);
     }

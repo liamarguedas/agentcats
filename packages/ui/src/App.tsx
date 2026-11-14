@@ -273,16 +273,19 @@ export function App({ client }: { client: BoardClient }) {
     ]);
   };
 
-  async function run(action: () => Promise<unknown>) {
+  /** Run a request, showing its error as a toast. Resolves to whether it worked. */
+  async function run(action: () => Promise<unknown>): Promise<boolean> {
     if (replay) {
       readOnly();
-      return;
+      return false;
     }
     try {
       await action();
+      return true;
     } catch (error) {
       const text = error instanceof ApiRequestError ? error.message : String(error);
       setErrors((list) => [...list.slice(-2), { id: Date.now(), text }]);
+      return false;
     }
   }
 

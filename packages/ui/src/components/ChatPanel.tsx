@@ -46,7 +46,7 @@ export function ChatPanel({
   live: boolean;
   /** A replay: show the conversation, offer no input. */
   readOnly?: boolean;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string) => Promise<boolean>;
 }) {
   const messages = useMemo(() => (cat ? toMessages(events, cat.id) : []), [events, cat]);
   const listRef = useRef<HTMLOListElement>(null);

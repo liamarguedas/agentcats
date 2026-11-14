@@ -751,3 +751,16 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 
 - **The repository is public.** With macOS minutes free, macOS joins the `check` matrix (Node 22 and 24) on every push and pull request, and the package job runs it on pull requests too. The separate `check-macos` job, which ran on pushes to `main` only, is gone.
 
+
+## 2026-11-14 - Renaming cats, and no Pause or Stop on candidates
+
+- **Renaming,** deferred earlier because a cat's folder is keyed by its name, is in:
+  - `updateCat` takes `name`, checked by `CatName` in the protocol: 1 to 32 characters, letters, digits, spaces and `' . _ -`, starting and ending with a letter or digit, and no name Windows reserves (`NUL`, `COM1`, ...). It names a folder, so it must be safe on every system.
+  - Names are unique on the board, whatever their case, because the lead finds cats by name.
+  - A worker's folder moves under the cat's memory lock, then its `learnings.md` header and `profile.md` are rewritten and watched again, the same path a resurrection under a new name takes.
+  - The lead is told. Running sessions keep the old name in their prompt until their next start; restarting a busy cat for a name was not worth the lost work.
+  - Candidates are refused: their trial branch carries the name. They can be renamed once hired.
+  - `catNames` (cost meter, replay) follows renames.
+- **The drawer's "Saved" now means saved.** `run()` swallowed API errors, so a refused save still said "Saved". It now resolves to whether the request worked.
+- **Interview candidates have no Pause or Stop** on their card, and P does nothing on them. Pausing one candidate would skew the comparison; Cancel interview stops the trial as a whole. Before, the buttons showed disabled.
+- **No changeset:** 0.1.0 is not on npm yet, so these ship in it; its changelog entry describes the whole first release. The `v0.1.0` tag goes on the commit that is published.

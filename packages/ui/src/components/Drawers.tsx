@@ -1,10 +1,11 @@
-import type {
-  AdapterInfo,
-  AgentcatsEvent,
-  Cat,
-  PermissionMode,
-  Task,
-  Usage,
+import {
+  type AdapterInfo,
+  type AgentcatsEvent,
+  type Cat,
+  CatName,
+  type PermissionMode,
+  type Task,
+  type Usage,
 } from '@agentcats/protocol';
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from 'react';
 
@@ -289,12 +290,14 @@ export interface CatDrawerProps {
   readonly canNudge: boolean;
   /** Adapters the cat can move to; the lead only sees ones with MCP. */
   readonly adapters: readonly AdapterInfo[];
+  /** Resolves to whether the daemon took it. */
   readonly onSave: (patch: {
+    name?: string;
     adapter?: string;
     model: string | null;
     permissionMode?: PermissionMode;
     budget: { maxUsd: number | null; maxTokens: number | null; maxMinutes: number | null };
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   readonly onNudge: () => void;
   /** Open the retire dialog; workers only. */
   readonly onRetire?: () => void;
@@ -319,6 +322,7 @@ export function CatDrawer({
   onClose,
   children,
 }: CatDrawerProps) {
+  const [name, setName] = useState(cat.name);
   const [model, setModel] = useState(cat.model ?? '');
   const [adapterId, setAdapterId] = useState(cat.adapter);
   const [minutes, setMinutes] = useState(
@@ -331,11 +335,16 @@ export function CatDrawer({
   );
   const [saved, setSaved] = useState(false);
   const isLead = cat.role === 'orchestrator';
+  const isCandidate = cat.role === 'candidate';
+  const parsedName = CatName.safeParse(name);
+  const nameError = parsedName.success ? null : (parsedName.error.issues[0]?.message ?? null);
 
   async function submit(e: SyntheticEvent) {
     e.preventDefault();
+    if (!parsedName.success) return;
     const maxTokens = numberOrNull(tokens);
-    await onSave({
+    const ok = await onSave({
+      ...(parsedName.data !== cat.name && { name: parsedName.data }),
       ...(adapterId !== cat.adapter && { adapter: adapterId }),
       model: model.trim() || null,
       ...(!isLead && { permissionMode: mode }),
@@ -345,17 +354,22 @@ export function CatDrawer({
         maxMinutes: numberOrNull(minutes),
       },
     });
-    setSaved(true);
+    setSaved(ok);
   }
 
   return (
-    <Drawer title={isLead ? `${cat.name} · lead` : `${cat.name} · worker`} onClose={onClose}>
+    <Drawer
+      title={`${cat.name} · ${isLead ? 'lead' : isCandidate ? 'candidate' : 'worker'}`}
+      onClose={onClose}
+    >
       <dl className="facts">
         <dt>Role</dt>
         <dd>
           {isLead
             ? 'Lead (orchestrator): reads and delegates, never edits'
-            : 'Worker: edits in its own worktree'}
+            : isCandidate
+              ? 'Candidate: on an interview trial'
+              : 'Worker: edits in its own worktree'}
         </dd>
         <dt>Agent</dt>
         <dd>{cat.adapter}</dd>
@@ -379,6 +393,26 @@ export function CatDrawer({
       {children && <h3 className="drawer__subtitle">Properties</h3>}
 
       <form className="form" onSubmit={(e) => void submit(e)}>
+        <label className="form__field">
+          <span>Name</span>
+          <input
+            value={name}
+            maxLength={32}
+            disabled={isCandidate}
+            title={isCandidate ? 'A candidate can be renamed once hired' : undefined}
+            aria-invalid={nameError !== null}
+            aria-describedby={nameError ? 'cat-name-error' : undefined}
+            onChange={(e) => {
+              setName(e.target.value);
+              setSaved(false);
+            }}
+          />
+          {nameError && (
+            <span id="cat-name-error" className="form__error">
+              {nameError}
+            </span>
+          )}
+        </label>
         {adapters.length > 1 && (
           <label className="form__field">
             <span>Agent</span>
@@ -468,7 +502,7 @@ export function CatDrawer({
           Agent, model and permission mode apply from the cat&apos;s next session.
         </p>
         <div className="drawer__actions">
-          <button type="submit" className="button button--primary">
+          <button type="submit" className="button button--primary" disabled={nameError !== null}>
             Save
           </button>
           {saved && (

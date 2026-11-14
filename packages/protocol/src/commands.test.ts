@@ -20,6 +20,14 @@ import { sampleLog } from './fixtures.test-util.js';
 import { applyEvent, emptyBoard } from './projection.js';
 
 describe('command schemas', () => {
+  it('takes a safe, trimmed cat name', () => {
+    expect(UpdateCatRequest.parse({ name: '  Buff Cat ' })).toEqual({ name: 'Buff Cat' });
+    expect(UpdateCatRequest.parse({ name: "Señor O'Malley-2" }).name).toBe("Señor O'Malley-2");
+    for (const name of ['', '   ', '../x', 'a/b', 'cat.', '-cat', 'NUL', 'com1', 'x'.repeat(33)]) {
+      expect(UpdateCatRequest.safeParse({ name }).success, name).toBe(false);
+    }
+  });
+
   it('accepts a task with only a title and defaults the description', () => {
     expect(CreateTaskRequest.parse({ title: 'Add hello' })).toEqual({
       title: 'Add hello',
@@ -176,7 +184,19 @@ describe('usagePoints and catNames', () => {
     ]);
   });
 
-  it('names every created cat', () => {
+  it('names every created cat, by its latest name', () => {
     expect(catNames(sampleLog)).toMatchObject({ 'cat-1': 'Mochi' });
+    const renamed = [
+      ...sampleLog,
+      {
+        id: 'rename',
+        seq: 1_000,
+        ts: 1_000_000,
+        type: 'cat.updated' as const,
+        catId: 'cat-1',
+        payload: { name: 'Grumpy' },
+      },
+    ];
+    expect(catNames(renamed)).toMatchObject({ 'cat-1': 'Grumpy' });
   });
 });

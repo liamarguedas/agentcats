@@ -411,13 +411,26 @@ export class CatManager {
 
   /**
    * Edit a cat's properties. Adapter, model and permission mode apply from
-   * its next session.
+   * its next session. A new name moves a worker's folder and is told to the
+   * lead; a running session learns it at its next start.
    *
    * @throws ApiError `bad_request` for an adapter this daemon does not have,
-   *   or one without MCP for the lead.
+   *   or one without MCP for the lead; `conflict` for a name another cat has,
+   *   or a candidate's rename.
    */
-  updateCat(catId: string, patch: UpdateCatRequest): Cat {
+  async updateCat(catId: string, patch: UpdateCatRequest): Promise<Cat> {
     const current = this.#agent(catId).cat;
+    const { name, ...rest } = patch;
+    const renamed = name !== undefined && name !== current.name;
+    if (renamed) {
+      if (current.role === 'candidate') {
+        throw new ApiError('conflict', `${current.name} is in an interview; rename it once hired`);
+      }
+      const taken = this.cats().find(
+        (c) => c.id !== catId && c.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (taken) throw new ApiError('conflict', `Another cat is already called ${taken.name}`);
+    }
     if (patch.adapter !== undefined) {
       const adapter = this.o.adapters.get(patch.adapter);
       if (!adapter) throw new ApiError('bad_request', `No adapter "${patch.adapter}" in this run`);
@@ -428,9 +441,19 @@ export class CatManager {
         );
       }
     }
-    this.o.log.append({ type: 'cat.updated', catId, payload: patch });
-    this.#warned.delete(catId);
-    if (patch.model !== undefined) this.#track(this.#memory.writeProfile(catId));
+    if (renamed) {
+      const rename = () => {
+        this.o.log.append({ type: 'cat.updated', catId, payload: { name } });
+      };
+      if (current.role === 'worker') await this.#memory.rename(catId, name, rename);
+      else rename();
+      this.#notifyOrchestrator(`${current.name} is now called ${name}.`);
+    }
+    if (Object.keys(rest).length > 0) {
+      this.o.log.append({ type: 'cat.updated', catId, payload: rest });
+      this.#warned.delete(catId);
+      if (rest.model !== undefined) this.#track(this.#memory.writeProfile(catId));
+    }
     return this.#agent(catId).cat;
   }
 

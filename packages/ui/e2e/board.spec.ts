@@ -227,6 +227,46 @@ test('cat properties can be edited', async ({ page }) => {
   await expect(page.getByTestId('cat-Mochi')).toContainText('/ $5.00');
 });
 
+test('a cat can be renamed, and its learnings move with it', async ({ page }) => {
+  await openBoard(page);
+  const before = learningsOnDisk('Mochi');
+  expect(before).toContain("# Mochi's learnings");
+  await page.getByRole('button', { name: 'Mochi: open details' }).click();
+  const drawer = page.getByRole('dialog');
+  const name = drawer.getByLabel('Name');
+  const save = drawer.getByRole('button', { name: 'Save' });
+
+  // A name that cannot be a folder is caught before it is sent.
+  await name.fill('../Mochi');
+  await expect(drawer.getByText(/Use letters, digits/)).toBeVisible();
+  await expect(save).toBeDisabled();
+  await shot(page, 'rename-invalid');
+  // One the daemon refuses shows its reason, and no "Saved".
+  await name.fill('tux');
+  await save.click();
+  await expect(
+    page.locator('.toast', { hasText: 'Another cat is already called Tux' }),
+  ).toBeVisible();
+  await expect(drawer.getByRole('status')).toHaveCount(0);
+
+  await name.fill('Grumpy Cat');
+  await save.click();
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await expect(drawer.getByRole('heading', { name: 'Grumpy Cat · worker' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('cat-Grumpy Cat')).toBeVisible();
+  expect(learningsOnDisk('Mochi')).toBe('');
+  expect(learningsOnDisk('Grumpy Cat')).toContain("# Grumpy Cat's learnings");
+
+  // Back to Mochi, for the tests that follow.
+  await page.getByRole('button', { name: 'Grumpy Cat: open details' }).click();
+  await drawer.getByLabel('Name').fill('Mochi');
+  await drawer.getByRole('button', { name: 'Save' }).click();
+  await expect(drawer.getByRole('status')).toHaveText('Saved');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('cat-Mochi')).toBeVisible();
+});
+
 test('hiring runs an interview after the estimate is confirmed, and only a passing candidate can win', async ({
   page,
 }) => {
@@ -257,6 +297,17 @@ test('hiring runs an interview after the estimate is confirmed, and only a passi
 
   const hire = scores.getByRole('button', { name: /^Hire / }).first();
   const winner = ((await hire.textContent()) ?? '').replace('Hire ', '');
+  // A candidate is stopped with its interview, so its card has no Pause or Stop.
+  const controls = /^(Pause|Stop)$/;
+  // Pointing at the floor would show only the hovered cat's card.
+  await page.mouse.move(0, 0);
+  await page.getByRole('button', { name: 'Tux: open details' }).focus();
+  await expect(lead(page).getByRole('button', { name: controls })).toHaveCount(2);
+  await page.getByRole('button', { name: `${winner}: open details` }).focus();
+  const candidate = page.getByTestId(`cat-${winner}`);
+  await expect(candidate.getByTestId('cat-status')).toBeVisible();
+  await expect(candidate).toContainText('Candidate');
+  await expect(candidate.getByRole('button', { name: controls })).toHaveCount(0);
   await hire.click();
   await expect(page.locator('.toast--info', { hasText: `${winner} is hired!` })).toBeVisible();
   await expect(page.getByRole('region', { name: /^Interview:/ })).toHaveCount(0);

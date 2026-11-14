@@ -13,7 +13,12 @@ The office takes the top of the board:
 
 Cats walk between the areas as their status changes.
 Hover over a cat, or Tab to it, for its card: status, agent, level and XP, current task, spend, and Pause and Stop.
+An interview candidate has no Pause or Stop: Cancel interview stops the whole trial.
 Click a cat for its panel with its learnings, history and properties.
+A cat takes its meme's name when it is free; rename it under Properties.
+The name is unique on the board and names its folder, `.agentcats/cats/<name>/`, which moves with it.
+The lead is told the new name; a running session uses it from its next start.
+A candidate is renamed once hired.
 
 On a focused cat:
 
@@ -21,7 +26,7 @@ On a focused cat:
 | --- | --- |
 | A | Allow its pending approval |
 | D | Deny its pending approval |
-| P | Pause it, or resume it |
+| P | Pause it, or resume it (not a candidate) |
 | Enter | Open its panel |
 
 Below the office are the tasks; on the right, the chat with the lead and the event log.

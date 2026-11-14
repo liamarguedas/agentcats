@@ -130,6 +130,22 @@ export class Memory {
     await this.o.files.unarchive(archive, name);
   }
 
+  /**
+   * Rename a worker: move its folder, then `commit` (which logs the new
+   * name), then rewrite its files under the new name and watch them again.
+   * Holds the cat's lock, so no learnings edit lands in the old folder.
+   */
+  async rename(catId: string, name: string, commit: () => void): Promise<void> {
+    await this.#locked(catId, async () => {
+      await this.o.files.move(this.#cat(catId).name, name);
+      commit();
+      const cat = this.#cat(catId);
+      const lines = (await this.o.files.readLearnings(cat.name)) ?? cat.learnings;
+      await this.o.files.writeLearnings(cat.name, lines);
+    });
+    await this.#open(this.#cat(catId));
+  }
+
   /** A resurrected cat is on the board again: rename its files to its name and watch them. */
   async resurrected(catId: string): Promise<void> {
     const cat = this.#cat(catId);

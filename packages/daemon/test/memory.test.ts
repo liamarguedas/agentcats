@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -166,6 +167,45 @@ describe('cat folders', () => {
     const gitignore = await readFile(join(t.projectPath, '.agentcats', '.gitignore'), 'utf8');
     expect(gitignore).toContain('!cats/*/learnings.md');
     expect(gitignore).not.toContain('!cats/*/stats.json');
+  });
+
+  it('moves the folder when a worker is renamed, keeping its learnings', async () => {
+    await setup();
+    await taskInReview('Seed');
+    const cat = await worker();
+    await addLearnings(cat.id, [FIXTURE]);
+    const lead = Object.values((await board()).cats).find((c) => c.role === 'orchestrator')!;
+
+    const res = await t.api('PATCH', `/api/cats/${cat.id}`, { name: ' Grumpy Cat ' });
+    expect(res.status).toBe(200);
+    expect((res.body as { cat: Cat }).cat.name).toBe('Grumpy Cat');
+    expect(existsSync(join(t.projectPath, '.agentcats', 'cats', cat.name))).toBe(false);
+    const file = await readFile(learningsFile('Grumpy Cat'), 'utf8');
+    expect(file).toContain("# Grumpy Cat's learnings");
+    expect(file).toContain(FIXTURE);
+    await vi.waitFor(
+      async () => {
+        const profile = join(t.projectPath, '.agentcats', 'cats', 'Grumpy Cat', 'profile.md');
+        expect(await readFile(profile, 'utf8')).toContain('# Grumpy Cat');
+      },
+      { timeout: 10_000 },
+    );
+    // Hand edits are still picked up under the new name.
+    await writeFile(learningsFile('Grumpy Cat'), '# notes\n\n- Edited after the rename\n');
+    await vi.waitFor(
+      async () => {
+        expect((await worker()).learnings.map((l) => l.text)).toEqual(['Edited after the rename']);
+      },
+      { timeout: 10_000, interval: 50 },
+    );
+
+    // Names are unique on the board, whatever their case, and safe as folder names.
+    expect(
+      (await t.api('PATCH', `/api/cats/${cat.id}`, { name: lead.name.toUpperCase() })).status,
+    ).toBe(409);
+    expect((await t.api('PATCH', `/api/cats/${cat.id}`, { name: '../escape' })).status).toBe(400);
+    expect((await t.api('PATCH', `/api/cats/${lead.id}`, { name: 'The Boss' })).status).toBe(200);
+    expect((await board()).cats[lead.id]?.name).toBe('The Boss');
   });
 });
 

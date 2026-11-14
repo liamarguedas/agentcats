@@ -74,6 +74,8 @@ const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval'
 export function CatCard(props: CatCardProps) {
   const { cat, size, usage, task } = props;
   const paused = cat.pausedReason !== null;
+  // A candidate's trial is stopped from its interview (Cancel interview), not cat by cat.
+  const controls = !props.readOnly && cat.role !== 'candidate';
   const status = paused ? 'blocked' : cat.status;
   return (
     <section
@@ -87,7 +89,7 @@ export function CatCard(props: CatCardProps) {
           type="button"
           className="cat-card__photo"
           aria-label={`${cat.name}: open details`}
-          aria-keyshortcuts={props.readOnly ? undefined : 'A D P'}
+          aria-keyshortcuts={props.readOnly ? undefined : controls ? 'A D P' : 'A D'}
           onClick={props.onOpen}
           onKeyDown={(e) => {
             if (props.readOnly || e.altKey || e.ctrlKey || e.metaKey) return;
@@ -95,7 +97,7 @@ export function CatCard(props: CatCardProps) {
             if (props.approval && (key === 'a' || key === 'd')) {
               e.preventDefault();
               props.onApprove(props.approval.id, key === 'a' ? 'allow' : 'deny');
-            } else if (key === 'p' && (paused || ACTIVE.has(cat.status))) {
+            } else if (controls && key === 'p' && (paused || ACTIVE.has(cat.status))) {
               e.preventDefault();
               if (paused) props.onResume();
               else props.onPause();
@@ -172,7 +174,7 @@ export function CatCard(props: CatCardProps) {
         {task && size === 'worker' && <p className="cat-card__task">{task.title}</p>}
         <Spend cat={cat} usage={usage} adapter={props.adapter} />
         <div className="cat-card__actions">
-          {!props.readOnly &&
+          {controls &&
             (paused ? (
               <button type="button" className="button button--small" onClick={props.onResume}>
                 Resume
@@ -187,7 +189,7 @@ export function CatCard(props: CatCardProps) {
                 Pause
               </button>
             ))}
-          {!props.readOnly && (
+          {controls && (
             <button
               type="button"
               className="button button--small"

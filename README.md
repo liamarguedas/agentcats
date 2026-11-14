@@ -60,7 +60,6 @@ The limits are just as important; they are in [security](docs/security.md).
 - **Codex** is not checked action by action: its own sandbox keeps it in its worktree and off the network, and a network command is not asked about. It reports no cost, so its budget is working time. On Windows its sandbox is the weaker `unelevated` one.
 - **Claude** on a subscription shows API-equivalent cost estimates, which are not enforced by default.
 - **The mock** only acts out work; it never changes your repo.
-- **Cats cannot be renamed** yet.
 - **One team per project.** A second agentcats on the same project is refused.
 - **The cat pictures** come from a public meme dataset whose rights are not fully clear; see [assets](docs/assets.md).
 

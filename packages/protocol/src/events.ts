@@ -64,6 +64,7 @@ export const CatUpdatedEvent = z.strictObject({
   type: z.literal('cat.updated'),
   payload: z
     .strictObject({
+      name: z.string().min(1).max(64).optional(),
       adapter: z.string().min(1).max(64).optional(),
       model: z.string().min(1).nullable().optional(),
       permissionMode: PermissionMode.optional(),
