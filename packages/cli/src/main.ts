@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 import {
@@ -126,11 +127,20 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
   };
 }
 
-/** Directory with the built UI, or `null` if it has not been built. */
+/**
+ * Directory with the built UI, or `null` if it has not been built: `ui/`
+ * next to the bundle in the published package, else the workspace's build.
+ */
 export async function findUiDir(): Promise<string | null> {
-  const uiPackage = createRequire(import.meta.url).resolve('@agentcats/ui/package.json');
-  const dist = join(dirname(uiPackage), 'dist');
-  return (await stat(join(dist, 'index.html')).catch(() => null)) ? dist : null;
+  const packed = fileURLToPath(new URL('../ui', import.meta.url));
+  if (await stat(join(packed, 'index.html')).catch(() => null)) return packed;
+  try {
+    const uiPackage = createRequire(import.meta.url).resolve('@agentcats/ui/package.json');
+    const dist = join(dirname(uiPackage), 'dist');
+    return (await stat(join(dist, 'index.html')).catch(() => null)) ? dist : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Claude Code, found once here; a missing one is reported by its preflight. */

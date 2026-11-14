@@ -33,7 +33,15 @@ function agentSdkRules() {
 }
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/node_modules/**', 'coverage/**', '**/test-results/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      'coverage/**',
+      '**/test-results/**',
+      'packages/cli/pack/**',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   {

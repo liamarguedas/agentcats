@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "pack:build": "node scripts/pack.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "@agentcats/ui": "workspace:*"
   },
   "devDependencies": {
-    "@agentcats/kit": "workspace:*"
+    "@agentcats/kit": "workspace:*",
+    "esbuild": "0.28.2"
   }
 }

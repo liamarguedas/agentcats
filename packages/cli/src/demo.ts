@@ -1,11 +1,11 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import { createMockAdapter } from '@agentcats/adapter-mock';
-import { ConfigError } from '@agentcats/daemon';
+import { ConfigError, runningDaemon } from '@agentcats/daemon';
 import { Snapshot, type Task } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
@@ -38,7 +38,8 @@ export async function createDemoProject(): Promise<DemoProject> {
       'The demo needs git (cats work on git branches). Install it from https://git-scm.com and run it again.',
     );
   });
-  const projectPath = await mkdtemp(join(tmpdir(), 'agentcats-demo-'));
+  await sweepOldDemos();
+  const projectPath = await mkdtemp(join(tmpdir(), DEMO_PREFIX));
   const worktreesDir = `${projectPath}-worktrees`;
   const git = (...args: string[]) =>
     execFileAsync('git', args, { cwd: projectPath, windowsHide: true });
@@ -65,6 +66,24 @@ export async function createDemoProject(): Promise<DemoProject> {
       }
     },
   };
+}
+
+const DEMO_PREFIX = 'agentcats-demo-';
+
+/**
+ * Remove projects left by demos that were not stopped with Ctrl+C (a closed
+ * terminal, a hard kill). One whose daemon still runs is another demo: kept.
+ */
+async function sweepOldDemos(): Promise<void> {
+  const entries = await readdir(tmpdir()).catch(() => []);
+  for (const name of entries) {
+    if (!name.startsWith(DEMO_PREFIX) || name.endsWith('-worktrees')) continue;
+    const projectPath = join(tmpdir(), name);
+    if (await runningDaemon(projectPath)) continue;
+    for (const dir of [projectPath, `${projectPath}-worktrees`]) {
+      await rm(dir, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined);
+    }
+  }
 }
 
 /** Demo task titles that play something other than the happy path. */

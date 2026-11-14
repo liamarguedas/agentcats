@@ -7,19 +7,20 @@ TypeScript pnpm monorepo: `packages/protocol`, `packages/kit`, `packages/daemon`
 
 Package manager is pnpm (version pinned in `package.json`). Node >= 22.13.
 
-| Task                     | Command                                                                                                     |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| Install                  | `pnpm install`                                                                                              |
-| Dev (mock daemon + Vite) | `pnpm dev`, then open the printed `http://localhost:5173/#token=` link                                      |
-| Run from sources         | `pnpm agentcats --project <path> [--adapter mock]`                                                          |
-| Build everything         | `pnpm build`                                                                                                |
-| Test                     | `pnpm test` (Vitest, all packages, mock only, no tokens)                                                    |
-| Browser tests            | `pnpm test:e2e` (Playwright; first `pnpm -F @agentcats/ui exec playwright install chromium`)                |
-| Live Claude tests        | `AGENTCATS_LIVE_CLAUDE=1 pnpm test` and `AGENTCATS_LIVE_CLAUDE=1 pnpm test:e2e` (spend tokens, use `haiku`) |
-| Lint                     | `pnpm lint`                                                                                                 |
-| Typecheck                | `pnpm typecheck`                                                                                            |
-| Format                   | `pnpm format`                                                                                               |
-| Everything CI runs       | `pnpm check`                                                                                                |
+| Task                     | Command                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Install                  | `pnpm install`                                                                                                                          |
+| Dev (mock daemon + Vite) | `pnpm dev`, then open the printed `http://localhost:5173/#token=` link                                                                  |
+| Run from sources         | `pnpm agentcats --project <path> [--adapter mock]`                                                                                      |
+| Build everything         | `pnpm build`                                                                                                                            |
+| Test                     | `pnpm test` (Vitest, all packages, mock only, no tokens)                                                                                |
+| Browser tests            | `pnpm test:e2e` (Playwright; first `pnpm -F @agentcats/ui exec playwright install chromium`)                                            |
+| Live Claude tests        | `AGENTCATS_LIVE_CLAUDE=1 pnpm test` and `AGENTCATS_LIVE_CLAUDE=1 pnpm test:e2e` (spend tokens, use `haiku`)                             |
+| Lint                     | `pnpm lint`                                                                                                                             |
+| Typecheck                | `pnpm typecheck`                                                                                                                        |
+| Format                   | `pnpm format`                                                                                                                           |
+| Everything CI runs       | `pnpm check`                                                                                                                            |
+| Publishable package      | `pnpm -F @agentcats/ui build && pnpm -F agentcats pack:build` (into `packages/cli/pack/`; smoke test: `packages/cli/scripts/smoke.mjs`) |
 
 Packages export their TypeScript sources under the `@agentcats/source` condition, so tests and typecheck need no build.
 Pin dependencies to exact versions at least two weeks old.

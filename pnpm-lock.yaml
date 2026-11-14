@@ -139,6 +139,9 @@ importers:
       '@agentcats/kit':
         specifier: workspace:*
         version: link:../kit
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
 
   packages/daemon:
     dependencies:
