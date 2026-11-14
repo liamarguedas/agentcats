@@ -26,5 +26,6 @@ This dataset's files are named `cat (N).jpg`, so none do.
 
 - **The office and the props on the cats** (whiteboard, desks, table, laptop, box, confetti, badges): drawn for agentcats in CSS, MIT like the rest of the repository.
 - **The README's demo GIF** (`docs/media/demo.gif`): recorded from `agentcats --demo` by `packages/ui/scripts/record-demo.mjs`, so it shows the product as it is.
+- **The banner and social preview** (`docs/media/banner-light.png`, `banner-dark.png`, `social-preview.png`): rendered by `packages/ui/scripts/render-banner.mjs` from the cat cut-outs and the board's colors. Rerun it when either changes. GitHub takes the social preview only as an upload under Settings, General, Social preview.
 - **Fonts:** none shipped. The UI uses the system font stack. Meme captions use Impact, or Arial Black when Impact is missing, from the user's system.
 - **Chart colors:** the data-viz reference palette, a set of hex values, not an asset with a license.

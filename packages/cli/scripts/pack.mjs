@@ -87,11 +87,17 @@ for (const [from, to] of copies) {
 // npm shows the README without the repository around it: point its relative
 // links and images at GitHub.
 const REPO = 'https://github.com/liamarguedas/agentcats';
-const readme = (await readFile(join(root, 'README.md'), 'utf8')).replace(
-  /(!?)\[([^\]]*)\]\((?!https?:|#)([^)]+)\)/g,
-  (_match, image, text, path) =>
-    `${image}[${text}](${REPO}/${image ? 'raw' : 'blob'}/main/${path})`,
-);
+const readme = (await readFile(join(root, 'README.md'), 'utf8'))
+  .replace(
+    /(!?)\[([^\]]*)\]\((?!https?:|#)([^)]+)\)/g,
+    (_match, image, text, path) =>
+      `${image}[${text}](${REPO}/${image ? 'raw' : 'blob'}/main/${path})`,
+  )
+  // The banner and badges are HTML (<picture>, for a dark variant).
+  .replace(
+    /\b(src|srcset|href)="(?!https?:|#)([^"]+)"/g,
+    (_match, attr, path) => `${attr}="${REPO}/${attr === 'href' ? 'blob' : 'raw'}/main/${path}"`,
+  );
 await writeFile(join(out, 'README.md'), readme);
 
 const manifest = {

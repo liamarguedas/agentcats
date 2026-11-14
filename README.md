@@ -1,4 +1,16 @@
-# agentcats
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/banner-dark.png">
+    <img src="docs/media/banner-light.png" width="100%" alt="agentcats: your coding agents, as cats on a whiteboard">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/agentcats"><img src="https://img.shields.io/npm/v/agentcats?color=d9622b" alt="npm version"></a>
+  <a href="https://github.com/liamarguedas/agentcats/actions/workflows/ci.yml"><img src="https://github.com/liamarguedas/agentcats/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/liamarguedas/agentcats?color=6b6357" alt="MIT license"></a>
+  <img src="https://img.shields.io/node/v/agentcats?color=6b6357" alt="Node 22.13 or newer">
+</p>
 
 A local whiteboard where your coding agents are cats.
 Tell the lead cat what you want built; it splits the work between worker cats, who each code on their own git branch, in parallel.

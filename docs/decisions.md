@@ -784,3 +784,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Straight edges on cropped cats: fixed.** `cutout.py` fades the cat out over 22% of its size toward any side of the photo the cat touches along more than 4% of that side (`FADE`, `TOUCH`). 14% still showed a vertical end on `tabby-loaf`. 13 of the 17 pictures changed; the set is 179 KB, down from 212 KB. The manifest is now written with LF line endings on Windows.
 - **The live team test asks for two specified features.** M1's sentence left the split to the lead, and haiku twice kept the endpoint and its tests in one task, a fair call. With "two separate features" but a bare "POST /login", the lead queued the version endpoint and rightly held login back to ask what it should check. With both features specified, the run passed: two tasks, two workers at once, a commit on each branch, $0.02 API-equivalent, with the lead warning about the merge conflict in `src/app.js`. The test now checks what agentcats owns (the lead follows a requested split, workers run in parallel), not a model's judgment on how to split.
 - **The mock dry run of that test works again.** The CLI's mock never commits, so in mock mode the test skips the commit check; it had failed before this change too.
+
+## 2026-11-14 - README banner, badges and social preview
+
+- **Banner:** rendered by `packages/ui/scripts/render-banner.mjs` from the real cut-outs and the board's palette, in light and dark, shown with `<picture>` so GitHub picks the one matching the reader's theme. It replaces the README's `# agentcats` heading, since the wordmark is in it. Cats whose photo was cropped look boxy on the dark ground even faded, so the lineup uses ones that were not, or barely, cropped.
+- **Badges:** npm version, CI, license and Node version.
+- **npm README:** the pack now also rewrites relative `src`, `srcset` and `href` attributes in HTML, not only Markdown links, so the banner and the license link work on npmjs.com.
+- **Social preview** (1280 x 640): GitHub's API cannot set it; the maintainer uploads `docs/media/social-preview.png` under Settings.
+- **Demo GIF re-recorded** with the faded cut-outs, so it still matches the product.
