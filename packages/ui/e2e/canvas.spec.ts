@@ -170,42 +170,53 @@ test('16 cats stand apart, and Fit shows them all', async ({ page }) => {
     await page.setViewportSize({ width, height });
     await openBoard(page, BASE);
     await page.getByRole('button', { name: 'Fit' }).click();
-    const photos = page.getByRole('group', { name: 'Cats' }).locator('.cat-photo');
-    await expect(photos).toHaveCount(16);
-    const boxes = await Promise.all(
-      (await photos.all()).map(async (p) => (await p.boundingBox())!),
-    );
+    await expect(page.getByRole('group', { name: 'Cats' }).locator('.cat-photo')).toHaveCount(16);
     const area = await visibleCanvas(page);
-    for (const [i, a] of boxes.entries()) {
-      expect(a.x).toBeGreaterThanOrEqual(area.left);
-      expect(a.x + a.width).toBeLessThanOrEqual(area.right);
-      expect(a.y).toBeGreaterThanOrEqual(area.top);
-      expect(a.y + a.height).toBeLessThanOrEqual(area.bottom);
-      for (const b of boxes.slice(i + 1)) {
-        const apart =
-          a.x + a.width <= b.x ||
-          b.x + b.width <= a.x ||
-          a.y + a.height <= b.y ||
-          b.y + b.height <= a.y;
-        expect(apart).toBe(true);
-      }
-    }
-    // The zones, the desks and the tables do not overlap either.
-    for (const selector of ['.office__area', '.office__desk', '.office__table']) {
-      const parts = await Promise.all(
-        (await page.locator(selector).all()).map(async (p) => (await p.boundingBox())!),
-      );
-      for (const [i, a] of parts.entries()) {
-        for (const b of parts.slice(i + 1)) {
-          const apart =
-            a.x + a.width <= b.x + 0.5 ||
-            b.x + b.width <= a.x + 0.5 ||
-            a.y + a.height <= b.y + 0.5 ||
-            b.y + b.height <= a.y + 0.5;
-          expect(apart, selector).toBe(true);
-        }
-      }
-    }
+    // Measured once nothing moves: no cat walking, the view settled.
+    await expect
+      .poll(
+        () =>
+          page.evaluate((area) => {
+            const problems: string[] = [];
+            const boxes = (selector: string, name: (el: Element) => string) =>
+              [...document.querySelectorAll(selector)].map((el) => ({
+                name: name(el),
+                box: el.getBoundingClientRect(),
+              }));
+            const cats = boxes('.cat-token', (el) => el.getAttribute('data-cat') ?? '?');
+            if (document.querySelector('.office__cat--walking')) problems.push('a cat is walking');
+            const apart = (a: DOMRect, b: DOMRect) =>
+              a.right <= b.left + 0.5 ||
+              b.right <= a.left + 0.5 ||
+              a.bottom <= b.top + 0.5 ||
+              b.bottom <= a.top + 0.5;
+            for (const [i, a] of cats.entries()) {
+              const b = a.box;
+              if (
+                b.left < area.left ||
+                b.right > area.right ||
+                b.top < area.top ||
+                b.bottom > area.bottom
+              )
+                problems.push(`${a.name} out of view`);
+              for (const other of cats.slice(i + 1)) {
+                if (!apart(b, other.box)) problems.push(`${a.name} overlaps ${other.name}`);
+              }
+            }
+            // The zones, the desks and the tables do not overlap either.
+            for (const selector of ['.office__area', '.office__desk', '.office__table']) {
+              const parts = boxes(selector, (el) => el.className);
+              for (const [i, a] of parts.entries()) {
+                for (const b of parts.slice(i + 1)) {
+                  if (!apart(a.box, b.box)) problems.push(`${a.name} overlaps ${b.name}`);
+                }
+              }
+            }
+            return problems;
+          }, area),
+        { timeout: 10_000 },
+      )
+      .toEqual([]);
     await shot(page, `team-of-16-${String(width)}x${String(height)}`);
   }
 });
