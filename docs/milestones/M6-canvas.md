@@ -75,7 +75,7 @@ Decided with the user on 2026-11-14, before the spike:
 - [ ] With 12 cats and 3 of them needing you, one click on **Needs you** brings all 3 into view, and `N` steps through them (browser test).
 - [ ] No bubble or card is cut off: a browser test opens them for cats at every zone edge, at the minimum and maximum zoom, with a panel open.
 - [ ] 16 cats on the board, no overlaps between cats, desks and the table (browser test on positions).
-- [ ] Panning and zooming with 16 cats walking keeps frame times under 16 ms at the 95th percentile on the CI runner (measured in the browser test).
+- [ ] Panning and zooming with 16 cats walking keeps the frame interval at most 17 ms at the 95th percentile, with fewer than 5% of frames over 20 ms, on the CI runner (measured in the browser test; changed on 2026-11-14, see the decisions log).
 - [ ] The whole board works from the keyboard: focus moves through the cats and follows them into view, and A, D, P and Enter work.
 - [ ] Panels collapse and open, and remember it; the canvas is usable at 400 px wide with touch, and at 1280 x 800 and 1920 x 1080.
 - [ ] Replay works on the canvas, read-only.

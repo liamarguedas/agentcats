@@ -103,7 +103,7 @@ code {
 
 .app {
   display: grid;
-  grid-template: 'header header' auto 'board sidebar' 1fr / 1fr minmax(320px, 400px);
+  grid-template: 'header' auto 'board' 1fr / 1fr;
   height: 100%;
 }
 
@@ -158,21 +158,153 @@ code {
 
 .board {
   grid-area: board;
-  display: flex;
-  flex-direction: column;
+  position: relative;
   min-height: 0;
+  overflow: hidden;
   background-color: var(--bg);
   background-image: radial-gradient(var(--grid) 1.2px, transparent 1.2px);
   background-size: 22px 22px;
 }
 
-.board__canvas {
-  flex: 1;
+.board__interviews {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px 28px 32px;
+  gap: 12px;
+  width: min(720px, calc(100% - 460px));
+  max-height: calc(100% - 24px);
   overflow: auto;
+}
+
+/* The canvas: the office on a surface that pans and zooms. */
+.canvas {
+  position: absolute;
+  inset: 0;
+}
+
+.canvas__viewport {
+  width: 100% !important;
+  height: 100% !important;
+  cursor: grab;
+}
+
+.canvas__viewport:active {
+  cursor: grabbing;
+}
+
+.canvas__viewport:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.canvas__content {
+  padding: 24px;
+}
+
+.canvas__controls {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.canvas__zoom {
+  min-width: 44px;
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* The panels: the chat, the tasks and the event log, over the canvas. */
+.dock {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 25;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(400px, calc(100% - 24px));
+  pointer-events: none;
+}
+
+.dock > * {
+  pointer-events: auto;
+}
+
+.dock--closed {
+  bottom: auto;
+  width: auto;
+}
+
+.dock__tabs {
+  display: flex;
+  align-self: flex-end;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.dock__tab {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dock__tab[aria-selected='true'] {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+.dock__panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.dock__panel[hidden] {
+  display: none;
+}
+
+.dock__panel > .panel {
+  flex: 1;
+}
+
+.dock__panel--scroll {
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  overflow: auto;
+}
+
+.dock__panel--scroll .task-grid {
+  grid-template-columns: 1fr;
 }
 
 .board__empty {
@@ -245,27 +377,9 @@ code {
   font-variant-numeric: tabular-nums;
 }
 
-.sidebar {
-  grid-area: sidebar;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  padding: 12px;
-  border-left: 1px solid var(--line);
-  background: var(--surface-2);
-}
-
 @media (width < 860px) {
   .app {
-    grid-template: 'header' auto 'board' minmax(560px, 1fr) 'sidebar' auto / 1fr;
-    height: auto;
-    min-height: 100%;
-  }
-
-  .sidebar {
-    border-left: 0;
-    border-top: 1px solid var(--line);
+    grid-template: 'header' auto 'board' 1fr / 1fr;
   }
 
   .chat__list {
@@ -1778,9 +1892,9 @@ code {
 
 .app--replay {
   grid-template:
-    'header header' auto
-    'board sidebar' 1fr
-    'replay replay' auto / 1fr minmax(320px, 400px);
+    'header' auto
+    'board' 1fr
+    'replay' auto / 1fr;
 }
 
 .app--replay .app__header {
@@ -2305,7 +2419,6 @@ button.team-spend:focus-visible {
 
 .office {
   position: relative;
-  flex: none;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background:
@@ -2316,25 +2429,11 @@ button.team-spend:focus-visible {
 
 .office__area {
   position: absolute;
-  top: 0;
-  bottom: 0;
-}
-
-.office__area--whiteboard {
-  left: 0;
-  width: 30%;
-}
-
-.office__area--desks {
-  left: 30%;
-  width: 40%;
-  border-inline: 1px dashed var(--line);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
 }
 
 .office__area--meeting {
-  right: 0;
-  width: 30%;
-  border-radius: 0 var(--radius) var(--radius) 0;
   background: color-mix(in srgb, var(--warn) 5%, transparent);
 }
 
@@ -2351,14 +2450,14 @@ button.team-spend:focus-visible {
 
 .office__board {
   position: absolute;
-  top: 36px;
-  left: 6%;
+  top: 40px;
+  left: 170px;
   display: flex;
   flex-direction: column;
   gap: 9px;
-  width: 44%;
-  height: 84px;
-  padding: 14px 12px;
+  width: 300px;
+  height: 150px;
+  padding: 22px 18px;
   border: 5px solid var(--board-frame);
   border-radius: 6px;
   background: var(--surface);
@@ -2387,7 +2486,7 @@ button.team-spend:focus-visible {
 /* A desk sits under the cat's paws: a desk spot is where the cat's feet are. */
 .office__desk {
   position: absolute;
-  width: 9.5%;
+  width: 150px;
   height: 14px;
   border-radius: 4px;
   background: var(--wood);
@@ -2403,11 +2502,10 @@ button.team-spend:focus-visible {
 
 .office__table {
   position: absolute;
-  top: 78%;
   left: 50%;
-  width: 46%;
-  height: 46px;
-  border-radius: 50%;
+  width: 86%;
+  height: 26px;
+  border-radius: 14px;
   background: var(--wood);
   box-shadow: 0 5px 0 var(--wood-dark);
   transform: translate(-50%, -50%);
@@ -2527,6 +2625,8 @@ button.team-spend:focus-visible {
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
+  scale: var(--counter-scale, 1);
+  transform-origin: top center;
   background: var(--surface);
   box-shadow: var(--shadow);
   transform: translateX(-50%);
@@ -2572,9 +2672,11 @@ button.team-spend:focus-visible {
   font-size: 11.5px;
 }
 
-/* Bubbles float above the cat in the office. */
+/* Bubbles float above the cat in the office, readable at any zoom. */
 .cat-card--token .bubble {
   position: absolute;
+  scale: var(--counter-scale, 1);
+  transform-origin: bottom center;
   bottom: calc(100% - 6px);
   left: 50%;
   z-index: 15;
@@ -2841,17 +2943,4 @@ button.team-spend:focus-visible {
   bottom: 18px;
   left: 16px;
   text-align: center;
-}
-
-/* On a narrow screen the office keeps its proportions and scrolls sideways,
-   rather than piling the cats on top of each other. */
-.office-scroll {
-  flex: none;
-  margin: -4px;
-  padding: 4px;
-  overflow-x: auto;
-}
-
-.office {
-  min-width: 760px;
 }

@@ -5,7 +5,8 @@
 // Env: AGENTCATS_PORT (default 4545), AGENTCATS_TOKEN (default random),
 // AGENTCATS_TIME_SCALE (default 1), AGENTCATS_UI_DIR (default: serve no UI;
 // set it to packages/ui/dist to serve the built UI), AGENTCATS_STATE_FILE
-// (default none: where to note the temp folders, see below).
+// (default none: where to note the temp folders, see below), AGENTCATS_MAX_WORKERS
+// (default 3).
 import { execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -100,7 +101,10 @@ const daemon = await startDaemon({
   config: AgentcatsConfig.parse({
     adapter: 'mock',
     // An explicit worker model, so only interview candidates use the tier names.
-    workers: { model: 'mock-worker' },
+    workers: {
+      model: 'mock-worker',
+      ...(env['AGENTCATS_MAX_WORKERS'] && { max: Number(env['AGENTCATS_MAX_WORKERS']) }),
+    },
     port: Number(env['AGENTCATS_PORT'] ?? 4545),
     worktreesDir,
   }),

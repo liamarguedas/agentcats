@@ -11,6 +11,7 @@ import {
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { ApiRequestError, type BoardClient, type ConnectionState } from './board-client.js';
+import { Canvas } from './components/Canvas.js';
 import { CatCard } from './components/CatCard.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { CatDrawer, TaskDrawer } from './components/Drawers.js';
@@ -143,6 +144,7 @@ export function App({ client }: { client: BoardClient }) {
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [hiring, setHiring] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanel] = useState<'chat' | 'tasks' | 'events' | null>('chat');
   const [retiring, setRetiring] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<readonly { id: number; text: string }[]>([]);
@@ -455,7 +457,7 @@ export function App({ client }: { client: BoardClient }) {
       </header>
 
       <main className="board">
-        <div className="board__canvas">
+        <Canvas coveredRight={panel ? 424 : 0}>
           <Office
             lead={lead}
             workers={workers}
@@ -473,63 +475,94 @@ export function App({ client }: { client: BoardClient }) {
               </p>
             }
           />
-          {interviews.map((interview) => (
-            <InterviewPanel
-              key={interview.id}
-              interview={interview}
-              cats={board.cats}
-              renderCandidate={(cat) => catCard(cat, 'worker')}
-              onStart={() =>
-                void run(() => client.request('startInterview', { interviewId: interview.id }))
-              }
-              onCancel={() =>
-                void run(() => client.request('cancelInterview', { interviewId: interview.id }))
-              }
-              onPick={(catId) =>
-                void run(() =>
-                  client.request('pickCandidate', { interviewId: interview.id }, { catId }),
-                )
-              }
+        </Canvas>
+        {interviews.length > 0 && (
+          <div className="board__interviews">
+            {interviews.map((interview) => (
+              <InterviewPanel
+                key={interview.id}
+                interview={interview}
+                cats={board.cats}
+                renderCandidate={(cat) => catCard(cat, 'worker')}
+                onStart={() =>
+                  void run(() => client.request('startInterview', { interviewId: interview.id }))
+                }
+                onCancel={() =>
+                  void run(() => client.request('cancelInterview', { interviewId: interview.id }))
+                }
+                onPick={(catId) =>
+                  void run(() =>
+                    client.request('pickCandidate', { interviewId: interview.id }, { catId }),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+        <aside className={`dock${panel ? '' : ' dock--closed'}`} aria-label="Panels">
+          <div className="dock__tabs" role="tablist">
+            {(['chat', 'tasks', 'events'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={panel === id}
+                className="dock__tab"
+                onClick={() => {
+                  setPanel(panel === id ? null : id);
+                }}
+              >
+                {id === 'chat'
+                  ? 'Chat'
+                  : id === 'tasks'
+                    ? `Tasks ${String(tasks.length)}`
+                    : 'Events'}
+              </button>
+            ))}
+          </div>
+          <div className="dock__panel" hidden={panel !== 'chat'}>
+            <ChatPanel
+              cat={lead}
+              events={events}
+              live={view.connection === 'live'}
+              readOnly={replay !== null}
+              onSend={(text) => run(() => client.request('chat', {}, { text }))}
             />
-          ))}
-          <section className="board__tasks" aria-label="Tasks">
-            <h2 className="section-title">
-              Tasks <span className="panel__count">{tasks.length}</span>
-            </h2>
-            {tasks.length === 0 ? (
-              <p className="board__empty">No tasks yet.</p>
-            ) : (
-              <div className="task-grid">
-                {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    cat={task.assigneeCatId ? board.cats[task.assigneeCatId] : undefined}
-                    onOpen={() => {
-                      setDrawer({ kind: 'task', id: task.id });
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-          <RetiredList
-            retired={retiredCats}
-            onResurrect={(catId) => void run(() => client.request('resurrectCat', { catId }))}
-          />
-        </div>
+          </div>
+          {
+            <div className="dock__panel dock__panel--scroll" hidden={panel !== 'tasks'}>
+              <section className="board__tasks" aria-label="Tasks">
+                <h2 className="section-title">
+                  Tasks <span className="panel__count">{tasks.length}</span>
+                </h2>
+                {tasks.length === 0 ? (
+                  <p className="board__empty">No tasks yet.</p>
+                ) : (
+                  <div className="task-grid">
+                    {tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        cat={task.assigneeCatId ? board.cats[task.assigneeCatId] : undefined}
+                        onOpen={() => {
+                          setDrawer({ kind: 'task', id: task.id });
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+              <RetiredList
+                retired={retiredCats}
+                onResurrect={(catId) => void run(() => client.request('resurrectCat', { catId }))}
+              />
+            </div>
+          }
+          <div className="dock__panel" hidden={panel !== 'events'}>
+            <EventLog events={events} />
+          </div>
+        </aside>
       </main>
-
-      <aside className="sidebar">
-        <ChatPanel
-          cat={lead}
-          events={events}
-          live={view.connection === 'live'}
-          readOnly={replay !== null}
-          onSend={(text) => run(() => client.request('chat', {}, { text }))}
-        />
-        <EventLog events={events} />
-      </aside>
 
       <div className="toasts" aria-live="polite">
         {notices.map((n) => (
