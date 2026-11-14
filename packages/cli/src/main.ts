@@ -18,12 +18,14 @@ import {
   DaemonRunningError,
   GitError,
   loadConfig,
+  type RunningDaemon,
   startDaemon,
 } from '@agentcats/daemon';
 import type { AgentcatsConfig } from '@agentcats/protocol';
 import type { Adapter } from '@agentcats/protocol/adapter';
 
 import cliPackage from '../package.json' with { type: 'json' };
+import { createDemoProject, type DemoProject, demoAdapter, DemoScript } from './demo.js';
 import { cleanup, doctor } from './maintenance.js';
 
 export const USAGE = `Usage: agentcats [command] [--project <path>] [options]
@@ -40,6 +42,7 @@ Options:
       --adapter <claude|codex|mock>  Override the default adapter from agentcats.config.json
       --port <number>          Port on 127.0.0.1 (default: config, or a free port)
       --no-open                Print the board URL instead of opening a browser
+      --demo                   Try it with scripted cats in a throwaway project: no agent CLI, no tokens
   -h, --help                   Show this help
 `;
 
@@ -61,6 +64,7 @@ export interface ParsedArgs {
   readonly port: number | null;
   readonly open: boolean;
   readonly help: boolean;
+  readonly demo: boolean;
 }
 
 export class UsageError extends Error {
@@ -84,6 +88,7 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
         port: { type: 'string' },
         open: { type: 'boolean', default: true },
         help: { type: 'boolean', short: 'h', default: false },
+        demo: { type: 'boolean', default: false },
       },
       allowNegative: true,
       allowPositionals: true,
@@ -96,6 +101,11 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
   const command = COMMANDS.find((c) => c === name && c !== 'run');
   if ((name !== 'run' && !command) || extra.length > 0) {
     throw new UsageError(`Unknown command "${[name, ...extra].join(' ')}"`);
+  }
+  if (values.demo && (command || values.project !== undefined || values.adapter !== undefined)) {
+    throw new UsageError(
+      '--demo runs its own project with scripted cats; drop --project and --adapter',
+    );
   }
   const adapter = values.adapter ?? null;
   if (adapter !== null && adapter !== 'claude' && adapter !== 'codex' && adapter !== 'mock') {
@@ -112,6 +122,7 @@ export function parseCliArgs(argv: readonly string[], cwd = process.cwd()): Pars
     port,
     open: values.open,
     help: values.help,
+    demo: values.demo,
   };
 }
 
@@ -213,6 +224,7 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     return 0;
   }
 
+  if (args.demo) return runDemo(args, io);
   if (!(await stat(args.project).catch(() => null))?.isDirectory()) {
     io.err(`Project directory not found: ${args.project}`);
     return 1;
@@ -229,39 +241,85 @@ export async function main(argv: readonly string[], io: CliIo = defaultIo()): Pr
     };
     const [adapter, ...others] = await createAdapters(config, io);
     if (!adapter) throw new ConfigError(`No adapter "${config.adapter}"`);
-    const uiDir = await findUiDir();
-
-    const daemon = await startDaemon({
-      projectPath: args.project,
-      adapter,
-      adapters: others,
-      config,
-      uiDir,
-      logger: consoleLogger,
-      version: cliPackage.version,
-    });
-    // Warn only once the daemon is up, so a real error (no git repo, bad config) comes first.
-    if (!uiDir) io.err('Warning: the UI is not built. Run `pnpm build` to get the board.');
-    io.out(`agentcats is running for ${args.project}`);
-    io.out(`Board: ${daemon.uiUrl}`);
-    io.out('Press Ctrl+C to stop.');
-    if (args.open) io.open(daemon.uiUrl);
-
-    await io.stopSignal();
-    io.out('Stopping agentcats…');
-    await daemon.close();
-    return 0;
+    return await serve(args.project, config, adapter, others, args, io);
   } catch (error) {
-    if (
-      error instanceof ConfigError ||
-      error instanceof GitError ||
-      error instanceof DaemonRunningError
-    ) {
-      io.err(error.message);
-      return 1;
-    }
-    throw error;
+    return reportStartupError(error, io);
   }
+}
+
+/**
+ * `--demo`: a throwaway project, scripted mock cats and a script that plays
+ * a short session. Everything is removed when the user stops it.
+ */
+async function runDemo(args: ParsedArgs, io: CliIo): Promise<number> {
+  let project: DemoProject | null = null;
+  try {
+    project = await createDemoProject();
+    const loaded = await loadConfig(project.projectPath);
+    const config: AgentcatsConfig = {
+      ...loaded,
+      ...(args.port !== null && { port: args.port }),
+    };
+    io.out('Demo: scripted cats in a throwaway project. Nothing here uses an agent or tokens.');
+    return await serve(project.projectPath, config, demoAdapter(), [], args, io, (daemon) => {
+      const script = new DemoScript(daemon.url, daemon.token, io.err);
+      script.start();
+      return () => script.stop();
+    });
+  } catch (error) {
+    return reportStartupError(error, io);
+  } finally {
+    await project?.remove();
+  }
+}
+
+function reportStartupError(error: unknown, io: CliIo): number {
+  if (
+    error instanceof ConfigError ||
+    error instanceof GitError ||
+    error instanceof DaemonRunningError
+  ) {
+    io.err(error.message);
+    return 1;
+  }
+  throw error;
+}
+
+/** Start the daemon, print and open the board, and run until the user stops it. */
+async function serve(
+  projectPath: string,
+  config: AgentcatsConfig,
+  adapter: Adapter,
+  others: Adapter[],
+  args: ParsedArgs,
+  io: CliIo,
+  /** Started once the board is up; returns its own stop. */
+  extra?: (daemon: RunningDaemon) => () => Promise<void>,
+): Promise<number> {
+  const uiDir = await findUiDir();
+
+  const daemon = await startDaemon({
+    projectPath,
+    adapter,
+    adapters: others,
+    config,
+    uiDir,
+    logger: consoleLogger,
+    version: cliPackage.version,
+  });
+  // Warn only once the daemon is up, so a real error (no git repo, bad config) comes first.
+  if (!uiDir) io.err('Warning: the UI is not built. Run `pnpm build` to get the board.');
+  io.out(`agentcats is running for ${projectPath}`);
+  io.out(`Board: ${daemon.uiUrl}`);
+  io.out('Press Ctrl+C to stop.');
+  if (args.open) io.open(daemon.uiUrl);
+  const stopExtra = extra?.(daemon);
+
+  await io.stopSignal();
+  io.out('Stopping agentcats…');
+  await stopExtra?.();
+  await daemon.close();
+  return 0;
 }
 
 function defaultIo(): CliIo {

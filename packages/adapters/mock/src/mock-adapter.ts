@@ -53,6 +53,11 @@ export interface MockAdapterOptions {
    */
   readonly scenarioFor?: (options: SpawnOptions) => string | Scenario | undefined;
   /**
+   * Pick a worker's scenario for one turn from its prompt (the task), before
+   * the `/name` lines are looked at. For the demo, whose tasks have natural titles.
+   */
+  readonly scenarioForTurn?: (prompt: string) => string | Scenario | undefined;
+  /**
    * Multiplier for every delay. `1` gives realistic pacing for UI work, `0`
    * runs as fast as possible for tests. Default `1`.
    */
@@ -135,6 +140,7 @@ export function createMockAdapter(options: MockAdapterOptions = {}): Adapter {
         options.billing ?? 'metered',
         options.realFiles ?? false,
         options.reportsCost ?? true,
+        options.scenarioForTurn,
       );
     },
     async complete(completeOptions) {
@@ -234,6 +240,7 @@ class MockSession implements Session {
     billing: Billing,
     private readonly realFiles: boolean,
     private readonly reportsCost: boolean,
+    private readonly scenarioForTurn?: (prompt: string) => string | Scenario | undefined,
   ) {
     this.pid = child?.pid ?? null;
     child?.once('exit', (code) => void this.#onChildExit(code));
@@ -299,7 +306,12 @@ class MockSession implements Session {
     let crashed = false;
     try {
       // An orchestrator only delegates; scenario lines in its prompts are meant for workers.
-      const scenario = this.#hasMcp ? this.scenario : (scenarioForPrompt(prompt) ?? this.scenario);
+      const picked = this.#hasMcp ? undefined : this.scenarioForTurn?.(prompt);
+      const scenario = this.#hasMcp
+        ? this.scenario
+        : picked
+          ? resolveScenario(picked)
+          : (scenarioForPrompt(prompt) ?? this.scenario);
       stopReason = await scenario.turn(this.#context(prompt, signal));
     } catch (error) {
       if (signal.aborted) {
