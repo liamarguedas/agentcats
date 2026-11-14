@@ -497,7 +497,13 @@ export class CatAgent {
     this.#turnFinished();
     this.#dropApprovals();
     this.#tools.clear();
-    if (session.pid !== null) void this.deps.pids.remove(session.pid);
+    if (session.pid !== null) {
+      // Like add: the PID file is the backup, a failed write only a warning.
+      const pid = session.pid;
+      this.deps.pids.remove(pid).catch((error: unknown) => {
+        this.deps.logger.warn(`Could not unrecord agent pid ${String(pid)}: ${String(error)}`);
+      });
+    }
     if (reason === 'crashed' && !expected) {
       this.setStatus(
         'error',

@@ -811,3 +811,4 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **The dialog shows what the run uses,** including `--adapter`; saving makes that the default. Showing only the files' values would offer an agent the run may not have.
 - **Tests never touch the real home:** Vitest and the browser tests set `AGENTCATS_HOME` to a temp folder.
 - **Also:** the board's `attempt` helper was a copy of `run` since `run` started reporting success; they are one now.
+- **Also fixed, a CI failure on macOS:** a session that ended as a test closed its daemon removed its PID from `pids.json` in the background (`void pids.remove(...)`); the test then deleted the project between the temp write and the rename, and the rejection went unhandled. The removal now warns on failure, like the add, and `daemon.close()` waits for pending PID-file writes (`PidRegistry.settled()`).

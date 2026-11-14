@@ -18,6 +18,16 @@ const recorded = async (file: string) =>
   );
 
 describe('PidRegistry', () => {
+  it('settles once the writes started so far are done', async () => {
+    dir = await mkdtemp(join(tmpdir(), 'agentcats-pids-'));
+    const file = join(dir, 'run', 'pids.json');
+    const registry = new PidRegistry(file);
+    const write = registry.add(4242, 'cat');
+    await registry.settled();
+    await write;
+    expect(await recorded(file)).toEqual([4242]);
+  });
+
   it('keeps every write while another process keeps reading the file', async () => {
     dir = await mkdtemp(join(tmpdir(), 'agentcats-pids-'));
     const file = join(dir, 'run', 'pids.json');

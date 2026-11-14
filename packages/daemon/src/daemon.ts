@@ -174,6 +174,8 @@ async function startLocked(
     close: () =>
       (closing ??= (async () => {
         await manager.close();
+        // Sessions that just ended may still be writing the PID file.
+        await pids.settled();
         captioner.stop();
         closeSockets();
         await new Promise<void>((done) => {

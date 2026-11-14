@@ -87,6 +87,11 @@ export class PidRegistry {
     }
   }
 
+  /** Resolves once every write started so far is done, failed or not. */
+  async settled(): Promise<void> {
+    await this.#writing.catch(() => undefined);
+  }
+
   /**
    * Writes are serialized and atomic (write to temp, then rename). A failed
    * write is reported to its caller but never blocks the writes after it.
