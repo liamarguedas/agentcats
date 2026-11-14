@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { defineConfig } from '@playwright/test';
 
 export const E2E_PORT = 4599;
@@ -30,6 +33,8 @@ export default defineConfig({
       AGENTCATS_TIME_SCALE: '0.15',
       AGENTCATS_UI_DIR: 'dist',
       AGENTCATS_STATE_FILE: E2E_STATE_FILE,
+      // Settings saved as "my defaults" go here, not to the user's real home.
+      AGENTCATS_HOME: join(tmpdir(), 'agentcats-e2e-home'),
     },
     reuseExistingServer: false,
     timeout: 60_000,

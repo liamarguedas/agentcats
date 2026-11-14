@@ -25,6 +25,7 @@ import {
 } from './components/Hiring.js';
 import { LearningsSection, LevelSection, levelPerks } from './components/Learnings.js';
 import { ReplayBar, SessionPicker } from './components/Replay.js';
+import { SettingsDialog } from './components/Settings.js';
 import { SpendMeter } from './components/SpendMeter.js';
 import { Office } from './components/Office.js';
 import { TaskCard } from './components/TaskCard.js';
@@ -141,6 +142,7 @@ export function App({ client }: { client: BoardClient }) {
   useEffect(() => () => replay?.player.dispose(), [replay]);
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [hiring, setHiring] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [retiring, setRetiring] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<readonly { id: number; text: string }[]>([]);
@@ -289,6 +291,16 @@ export function App({ client }: { client: BoardClient }) {
     }
   }
 
+  const loadSettings = useCallback(async () => {
+    try {
+      return await client.request('settings');
+    } catch (error) {
+      const text = error instanceof ApiRequestError ? error.message : String(error);
+      setErrors((list) => [...list.slice(-2), { id: Date.now(), text }]);
+      return null;
+    }
+  }, [client]);
+
   const loadSamples = useCallback(
     async () => (await client.request('interviewSamples')).samples,
     [client],
@@ -360,20 +372,13 @@ export function App({ client }: { client: BoardClient }) {
     />
   );
 
-  /** Run a request and report whether it worked, for forms that keep their input on failure. */
-  async function attempt(action: () => Promise<unknown>): Promise<boolean> {
-    if (replay) {
-      readOnly();
-      return false;
-    }
-    try {
-      await action();
-      return true;
-    } catch (error) {
-      const text = error instanceof ApiRequestError ? error.message : String(error);
-      setErrors((list) => [...list.slice(-2), { id: Date.now(), text }]);
-      return false;
-    }
+  /** Run a request and return its result, or `null` after showing its error. */
+  async function fetchOrNull<T>(action: () => Promise<T>): Promise<T | null> {
+    let result: T | null = null;
+    const ok = await run(async () => {
+      result = await action();
+    });
+    return ok ? result : null;
   }
 
   const openTask = drawer?.kind === 'task' ? board.tasks[drawer.id] : undefined;
@@ -407,6 +412,17 @@ export function App({ client }: { client: BoardClient }) {
               }}
             >
               Hire a cat
+            </button>
+          )}
+          {!replay && (
+            <button
+              type="button"
+              className="button button--small"
+              onClick={() => {
+                setSettingsOpen(true);
+              }}
+            >
+              Settings
             </button>
           )}
           <button
@@ -587,6 +603,19 @@ export function App({ client }: { client: BoardClient }) {
         ))}
       </div>
 
+      {settingsOpen && (
+        <SettingsDialog
+          adapters={view.adapters}
+          cats={lead ? [lead, ...workers] : workers}
+          load={loadSettings}
+          save={(scope, settings, moveCats) =>
+            fetchOrNull(() => client.request('saveSettings', {}, { scope, settings, moveCats }))
+          }
+          onClose={() => {
+            setSettingsOpen(false);
+          }}
+        />
+      )}
       {hiring && (
         <HireDialog
           defaultCandidates={2}
@@ -594,7 +623,7 @@ export function App({ client }: { client: BoardClient }) {
           adapters={view.adapters}
           onPropose={async (role, sampleId, candidates, adapters) => {
             let planned = null;
-            await attempt(async () => {
+            await run(async () => {
               planned = (
                 await client.request(
                   'proposeInterview',
@@ -610,9 +639,7 @@ export function App({ client }: { client: BoardClient }) {
             });
             return planned;
           }}
-          onStart={(interviewId) =>
-            attempt(() => client.request('startInterview', { interviewId }))
-          }
+          onStart={(interviewId) => run(() => client.request('startInterview', { interviewId }))}
           onCancel={(interviewId) =>
             void run(() => client.request('cancelInterview', { interviewId }))
           }
@@ -628,9 +655,7 @@ export function App({ client }: { client: BoardClient }) {
           suggestedReason={board.retireProposals[retiringCat.id]?.reason ?? ''}
           loadCheck={loadRetireCheck}
           onRetire={(reason, openTask) =>
-            attempt(() =>
-              client.request('retireCat', { catId: retiringCat.id }, { reason, openTask }),
-            )
+            run(() => client.request('retireCat', { catId: retiringCat.id }, { reason, openTask }))
           }
           onClose={() => {
             setRetiring(null);
@@ -690,10 +715,10 @@ export function App({ client }: { client: BoardClient }) {
                 tasks={board.tasks}
                 undoVersion={undoVersionOf(events, openCat.id)}
                 onAdd={(text) =>
-                  attempt(() => client.request('addLearning', { catId: openCat.id }, { text }))
+                  run(() => client.request('addLearning', { catId: openCat.id }, { text }))
                 }
                 onEdit={(learningId, text) =>
-                  attempt(() =>
+                  run(() =>
                     client.request('editLearning', { catId: openCat.id, learningId }, { text }),
                   )
                 }

@@ -138,6 +138,8 @@ describe('routes', () => {
       'GET /api/usage',
       'GET /api/sessions',
       'GET /api/sessions/:index/events',
+      'GET /api/settings',
+      'POST /api/settings',
       'GET /api/snapshot',
     ]);
   });

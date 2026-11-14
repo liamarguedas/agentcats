@@ -35,6 +35,7 @@ import { ApiError } from './errors.js';
 import type { EventLog } from './event-log.js';
 import type { Logger } from './logger.js';
 import { handleMcpRequest, MCP_PATH } from './mcp-server.js';
+import type { SettingsService } from './settings.js';
 
 export interface HttpServerOptions {
   readonly log: EventLog;
@@ -45,8 +46,10 @@ export interface HttpServerOptions {
   readonly logger: Logger;
   /** The project, for hiding its path in exported sessions. */
   readonly projectPath: string;
-  /** The team budget, for the cost meter. */
-  readonly globalBudgetUsd: number | null;
+  /** The team budget, for the cost meter; Settings can change it. */
+  readonly globalBudgetUsd: () => number | null;
+  /** The board's Settings. */
+  readonly settings: SettingsService;
 }
 
 const MAX_BODY_BYTES = 1024 * 1024;
@@ -215,11 +218,14 @@ export function createHttpServer(options: HttpServerOptions): {
       manager.task(taskId);
       return Promise.resolve({ events: log.taskEvents(taskId) });
     },
+    settings: () => options.settings.read(),
+    saveSettings: (_params, body) =>
+      options.settings.save(body as z.infer<typeof routes.saveSettings.body>),
     usage: () => {
       const events = log.allEvents();
       return Promise.resolve({
         points: usagePoints(events),
-        globalBudgetUsd: options.globalBudgetUsd,
+        globalBudgetUsd: options.globalBudgetUsd(),
         names: catNames(events),
       });
     },

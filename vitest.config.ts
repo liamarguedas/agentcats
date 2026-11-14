@@ -1,3 +1,6 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { defaultClientConditions, defaultServerConditions } from 'vite';
 import { defineConfig } from 'vitest/config';
 
@@ -14,5 +17,7 @@ export default defineConfig({
     // loaded machine (the whole suite in parallel, CI) they outgrow the 5 s
     // default; their own waits have explicit, shorter limits.
     testTimeout: 30_000,
+    // Never read or write the user's own defaults (~/.agentcats/agentcats.config.json).
+    env: { AGENTCATS_HOME: join(tmpdir(), 'agentcats-vitest-home') },
   },
 });

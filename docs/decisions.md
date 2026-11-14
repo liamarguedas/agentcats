@@ -800,3 +800,14 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Fix:** after each render, the office measures, for every cat with a bubble, the distance from its feet to the top of its bubble, and grows to the height where all of them fit with 12 px to spare. Cats stand at a share of the height, so one division per cat gives the answer. Layout offsets are used, not screen positions, so a walking cat or a bubble still popping in measures the same. The office shrinks back when the bubble goes.
 - **Rejected:** flipping the bubble below the cat (it would collide with the hover card, which opens below), and clamping the request text (it hides what the user is approving).
 - **Also fixed, a flake:** the daemon test that scores three interview candidates waited 15 s for their trials. Alone they take about 5 s, but during `pnpm check`, with every package's tests in parallel, they took 18 s once. The wait for the trials is now 45 s, with a 60 s test timeout.
+
+## 2026-11-14 - Settings on the board, and user-wide defaults
+
+- **Reported:** the user started agentcats expecting Claude and the lead ran on Codex. The event log showed why: Tux was created on 2026-11-13 with `adapter: "codex"` during an earlier run, and a cat keeps the agent it was created with. Nothing said so, and the defaults could only be changed by editing JSON.
+- **Settings dialog** (header, next to Hire a cat): the default agent, the lead's and workers' agent and model, workers at once, auto-hire, worker permission mode, budgets for new cats and the team, captions. The protocol's `Settings` schema is that subset of `AgentcatsConfig`; routes `settings` and `saveSettings`.
+- **Two layers, as the user chose:** `~/.agentcats/agentcats.config.json` (every project, `AGENTCATS_HOME` moves it) under the project's file, over the built-in defaults. Saving writes only what differs from what that file inherits (`withSettings`), so a project does not pin the user's defaults, and other keys are kept. Saving goes through the same schema and is refused, writing nothing, for an agent this run does not have or a lead without MCP.
+- **Applied live:** the daemon's config object is updated in place; the default agent, captions and the team budget, which were read once at start, are now read as they are used.
+- **Existing cats, as the user chose:** the dialog lists the cats on another agent than their role's new one, checked; the checked ones move from their next session. At start, one notice on the board and one line in the terminal name any cat on another agent.
+- **The dialog shows what the run uses,** including `--adapter`; saving makes that the default. Showing only the files' values would offer an agent the run may not have.
+- **Tests never touch the real home:** Vitest and the browser tests set `AGENTCATS_HOME` to a temp folder.
+- **Also:** the board's `attempt` helper was a copy of `run` since `run` started reporting success; they are one now.

@@ -13,6 +13,7 @@ import { createHttpServer } from './http-server.js';
 import { type Logger, silentLogger } from './logger.js';
 import { MCP_PATH } from './mcp-server.js';
 import { PidRegistry } from './pid-registry.js';
+import { SettingsService } from './settings.js';
 import { SqliteStore } from './store.js';
 import { defaultWorktreesRoot, WorktreeManager } from './worktrees.js';
 
@@ -95,17 +96,15 @@ async function startLocked(
   const store = new SqliteStore(join(runtimeDir, 'agentcats.db'));
   const log = new EventLog(store);
   log.append({ type: 'daemon.started', payload: { version: options.version ?? 'dev' } });
-  let captioner: Captioner | null = null;
-  if (config.captions.enabled) {
-    const { templates, problem } = await loadCaptions(projectPath);
-    if (problem) {
-      log.append({
-        type: 'notice',
-        payload: { level: 'warning', code: 'captions_invalid', message: problem.slice(0, 500) },
-      });
-    }
-    captioner = new Captioner(log, templates);
+  // Always loaded: Settings can turn captions on while running.
+  const { templates, problem } = await loadCaptions(projectPath);
+  if (problem && config.captions.enabled) {
+    log.append({
+      type: 'notice',
+      payload: { level: 'warning', code: 'captions_invalid', message: problem.slice(0, 500) },
+    });
   }
+  const captioner = new Captioner(log, templates, Math.random, () => config.captions.enabled);
   let mcpUrl = '';
   const manager = new CatManager({
     log,
@@ -122,7 +121,7 @@ async function startLocked(
   try {
     await manager.start();
   } catch (error) {
-    captioner?.stop();
+    captioner.stop();
     await manager.close();
     store.close();
     throw error;
@@ -136,7 +135,8 @@ async function startLocked(
     uiDir: options.uiDir ?? null,
     logger,
     projectPath,
-    globalBudgetUsd: config.budget.globalUsd,
+    globalBudgetUsd: () => config.budget.globalUsd,
+    settings: new SettingsService({ projectPath, config, manager, log }),
   });
   try {
     await new Promise<void>((resolveListen, rejectListen) => {
@@ -147,7 +147,7 @@ async function startLocked(
       });
     });
   } catch (error) {
-    captioner?.stop();
+    captioner.stop();
     await manager.close();
     store.close();
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
@@ -174,7 +174,7 @@ async function startLocked(
     close: () =>
       (closing ??= (async () => {
         await manager.close();
-        captioner?.stop();
+        captioner.stop();
         closeSockets();
         await new Promise<void>((done) => {
           server.close(() => {

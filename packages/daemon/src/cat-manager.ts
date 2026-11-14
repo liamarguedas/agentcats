@@ -18,6 +18,7 @@ import {
   type PauseReason,
   readablePathsFor,
   RUNTIME_DIR_NAME,
+  type Settings,
   type Task,
   type TaskReasonCode,
   type TaskResult,
@@ -266,8 +267,76 @@ export class CatManager {
       );
     }
     if (!this.#orchestratorId) this.#orchestratorId = this.#hire('orchestrator').catId;
+    this.#noticeOtherAgents();
     await this.#memory.start();
     this.#interviews.start();
+  }
+
+  /**
+   * A cat keeps the agent it was created with, so after the defaults change
+   * (or a run with `--adapter`) a cat can run on another agent than the user
+   * expects. Say so once at start, on the board and in the terminal.
+   */
+  #noticeOtherAgents(): void {
+    const name = (id: string) => this.o.adapters.get(id)?.displayName ?? id;
+    const others = this.cats()
+      .filter(
+        (c) =>
+          c.role !== 'candidate' &&
+          c.adapter !== this.#roleAdapter(c.role === 'orchestrator' ? 'orchestrator' : 'worker'),
+      )
+      .map(
+        (c) =>
+          `${c.name}${c.role === 'orchestrator' ? ' (the lead)' : ''} runs on ${name(c.adapter)}`,
+      );
+    if (others.length === 0) return;
+    const message = `${others.join(', ')}: a cat keeps the agent it was created with. New cats use ${name(this.#roleAdapter('worker'))}. Change it in Settings.`;
+    this.o.logger.warn(message);
+    this.o.log.append({
+      type: 'notice',
+      payload: { level: 'warning', code: 'cat_agent_differs', message: message.slice(0, 500) },
+    });
+  }
+
+  /**
+   * Check settings against this run before they are saved.
+   *
+   * @throws ApiError `bad_request` for an agent this run does not have, or a
+   *   lead agent without MCP.
+   */
+  checkSettings(settings: Settings): void {
+    const roles = [
+      ['default', settings.adapter],
+      ["lead's", settings.orchestrator.adapter ?? settings.adapter],
+      ["workers'", settings.workers.adapter ?? settings.adapter],
+    ] as const;
+    for (const [who, id] of roles) {
+      if (!this.o.adapters.has(id)) {
+        throw new ApiError(
+          'bad_request',
+          `${id} is not available in this run, so it cannot be the ${who} agent. Run agentcats doctor to see why.`,
+        );
+      }
+    }
+    const lead = this.adapterFor(settings.orchestrator.adapter ?? settings.adapter);
+    if (!lead.capabilities.mcp) {
+      throw new ApiError('bad_request', `${lead.displayName} cannot lead: it has no MCP support`);
+    }
+  }
+
+  /**
+   * New settings are in the config: move the cats the user picked to the
+   * agent their role now defaults to (from their next session), and hire if
+   * there is now room for waiting tasks.
+   */
+  async settingsChanged(moveCats: readonly string[]): Promise<void> {
+    for (const catId of moveCats) {
+      const cat = this.#agents.get(catId)?.cat;
+      if (!cat || cat.role === 'candidate') continue;
+      const target = this.#roleAdapter(cat.role === 'orchestrator' ? 'orchestrator' : 'worker');
+      if (cat.adapter !== target) await this.updateCat(catId, { adapter: target });
+    }
+    this.#schedule();
   }
 
   /**
@@ -327,7 +396,8 @@ export class CatManager {
     const { config } = this.o;
     return (
       (role === 'orchestrator' ? config.orchestrator.adapter : config.workers.adapter) ??
-      this.o.defaultAdapter
+      // Settings can change the default while running.
+      (this.o.adapters.has(config.adapter) ? config.adapter : this.o.defaultAdapter)
     );
   }
 

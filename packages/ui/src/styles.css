@@ -1748,6 +1748,28 @@ code {
   cursor: help;
 }
 
+.form__row--three {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (width < 640px) {
+  .form__row,
+  .form__row--three {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* A checkbox in a row of fields, level with their inputs. */
+.settings__check {
+  align-self: end;
+  min-height: 38px;
+}
+
+.settings code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .form__row--candidates {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }

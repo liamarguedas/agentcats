@@ -1,7 +1,7 @@
 # Guide
 
 How to work with your cats, from the first request to hiring and retiring.
-Settings are in [configuration](configuration.md); safety in [security](security.md).
+Settings are in [configuration](configuration.md), and the most used ones are under **Settings** on the board; safety is in [security](security.md).
 
 ## The board
 

@@ -1,8 +1,22 @@
 # Configuration
 
-agentcats reads `<your repo>/.agentcats/agentcats.config.json` when it starts.
-The file is optional, and every key has a default, so `{}` is a valid config.
+agentcats reads two files when it starts, over its built-in defaults:
+
+1. **Your own defaults**, for every project: `~/.agentcats/agentcats.config.json`.
+2. **The project's**: `<your repo>/.agentcats/agentcats.config.json`. It wins over yours, key by key.
+
+Both are optional, and every key has a default, so `{}` is a valid config.
 Values for cats are defaults for new cats; each cat's agent, model, permission mode and budget can then be changed in its panel on the board.
+
+## Settings on the board
+
+**Settings** in the header edits the most used of these without touching JSON: the default agent, the lead's and the workers' agent and model, how many workers run at once, auto-hire, the workers' permission mode, budgets for new cats and the team, and captions.
+
+- **Save for this project** writes the project's file; **Save as my default** writes yours. Either way only the values that differ from what that file inherits are written, and other keys in the file are kept.
+- The dialog shows what this run uses, including `--adapter`; saving makes that the default.
+- Changes apply at once to new cats, the team size, budgets and captions.
+- **A cat keeps the agent it was created with.** When the agent of its role changes, Settings lists the cats on another one; the checked ones move, from their next session. At start, agentcats also says on the board and in the terminal when a cat runs on another agent than its role's default.
+- Only agents this run can use are offered; `agentcats doctor` shows why one is missing.
 
 A file that is not valid JSON, or that has an unknown key or a wrong value, stops agentcats with the file path and one line per problem:
 
@@ -12,7 +26,7 @@ A file that is not valid JSON, or that has an unknown key or a wrong value, stop
   → at workers.max
 ```
 
-`agentcats doctor` checks the file without starting anything.
+`agentcats doctor` checks the files without starting anything.
 The schema, with these defaults, is `AgentcatsConfig` in `packages/protocol/src/config.ts`; a test keeps this page in step with it.
 
 ## Example

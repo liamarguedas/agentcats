@@ -490,6 +490,55 @@ test('a wrong token is reported', async ({ page }) => {
   await expect(page.getByTestId('connection')).toHaveText('Token rejected');
 });
 
+test('settings change the defaults for new cats, and can move existing ones', async ({ page }) => {
+  const { projectPath } = JSON.parse(readFileSync(E2E_STATE_FILE, 'utf8')) as {
+    projectPath: string;
+  };
+  const projectFile = join(projectPath, '.agentcats', 'agentcats.config.json');
+  await openBoard(page);
+  // A worker on the board, also when this test runs alone.
+  await chat(page, 'Tidy the changelog\n/single');
+  const card = tasks(page).locator('.task-card', { hasText: 'Tidy the changelog' });
+  await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await expect(dialog.getByLabel('Default agent')).toHaveValue('mock');
+
+  // A new worker agent: the dialog offers to move the workers on another one.
+  await dialog
+    .getByRole('combobox', { name: 'Workers', exact: true })
+    .selectOption({ label: 'Mock (mock-nocost)' });
+  const moves = dialog.getByRole('group', { name: 'Cats on another agent' });
+  await expect(moves).toContainText(/Move \w+ from Mock to Mock \(mock-nocost\)/);
+  await expect(moves).not.toContainText('Tux');
+  await dialog.getByLabel('Workers at once').fill('5');
+  await shot(page, 'settings');
+  const listed = (await moves.locator('label').allTextContents()).map(
+    (text) => /Move (\w+)/.exec(text)?.[1] ?? '',
+  );
+  // Keep every cat where it is: only new workers use the new agent.
+  for (const box of await moves.getByRole('checkbox').all()) await box.uncheck();
+  await dialog.getByRole('button', { name: 'Save for this project' }).click();
+  await expect(dialog.getByRole('status')).toHaveText('Saved for this project.');
+  const saved = JSON.parse(readFileSync(projectFile, 'utf8')) as Record<string, unknown>;
+  expect(saved).toMatchObject({ workers: { adapter: 'mock-nocost', max: 5 } });
+  for (const name of listed) {
+    await expect(page.getByTestId(`cat-${name}`).getByTestId('adapter-badge')).toHaveText('Mock');
+  }
+
+  // Back to how it was, for the tests that follow.
+  await dialog
+    .getByRole('combobox', { name: 'Workers', exact: true })
+    .selectOption({ label: 'Default (Mock)' });
+  await dialog.getByLabel('Workers at once').fill('3');
+  await dialog.getByRole('button', { name: 'Save for this project' }).click();
+  await expect(dialog.getByRole('status')).toHaveText('Saved for this project.');
+  const restored = JSON.parse(readFileSync(projectFile, 'utf8')) as Record<string, unknown>;
+  expect(restored).not.toHaveProperty('workers.adapter');
+  expect(restored).not.toHaveProperty('workers.max');
+  await page.keyboard.press('Escape');
+});
+
 test('stays usable on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 900 });
   await openBoard(page);

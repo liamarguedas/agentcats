@@ -70,11 +70,13 @@ export class Captioner {
     private readonly log: EventLog,
     private readonly templates: Templates,
     private readonly random: () => number = Math.random,
+    /** Read at each event: Settings can switch captions while running. */
+    private readonly enabled: () => boolean = () => true,
   ) {
     this.#unsubscribe = log.subscribe((event) => {
       // After every listener has seen this event, so the caption never arrives first.
       queueMicrotask(() => {
-        if (!this.#stopped) this.#onEvent(event);
+        if (!this.#stopped && this.enabled()) this.#onEvent(event);
       });
     });
   }

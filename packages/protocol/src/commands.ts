@@ -6,6 +6,7 @@ import { HireRole, Interview, InterviewSample } from './hiring.js';
 import { AgentcatsEvent } from './events.js';
 import { BoardState } from './projection.js';
 import { SessionSummary } from './session.js';
+import { SaveSettingsRequest, SettingsResponse } from './settings.js';
 import { API_PREFIX } from './transport.js';
 
 /** How many recent events `GET /api/snapshot` returns. */
@@ -464,6 +465,20 @@ export const routes = {
     path: `${API_PREFIX}/sessions/:index/events`,
     body: null,
     response: SessionEventsResponse,
+    successStatus: 200,
+  },
+  settings: {
+    method: 'GET',
+    path: `${API_PREFIX}/settings`,
+    body: null,
+    response: SettingsResponse,
+    successStatus: 200,
+  },
+  saveSettings: {
+    method: 'POST',
+    path: `${API_PREFIX}/settings`,
+    body: SaveSettingsRequest,
+    response: SettingsResponse,
     successStatus: 200,
   },
   snapshot: {
