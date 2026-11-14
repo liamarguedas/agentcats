@@ -685,3 +685,10 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **CI tests what a stranger gets.** On Linux, macOS and Windows, with the oldest supported Node (22.13), it packs the package and installs it with plain npm in an empty folder. It then runs `npx agentcats --demo` until the scripted cats deliver a task for review (`packages/cli/scripts/smoke.mjs`). macOS runs on pushes to `main` only while the repo is private.
 - **A demo stopped without Ctrl+C** (a closed terminal) leaves its temp project. The next demo removes such leftovers, keeping any whose daemon still runs.
 - **Fixed on the way:** a process-cleanup test hung on a CI Windows runner because `processStartTime` called PowerShell with no timeout. Every process call in the kit now has a timeout. A PowerShell timeout is retried once. Leftover PIDs are checked in parallel.
+
+## 2026-11-14 - M5 versioning and license check
+
+- **Changesets 3.0.3** versions `agentcats` and writes `packages/cli/CHANGELOG.md`. The other packages are now `private` and are never published; they keep versions only because Changesets requires it of a published package's dependencies. The first changeset is a minor bump to 0.1.0. Steps are in `docs/releasing.md`.
+- **Dependency licenses** (`pnpm licenses list --prod`, 2026-11-14):
+  - 90 MIT, 7 ISC, 5 Apache-2.0, 3 BSD and 1 Unlicense, all compatible with our MIT license.
+  - The Claude Agent SDK and its platform binaries list no SPDX license. They are under Anthropic's Commercial Terms, so they stay npm dependencies and are never bundled.

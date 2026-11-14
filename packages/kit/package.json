@@ -1,6 +1,7 @@
 {
   "name": "@agentcats/kit",
   "version": "0.0.0",
+  "private": true,
   "description": "Runtime helpers shared by agentcats adapters and the daemon.",
   "license": "MIT",
   "type": "module",

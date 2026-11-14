@@ -17,9 +17,12 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
-    "agentcats": "node --conditions=@agentcats/source --import tsx packages/cli/src/bin.ts"
+    "agentcats": "node --conditions=@agentcats/source --import tsx packages/cli/src/bin.ts",
+    "changeset": "changeset",
+    "release:build": "pnpm -F @agentcats/ui build && pnpm -F agentcats pack:build"
   },
   "devDependencies": {
+    "@changesets/cli": "3.0.3",
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.5",
     "eslint": "10.13.0",

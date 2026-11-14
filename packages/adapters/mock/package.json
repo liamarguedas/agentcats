@@ -1,6 +1,7 @@
 {
   "name": "@agentcats/adapter-mock",
   "version": "0.0.0",
+  "private": true,
   "description": "Scripted agent for agentcats: no CLI, no API key, no tokens.",
   "license": "MIT",
   "type": "module",
