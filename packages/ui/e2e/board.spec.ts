@@ -64,7 +64,7 @@ test('the lead splits a request between two workers who work in parallel', async
   await chat(page, 'Add a login endpoint and write tests for it');
   await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
 
-  const workers = page.getByRole('region', { name: 'Workers' }).locator('.seat');
+  const workers = page.getByRole('group', { name: 'Cats' }).locator('.cat-card--worker');
   await expect(workers).toHaveCount(2, { timeout: 15_000 });
   await expect
     .poll(() =>
@@ -175,6 +175,30 @@ test('a worker asks before reaching the network; Deny blocks it', async ({ page 
   await expect(tasks(page).getByText('Read the API docs')).toBeVisible();
 });
 
+test('a focused cat answers its approval from the keyboard, and shows its details on hover', async ({
+  page,
+}) => {
+  await openBoard(page);
+  await chat(page, 'Fetch the changelog\n/single\n/network');
+  const bubble = page.getByRole('alertdialog', { name: /Approval request from/ });
+  await expect(bubble).toBeVisible({ timeout: 15_000 });
+  const name =
+    (await bubble.getAttribute('aria-label'))?.replace('Approval request from ', '') ?? '';
+  const photo = page.getByRole('button', { name: `${name}: open details` });
+  await photo.focus();
+  // Focus shows the details card, with the keys that work on this cat.
+  const card = page.getByTestId(`cat-${name}`);
+  await expect(card.getByText('A allow · D deny')).toBeVisible();
+  await expect(card.getByTestId('cat-status')).toHaveText('Needs your approval');
+  await page.keyboard.press('a');
+  await expect(bubble).toBeHidden();
+
+  await lead(page).getByRole('button', { name: 'Tux: open details' }).hover();
+  await expect(lead(page).getByTestId('cat-status')).toBeVisible();
+  await shot(page, 'hover-card');
+  await page.mouse.move(0, 0);
+});
+
 test('a crashing worker is retried once, then failed, and can be re-run', async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Build the thing\n/single\n/crash');
@@ -192,7 +216,7 @@ test('a crashing worker is retried once, then failed, and can be re-run', async 
 
 test('cat properties can be edited', async ({ page }) => {
   await openBoard(page);
-  await page.getByRole('button', { name: 'Properties of Mochi' }).click();
+  await page.getByRole('button', { name: 'Mochi: open details' }).click();
   const drawer = page.getByRole('dialog');
   await expect(drawer).toContainText('Worker: edits in its own worktree');
   await drawer.getByLabel('Budget ($)').fill('5');
@@ -240,7 +264,7 @@ test('hiring runs an interview after the estimate is confirmed, and only a passi
 
 test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await openBoard(page);
-  await page.getByRole('button', { name: 'Properties of Miso' }).click();
+  await page.getByRole('button', { name: 'Miso: open details' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Retire…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Retire Miso?' });
   await expect(dialog).toContainText('you can bring it back later');
@@ -265,7 +289,7 @@ test('a cat moved to an agent without cost reporting shows cost unknown, its tim
   await openBoard(page);
   const card = page.getByTestId('cat-Mochi');
   await expect(card.getByTestId('adapter-badge')).toHaveText('Mock');
-  await page.getByRole('button', { name: 'Properties of Mochi' }).click();
+  await page.getByRole('button', { name: 'Mochi: open details' }).click();
   const drawer = page.getByRole('dialog');
   await drawer
     .getByRole('combobox', { name: 'Agent' })
@@ -301,6 +325,25 @@ test('the cost meter shows spend, budgets, cost over time and the most expensive
   await meter.screenshot({ path: `${SHOTS}/cost-meter.png`, animations: 'disabled' });
   await page.keyboard.press('Escape');
   await expect(meter).toBeHidden();
+});
+
+test('the theme switch pins light or dark over the system setting, and remembers it', async ({
+  page,
+}) => {
+  await openBoard(page);
+  const html = page.locator('html');
+  const button = page.getByRole('button', { name: /Switch theme/ });
+  await expect(html).not.toHaveAttribute('data-theme');
+  await button.click();
+  await expect(html).toHaveAttribute('data-theme', 'light');
+  await button.click();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(27, 25, 22)');
+  await shot(page, 'dark');
+  await page.reload();
+  await expect(html).toHaveAttribute('data-theme', 'dark');
+  await page.getByRole('button', { name: /Switch theme/ }).click();
+  await expect(html).not.toHaveAttribute('data-theme');
 });
 
 test('the board resyncs after a reload', async ({ page }) => {

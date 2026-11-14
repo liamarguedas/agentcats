@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { BoardClient } from './board-client.js';
 import './styles.css';
+import { applyTheme, storedTheme } from './theme.js';
 
 const TOKEN_STORAGE_KEY = 'agentcats.token';
 
@@ -21,6 +22,9 @@ function takeToken(): string | null {
   }
   return sessionStorage.getItem(TOKEN_STORAGE_KEY);
 }
+
+// Before the first paint, so a pinned theme never flashes the other one.
+applyTheme(storedTheme());
 
 const root = createRoot(document.getElementById('root') as HTMLElement);
 const token = takeToken();

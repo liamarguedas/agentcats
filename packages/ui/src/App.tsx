@@ -26,8 +26,10 @@ import {
 import { LearningsSection, LevelSection, levelPerks } from './components/Learnings.js';
 import { ReplayBar, SessionPicker } from './components/Replay.js';
 import { SpendMeter } from './components/SpendMeter.js';
+import { Office } from './components/Office.js';
 import { TaskCard } from './components/TaskCard.js';
 import { ReplayPlayer } from './replay.js';
+import { applyTheme, storedTheme, type Theme, THEMES } from './theme.js';
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
   connecting: 'Connecting…',
@@ -36,6 +38,9 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
   unauthorized: 'Token rejected',
   replay: 'Replay',
 };
+
+const THEME_LABEL: Record<Theme, string> = { system: 'system', light: 'light', dark: 'dark' };
+const THEME_ICON: Record<Theme, string> = { system: '◐', light: '☀', dark: '☾' };
 
 interface Replay {
   readonly player: ReplayPlayer;
@@ -130,6 +135,7 @@ export function App({ client }: { client: BoardClient }) {
   const [replay, setReplay] = useState<Replay | null>(null);
   const [picking, setPicking] = useState(false);
   const [meter, setMeter] = useState(false);
+  const [theme, setTheme] = useState<Theme>(storedTheme);
   const source = replay?.player ?? client;
   const view = useSyncExternalStore(source.subscribe, source.getView);
   useEffect(() => () => replay?.player.dispose(), [replay]);
@@ -233,6 +239,10 @@ export function App({ client }: { client: BoardClient }) {
         e.type === 'caption' && !(e.catId && board.cats[e.catId]) && !dismissed.has(e.id),
     )
     .slice(-2);
+  const promotedRecently = (catId: string) =>
+    recent.some(
+      (e) => e.type === 'cat.level_changed' && e.catId === catId && e.payload.to > e.payload.from,
+    );
   const captionOf = (catId: string) => {
     const caption = recent.findLast((e) => e.type === 'caption' && e.catId === catId);
     return caption?.type === 'caption' ? { id: caption.id, text: caption.payload.text } : null;
@@ -314,11 +324,13 @@ export function App({ client }: { client: BoardClient }) {
     [client],
   );
 
-  const catCard = (cat: Cat, size: 'lead' | 'worker') => (
+  const catCard = (cat: Cat, size: 'lead' | 'worker', layout: 'card' | 'token' = 'card') => (
     <CatCard
       key={cat.id}
       cat={cat}
       size={size}
+      layout={layout}
+      promoted={promotedRecently(cat.id)}
       approval={approvalOf(cat.id)}
       usage={board.usage[cat.id]}
       task={activeTask(cat.id)}
@@ -404,6 +416,19 @@ export function App({ client }: { client: BoardClient }) {
           >
             Team spend {estimated ? '≈ ' : ''}${spent.toFixed(2)}
           </button>
+          <button
+            type="button"
+            className="button button--small button--ghost theme-switch"
+            aria-label={`Theme: ${THEME_LABEL[theme]}. Switch theme`}
+            title={`Theme: ${THEME_LABEL[theme]}`}
+            onClick={() => {
+              const next = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length] ?? 'system';
+              applyTheme(next);
+              setTheme(next);
+            }}
+          >
+            {THEME_ICON[theme]}
+          </button>
           <span className={`connection connection--${view.connection}`} data-testid="connection">
             {CONNECTION_LABEL[view.connection]}
           </span>
@@ -412,40 +437,23 @@ export function App({ client }: { client: BoardClient }) {
 
       <main className="board">
         <div className="board__canvas">
-          <section className="board__lead" aria-label="Lead">
-            {lead ? (
-              catCard(lead, 'lead')
-            ) : (
+          <Office
+            lead={lead}
+            workers={workers}
+            renderCat={(cat) =>
+              catCard(cat, cat.role === 'orchestrator' ? 'lead' : 'worker', 'token')
+            }
+            empty={
               <p className="board__empty">
-                {replay ? 'No lead yet at this point of the replay.' : 'Waiting for the daemon…'}
+                {replay ? 'No cats yet at this point of the replay.' : 'Waiting for the daemon…'}
               </p>
-            )}
-          </section>
-          <section className="board__team" aria-label="Workers">
-            {workers.length === 0 ? (
+            }
+            noWorkers={
               <p className="board__empty">
                 No workers yet. They are hired when {lead?.name ?? 'the lead'} hands out tasks.
               </p>
-            ) : (
-              workers.map((w) => {
-                const task = activeTask(w.id);
-                return (
-                  <div key={w.id} className="seat">
-                    {catCard(w, 'worker')}
-                    {task && (
-                      <TaskCard
-                        task={task}
-                        cat={w}
-                        onOpen={() => {
-                          setDrawer({ kind: 'task', id: task.id });
-                        }}
-                      />
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </section>
+            }
+          />
           {interviews.map((interview) => (
             <InterviewPanel
               key={interview.id}

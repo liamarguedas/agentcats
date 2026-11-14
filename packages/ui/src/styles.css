@@ -27,7 +27,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #1b1916;
     --grid: #2a2723;
     --surface: #24211d;
@@ -41,6 +41,21 @@
     --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 35%);
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #1b1916;
+  --grid: #2a2723;
+  --surface: #24211d;
+  --surface-2: #2d2a25;
+  --ink: #f1ece3;
+  --ink-2: #a9a093;
+  --line: #3a362f;
+  --accent: #ef7a43;
+  --laptop: #6b7684;
+  --laptop-base: #4b5560;
+  --shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 35%);
+  color-scheme: dark;
 }
 
 *,
@@ -214,8 +229,14 @@ code {
 
 .app__header-right {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 18px;
+  justify-content: flex-end;
+  gap: 8px 18px;
+}
+
+.app__header-right > * {
+  white-space: nowrap;
 }
 
 .team-spend {
@@ -666,216 +687,6 @@ code {
   40% {
     opacity: 1;
     transform: translateY(-3px);
-  }
-}
-
-/* The cat */
-
-.cat {
-  width: 220px;
-  height: 200px;
-  overflow: visible;
-}
-
-.cat path,
-.cat ellipse,
-.cat circle {
-  stroke: var(--fur-line);
-  stroke-width: 3;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
-
-.cat__body ellipse,
-.cat__face,
-.cat__ear {
-  fill: var(--fur);
-}
-
-.cat__ear-inner {
-  fill: var(--ear-inner);
-  stroke-width: 0;
-}
-
-.cat__tail path {
-  fill: none;
-  stroke: var(--fur-dark);
-  stroke-width: 14;
-}
-
-.cat__eyes ellipse {
-  fill: var(--fur-line);
-  stroke-width: 0;
-}
-
-.cat__eye-shine {
-  fill: #fff;
-  stroke-width: 0;
-}
-
-.cat__eyes--happy path,
-.cat__eyes--x path {
-  fill: none;
-  stroke-width: 4;
-}
-
-.cat__nose {
-  fill: var(--nose);
-  stroke-width: 2;
-}
-
-.cat__mouth,
-.cat__whiskers path {
-  fill: none;
-  stroke-width: 2;
-}
-
-.cat__laptop-screen {
-  fill: var(--laptop);
-  stroke-width: 2.5;
-}
-
-.cat__laptop-base {
-  fill: var(--laptop-base);
-  stroke: var(--fur-line);
-  stroke-width: 2.5;
-}
-
-.cat__laptop-logo {
-  fill: var(--laptop-base);
-  stroke-width: 0;
-}
-
-.cat__paw {
-  fill: var(--fur);
-}
-
-.cat__body,
-.cat__head,
-.cat__tail,
-.cat__paw,
-.cat__eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-
-.cat__tail {
-  transform-origin: 0% 100%;
-}
-
-/* idle: slow breathing and blinking */
-.cat--idle .cat__body,
-.cat--done .cat__body {
-  animation: breathe 3.2s ease-in-out infinite;
-}
-
-.cat .cat__eyes {
-  animation: blink 4.5s infinite;
-}
-
-/* thinking: head tilts, eyes look up */
-.cat--thinking .cat__head {
-  animation: tilt 2.4s ease-in-out infinite;
-}
-
-.cat--thinking .cat__eyes {
-  transform: translateY(-4px);
-}
-
-/* working: paws type, screen glows, tail swishes */
-.cat--working .cat__paw--left {
-  animation: tap 0.36s ease-in-out infinite;
-}
-
-.cat--working .cat__paw--right {
-  animation: tap 0.36s ease-in-out infinite 0.18s;
-}
-
-.cat--working .cat__laptop-logo {
-  fill: #9ee6ff;
-  filter: drop-shadow(0 0 4px #9ee6ff);
-}
-
-.cat--working .cat__tail {
-  animation: swish 1s ease-in-out infinite;
-}
-
-/* waiting for approval: ears perk, gentle bounce to get attention */
-.cat--waiting_approval .cat__head {
-  animation: perk 1.4s ease-in-out infinite;
-}
-
-/* blocked: head droops */
-.cat--blocked .cat__head {
-  transform: translateY(6px) rotate(-4deg);
-}
-
-/* done: a little hop */
-.cat--done {
-  animation: hop 0.6s ease-out 2;
-}
-
-/* error: shake once, fur desaturates */
-.cat--error {
-  animation: shake 0.5s ease-in-out 1;
-  filter: saturate(0.35);
-}
-
-@keyframes breathe {
-  50% {
-    transform: scale(1.025, 0.98);
-  }
-}
-
-@keyframes blink {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
-  }
-  95% {
-    transform: scaleY(0.1);
-  }
-}
-
-@keyframes tilt {
-  50% {
-    transform: rotate(-6deg);
-  }
-}
-
-@keyframes tap {
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
-@keyframes swish {
-  50% {
-    transform: rotate(10deg);
-  }
-}
-
-@keyframes perk {
-  50% {
-    transform: translateY(-5px);
-  }
-}
-
-@keyframes hop {
-  40% {
-    transform: translateY(-14px);
-  }
-}
-
-@keyframes shake {
-  20%,
-  60% {
-    transform: translateX(-6px);
-  }
-  40%,
-  80% {
-    transform: translateX(6px);
   }
 }
 
@@ -2106,7 +1917,7 @@ code {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -2116,6 +1927,17 @@ code {
     --series-7: #9085e9;
     --series-8: #e66767;
   }
+}
+
+:root[data-theme='dark'] {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
 }
 
 .dialog--wide {
@@ -2407,4 +2229,578 @@ button.team-spend:focus-visible {
   .meme-caption {
     animation: none;
   }
+}
+
+/* The office: whiteboard, desks, meeting table. Cats are placed in percent of
+   the room and slide when their status moves them. */
+
+:root {
+  --floor: #efe9df;
+  --floor-line: #e3dccf;
+  --wood: #c9a27a;
+  --wood-dark: #a9825b;
+  --board-frame: #b9b2a6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --floor: #2a2621;
+    --floor-line: #332e28;
+    --wood: #6e5640;
+    --wood-dark: #574332;
+    --board-frame: #5a554d;
+  }
+}
+
+:root[data-theme='dark'] {
+  --floor: #2a2621;
+  --floor-line: #332e28;
+  --wood: #6e5640;
+  --wood-dark: #574332;
+  --board-frame: #5a554d;
+}
+
+.office {
+  position: relative;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(var(--floor-line) 1px, transparent 1px) 0 0 / 100% 44px,
+    var(--floor);
+  box-shadow: var(--shadow);
+}
+
+.office__area {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.office__area--whiteboard {
+  left: 0;
+  width: 30%;
+}
+
+.office__area--desks {
+  left: 30%;
+  width: 40%;
+  border-inline: 1px dashed var(--line);
+}
+
+.office__area--meeting {
+  right: 0;
+  width: 30%;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: color-mix(in srgb, var(--warn) 5%, transparent);
+}
+
+.office__label {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.office__board {
+  position: absolute;
+  top: 36px;
+  left: 6%;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  width: 44%;
+  height: 84px;
+  padding: 14px 12px;
+  border: 5px solid var(--board-frame);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+/* Marker scribbles: a plan in three strokes. */
+.office__board span {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--info) 55%, transparent);
+}
+
+.office__board span:nth-child(1) {
+  width: 70%;
+}
+
+.office__board span:nth-child(2) {
+  width: 45%;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.office__board span:nth-child(3) {
+  width: 58%;
+}
+
+/* A desk sits under the cat's paws: a desk spot is where the cat's feet are. */
+.office__desk {
+  position: absolute;
+  width: 9.5%;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--wood);
+  box-shadow: 0 4px 0 var(--wood-dark);
+  transform: translate(-50%, -40%);
+}
+
+/* Desks are placed in percent of the whole room, like the cats. */
+.office__furniture {
+  position: absolute;
+  inset: 0;
+}
+
+.office__table {
+  position: absolute;
+  top: 78%;
+  left: 50%;
+  width: 46%;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--wood);
+  box-shadow: 0 5px 0 var(--wood-dark);
+  transform: translate(-50%, -50%);
+}
+
+.office__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+
+.office__floor {
+  position: absolute;
+  inset: 0;
+}
+
+.office__cat {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  transition:
+    left 900ms cubic-bezier(0.45, 0, 0.25, 1),
+    top 900ms cubic-bezier(0.45, 0, 0.25, 1);
+}
+
+.office__cat:hover,
+.office__cat:focus-within {
+  z-index: 10;
+}
+
+.office__cat--walking .cat-photo {
+  animation: walk 300ms ease-in-out 3;
+}
+
+@keyframes walk {
+  50% {
+    transform: translateY(-6px) rotate(-3deg);
+  }
+}
+
+/* A cat in the office: small, with its details in a card on hover or focus. */
+
+.cat-card--token {
+  position: relative;
+  width: auto;
+  gap: 0;
+}
+
+.cat-card--token .cat-card__stage {
+  min-height: 0;
+}
+
+.cat-card__photo {
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.cat-card__photo:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.cat-card--token .cat-photo {
+  --cat-size: 92px;
+}
+
+.cat-card--token.cat-card--lead .cat-photo {
+  --cat-size: 118px;
+}
+
+.cat-card__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.cat-card--lead .cat-card__label::after {
+  content: 'Lead';
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cat-card__level {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cat-card--token .cat-card__meta {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  z-index: 20;
+  display: none;
+  width: 270px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  animation: bubble-in 140ms ease-out;
+}
+
+.cat-card--token:hover .cat-card__meta,
+.cat-card--token:focus-within .cat-card__meta {
+  display: flex;
+}
+
+/* One card at a time: pointing at a cat hides the card of the one with focus. */
+.office__floor:hover .cat-card--token:not(:hover) .cat-card__meta {
+  display: none;
+}
+
+/* Cats waiting at the whiteboard stand in a row, a little smaller. */
+.office__cat[data-area='whiteboard'] .cat-card--worker .cat-photo {
+  --cat-size: 76px;
+}
+
+.office__cat[data-edge='left'] .meme-caption {
+  inset: auto -90px 30px 0;
+}
+
+.office__cat[data-edge='right'] .meme-caption {
+  inset: auto 0 30px -90px;
+}
+
+.cat-card--token .cat-card__name {
+  font-size: 16px;
+}
+
+.cat-card__keys {
+  margin: 4px 0 0;
+  color: var(--ink-2);
+  font-size: 11.5px;
+}
+
+/* Bubbles float above the cat in the office. */
+.cat-card--token .bubble {
+  position: absolute;
+  bottom: calc(100% - 6px);
+  left: 50%;
+  z-index: 15;
+  width: max-content;
+  max-width: 250px;
+  margin: 0;
+  transform: translateX(-50%);
+  font-size: 13px;
+}
+
+.cat-card--token .bubble__text {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 13px;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.cat-card--token .meme-caption {
+  inset: auto -40px 30px;
+  font-size: 13px;
+}
+
+.office__cat[data-edge='left'] .bubble,
+.office__cat[data-edge='left'] .cat-card__meta {
+  left: 0;
+  transform: none;
+}
+
+.office__cat[data-edge='right'] .bubble,
+.office__cat[data-edge='right'] .cat-card__meta {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.office__cat[data-edge='left'] .bubble::after {
+  left: 40px;
+}
+
+.office__cat[data-edge='right'] .bubble::after {
+  right: 26px;
+  left: auto;
+}
+
+/* The cat's photo, and the prop for its state. */
+
+.cat-photo {
+  --cat-size: 150px;
+  position: relative;
+  width: var(--cat-size);
+  height: var(--cat-size);
+}
+
+.cat-photo__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 22%));
+  user-select: none;
+}
+
+.cat-photo__prop {
+  position: absolute;
+  top: 2%;
+  right: 2%;
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.cat-photo__prop:empty {
+  display: none;
+}
+
+.cat-photo--thinking .cat-photo__prop {
+  background: var(--info);
+}
+
+.cat-photo--waiting_approval .cat-photo__prop {
+  background: var(--warn);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.cat-photo--blocked .cat-photo__prop {
+  background: var(--ink-2);
+  font-style: italic;
+}
+
+.cat-photo--done .cat-photo__prop {
+  background: var(--ok);
+}
+
+.cat-photo--error .cat-photo__prop {
+  background: var(--danger);
+}
+
+.cat-photo--promoted .cat-photo__prop {
+  background: #d4a514;
+}
+
+.cat-photo--idle .cat-photo__img {
+  transform-origin: bottom center;
+  animation: breathe 4s ease-in-out infinite;
+}
+
+.cat-photo--thinking .cat-photo__img {
+  transform-origin: bottom center;
+  animation: ponder 3s ease-in-out infinite;
+}
+
+.cat-photo--blocked .cat-photo__img {
+  opacity: 0.85;
+  filter: saturate(0.45) drop-shadow(0 3px 2px rgb(0 0 0 / 22%));
+}
+
+.cat-photo--error .cat-photo__img {
+  filter: grayscale(0.7) drop-shadow(0 3px 2px rgb(0 0 0 / 22%));
+  animation: shake 500ms ease-in-out 2;
+}
+
+.cat-photo--done .cat-photo__img {
+  transform-origin: bottom center;
+  animation: hop 600ms ease-out 1;
+}
+
+/* Working: a laptop in front of the cat, its screen glowing. */
+.cat-photo--working::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: 52%;
+  height: 21%;
+  border-radius: 6px 6px 3px 3px;
+  background:
+    radial-gradient(circle at 50% 45%, #cfd6df 0 5%, transparent 6%),
+    linear-gradient(#4a5563, #3a434f);
+  box-shadow:
+    0 4px 0 #9aa5b1,
+    0 0 14px color-mix(in srgb, var(--info) 35%, transparent);
+  transform: translateX(-50%);
+  animation: glow 1.6s ease-in-out infinite;
+}
+
+/* Retired: sitting in a cardboard box. */
+.cat-photo__box {
+  position: absolute;
+  bottom: 0;
+  left: 8%;
+  width: 84%;
+  height: 42%;
+  border-radius: 4px;
+  background: linear-gradient(#c79a63, #b0844f);
+  box-shadow: inset 0 3px 0 #d8b07c;
+}
+
+.cat-photo__box::before,
+.cat-photo__box::after {
+  content: '';
+  position: absolute;
+  top: -10px;
+  width: 46%;
+  height: 12px;
+  background: #b98d58;
+}
+
+.cat-photo__box::before {
+  left: -6%;
+  transform: rotate(-12deg);
+}
+
+.cat-photo__box::after {
+  right: -6%;
+  transform: rotate(12deg);
+}
+
+/* Promoted: confetti. */
+.cat-photo--promoted::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  background:
+    radial-gradient(circle, #e34948 0 3px, transparent 4px) 10% 20% / 30% 30%,
+    radial-gradient(circle, #2a78d6 0 3px, transparent 4px) 70% 10% / 26% 26%,
+    radial-gradient(circle, #eda100 0 3px, transparent 4px) 40% 70% / 34% 34%,
+    radial-gradient(circle, #1baf7a 0 3px, transparent 4px) 85% 60% / 28% 28%;
+  pointer-events: none;
+  animation: confetti 1.4s ease-out 3;
+}
+
+@keyframes breathe {
+  50% {
+    transform: scale(1.015, 0.985);
+  }
+}
+
+@keyframes ponder {
+  25% {
+    transform: rotate(-3deg);
+  }
+  75% {
+    transform: rotate(3deg);
+  }
+}
+
+@keyframes shake {
+  20%,
+  60% {
+    transform: translateX(-5px);
+  }
+  40%,
+  80% {
+    transform: translateX(5px);
+  }
+}
+
+@keyframes hop {
+  40% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes glow {
+  50% {
+    box-shadow:
+      0 4px 0 #9aa5b1,
+      0 0 22px color-mix(in srgb, var(--info) 55%, transparent);
+  }
+}
+
+@keyframes confetti {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.8);
+  }
+  30% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-14px) scale(1.1);
+  }
+}
+
+.office__hint {
+  position: absolute;
+  right: 16px;
+  bottom: 18px;
+  left: 16px;
+  text-align: center;
+}
+
+/* On a narrow screen the office keeps its proportions and scrolls sideways,
+   rather than piling the cats on top of each other. */
+.office-scroll {
+  flex: none;
+  margin: -4px;
+  padding: 4px;
+  overflow-x: auto;
+}
+
+.office {
+  min-width: 760px;
 }

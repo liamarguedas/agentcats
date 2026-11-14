@@ -700,3 +700,15 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **17 looks, 212 KB in total.** They were picked by hand from contact sheets of the 2,283 images: one clear cat each, no captions. `tools/cat-art/cutout.py` rebuilds them from the picks. BiRefNet-lite was used because ISNet left half-transparent bodies on close-up faces.
 - **A look is picked when a cat is created**: the one the fewest cats have, recorded on `cat.created` and in `profile.md`. The lead always gets the boss look (`buff-cat`). Cats from older logs get a stable look derived from their id.
 - **Names from file names:** a pack whose files name their memes gives cats those names when they are free. This dataset's files are `cat (N).jpg`, so it changes nothing yet. **Renaming a cat on the board is deferred:** cat folders are keyed by name, so a rename has to move the folder with it.
+
+## 2026-11-14 - M5 board decisions
+
+- **The office scene** (the user's choice over big cards in zones):
+  - **Areas:** the lead stands at the whiteboard, where idle and finished cats also wait. Working and thinking cats sit at their own desk, kept for as long as they are on the team. Cats that need you (an approval, blocked, paused, an error) go to the meeting table.
+  - **Movement:** cats slide between spots in 900 ms with a short walk.
+- **Details on demand:** hovering or focusing a cat opens its card: status, adapter, level and XP, task, spend, Pause and Stop. Clicking the cat opens its drawer. On a focused cat, A allows, D denies, P pauses or resumes; the card lists the keys that apply. Only one card shows at a time.
+- **Few bubbles in the office:** approvals, errors, blocks and thinking. Working and done are shown by props (a laptop, a check), not text.
+- **States as props on the photo:** a laptop for working, a thought badge, a pulsing "?" when it needs you, desaturated with "z" when blocked, a check and a hop for done, a red "!" and a shake for an error, confetti when promoted, a box when retired.
+- **Theme:** system, light or dark, switched from the header and remembered in the browser. Each dark palette block applies under the OS setting unless light is pinned, and under `data-theme='dark'`.
+- **Narrow screens:** the office keeps its proportions (minimum 760 px) and scrolls sideways. The header wraps instead of breaking button labels.
+- **Laptop screen:** at 1280×800 the whole office and the first row of tasks fit without scrolling.

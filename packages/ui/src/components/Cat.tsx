@@ -1,75 +1,76 @@
-import type { CatStatus } from '@agentcats/protocol';
+import { type CatStatus, fallbackVariant } from '@agentcats/protocol';
+
+/** The meme cat cut-outs, by look id (`CAT_VARIANTS`; provenance in docs/assets.md). */
+const IMAGES = import.meta.glob<string>('../assets/cats/*.webp', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+});
+
+export function catImage(variant: string): string | undefined {
+  return IMAGES[`../assets/cats/${variant}.webp`];
+}
+
+/** States drawn as props over the photo; the photo itself never changes. */
+export type CatLook = CatStatus | 'fired' | 'promoted';
 
 /**
- * Placeholder cat, drawn in SVG and animated with CSS per status. One pose per
- * status, as the milestones ask; real sprites arrive in M5.
+ * A cat: its meme photo with a prop for what it is doing. Each state reads
+ * the same on every cat: a laptop for working, a thought cloud for thinking,
+ * a question mark when it needs you, sleep when blocked or paused, a check
+ * when done, an alarm when it broke, a box when retired, confetti when
+ * promoted.
  */
-export function CatSprite({ status }: { status: CatStatus }) {
+export function CatPhoto({
+  catId,
+  variant,
+  look,
+  name,
+}: {
+  catId: string;
+  variant: string | null;
+  look: CatLook;
+  name: string;
+}) {
+  const src = catImage(variant ?? fallbackVariant(catId));
   return (
-    <svg
-      className={`cat cat--${status}`}
-      viewBox="0 0 220 200"
-      role="img"
-      aria-label={`Cat, ${status.replace('_', ' ')}`}
-    >
-      <g className="cat__tail">
-        <path d="M160 150 C 200 145, 205 105, 185 90" />
-      </g>
-      <g className="cat__body">
-        <ellipse cx="110" cy="148" rx="58" ry="40" />
-      </g>
-      <g className="cat__head">
-        <path className="cat__ear" d="M66 62 L72 18 L102 46 Z" />
-        <path className="cat__ear" d="M154 62 L148 18 L118 46 Z" />
-        <path className="cat__ear-inner" d="M73 52 L77 30 L92 45 Z" />
-        <path className="cat__ear-inner" d="M147 52 L143 30 L128 45 Z" />
-        <circle className="cat__face" cx="110" cy="80" r="47" />
-        <Eyes status={status} />
-        <path className="cat__nose" d="M104 92 L116 92 L110 99 Z" />
-        <path className="cat__mouth" d="M100 104 Q 105 109, 110 103 Q 115 109, 120 104" />
-        <g className="cat__whiskers">
-          <path d="M60 92 L88 96" />
-          <path d="M60 102 L88 101" />
-          <path d="M160 92 L132 96" />
-          <path d="M160 102 L132 101" />
-        </g>
-      </g>
-      <g className="cat__laptop">
-        <path className="cat__laptop-screen" d="M68 150 L152 150 L146 112 L74 112 Z" />
-        <rect className="cat__laptop-base" x="56" y="150" width="108" height="9" rx="3" />
-        <circle className="cat__laptop-logo" cx="110" cy="131" r="4" />
-      </g>
-      <g className="cat__paws">
-        <ellipse className="cat__paw cat__paw--left" cx="84" cy="160" rx="13" ry="8" />
-        <ellipse className="cat__paw cat__paw--right" cx="136" cy="160" rx="13" ry="8" />
-      </g>
-    </svg>
+    <div className={`cat-photo cat-photo--${look}`}>
+      {src && (
+        <img
+          className="cat-photo__img"
+          src={src}
+          alt={`${name}, ${LOOK_TEXT[look]}`}
+          draggable={false}
+        />
+      )}
+      <span className="cat-photo__prop" aria-hidden="true">
+        {PROP[look]}
+      </span>
+      {look === 'fired' && <span className="cat-photo__box" aria-hidden="true" />}
+    </div>
   );
 }
 
-function Eyes({ status }: { status: CatStatus }) {
-  if (status === 'done') {
-    return (
-      <g className="cat__eyes cat__eyes--happy">
-        <path d="M84 80 Q 92 70, 100 80" />
-        <path d="M120 80 Q 128 70, 136 80" />
-      </g>
-    );
-  }
-  if (status === 'error') {
-    return (
-      <g className="cat__eyes cat__eyes--x">
-        <path d="M86 72 L98 84 M98 72 L86 84" />
-        <path d="M122 72 L134 84 M134 72 L122 84" />
-      </g>
-    );
-  }
-  return (
-    <g className="cat__eyes">
-      <ellipse cx="92" cy="78" rx="6" ry="8" />
-      <ellipse cx="128" cy="78" rx="6" ry="8" />
-      <circle className="cat__eye-shine" cx="94" cy="75" r="2" />
-      <circle className="cat__eye-shine" cx="130" cy="75" r="2" />
-    </g>
-  );
-}
+const LOOK_TEXT: Record<CatLook, string> = {
+  idle: 'idle',
+  thinking: 'thinking',
+  working: 'working',
+  waiting_approval: 'waiting for your approval',
+  blocked: 'blocked',
+  done: 'done',
+  error: 'in trouble',
+  fired: 'retired',
+  promoted: 'promoted',
+};
+
+const PROP: Record<CatLook, string> = {
+  idle: '',
+  thinking: '…',
+  working: '',
+  waiting_approval: '?',
+  blocked: 'z',
+  done: '✓',
+  error: '!',
+  fired: '',
+  promoted: '★',
+};

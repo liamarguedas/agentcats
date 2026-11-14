@@ -1,6 +1,6 @@
 import type { AdapterInfo, Cat, PendingApproval, Task, ToolKind, Usage } from '@agentcats/protocol';
 
-import { CatSprite } from './Cat.js';
+import { CatPhoto } from './Cat.js';
 import { InlineText } from './InlineText.js';
 import { LevelBadge } from './Learnings.js';
 
@@ -60,6 +60,13 @@ export interface CatCardProps {
   readonly onDismissRetire: () => void;
   /** A replay: show the cat as it was, with no controls. */
   readonly readOnly?: boolean;
+  /**
+   * `token`: a small cat for the office scene, its details in a card shown on
+   * hover or focus. `card` (default): everything shown, for the hire dialog.
+   */
+  readonly layout?: 'card' | 'token';
+  /** Just reached a higher level: confetti for a few seconds. */
+  readonly promoted?: boolean;
 }
 
 const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
@@ -70,13 +77,44 @@ export function CatCard(props: CatCardProps) {
   const status = paused ? 'blocked' : cat.status;
   return (
     <section
-      className={`cat-card cat-card--${size} cat-card--${status}`}
+      className={`cat-card cat-card--${size} cat-card--${status} cat-card--${props.layout ?? 'card'}`}
       aria-label={`Cat ${cat.name}`}
       data-testid={`cat-${cat.name}`}
     >
       <div className="cat-card__stage">
         <Bubble {...props} />
-        <CatSprite status={status} />
+        <button
+          type="button"
+          className="cat-card__photo"
+          aria-label={`${cat.name}: open details`}
+          aria-keyshortcuts={props.readOnly ? undefined : 'A D P'}
+          onClick={props.onOpen}
+          onKeyDown={(e) => {
+            if (props.readOnly || e.altKey || e.ctrlKey || e.metaKey) return;
+            const key = e.key.toLowerCase();
+            if (props.approval && (key === 'a' || key === 'd')) {
+              e.preventDefault();
+              props.onApprove(props.approval.id, key === 'a' ? 'allow' : 'deny');
+            } else if (key === 'p' && (paused || ACTIVE.has(cat.status))) {
+              e.preventDefault();
+              if (paused) props.onResume();
+              else props.onPause();
+            }
+          }}
+        >
+          <CatPhoto
+            catId={cat.id}
+            variant={cat.variant}
+            look={props.promoted ? 'promoted' : status}
+            name={cat.name}
+          />
+        </button>
+        {props.layout === 'token' && (
+          <span className="cat-card__label">
+            {cat.name}
+            {cat.role === 'worker' && <span className="cat-card__level">Lv {cat.level}</span>}
+          </span>
+        )}
         {props.caption && (
           <p key={props.caption.id} className="meme-caption" role="status">
             {props.caption.text}
@@ -178,12 +216,19 @@ export function CatCard(props: CatCardProps) {
             </button>
           )}
         </div>
+        {props.layout === 'token' && !props.readOnly && (
+          <p className="cat-card__keys">
+            Click for details
+            {props.approval ? ' · A allow · D deny' : ''}
+            {paused || ACTIVE.has(cat.status) ? ` · P ${paused ? 'resume' : 'pause'}` : ''}
+          </p>
+        )}
       </div>
     </section>
   );
 }
 
-function Bubble({ cat, approval, lastMessage, onApprove, readOnly }: CatCardProps) {
+function Bubble({ cat, approval, lastMessage, onApprove, readOnly, layout }: CatCardProps) {
   if (approval) {
     return (
       <div
@@ -245,12 +290,16 @@ function Bubble({ cat, approval, lastMessage, onApprove, readOnly }: CatCardProp
         </div>
       );
     case 'working':
+      // In the office the laptop says it.
+      if (layout === 'token') return null;
       return (
         <div className="bubble" data-testid="bubble">
           <p className="bubble__text">{cat.statusReason ?? 'Working'}</p>
         </div>
       );
     case 'done':
+      // In the office the check mark says it.
+      if (layout === 'token' && cat.role !== 'orchestrator') return null;
       if (cat.role === 'candidate') {
         return (
           <div className="bubble bubble--done" data-testid="bubble">
