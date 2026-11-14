@@ -740,3 +740,10 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
   - Tux planned the work; a worker built `POST /login` with tests on its own branch (4 files, +406, 19 tests passing). The task reached review, at 3 cents API-equivalent.
   - The test failed only on parallelism: Tux made one task instead of two. Its reason was that the endpoint and its tests touch the same files, so one task avoids merge conflicts. That is a model's judgment call, not a fault in the flow; the M1 run split the same request in two. No caption fired, because nothing failed.
 - **Removed `packages/ui/e2e/live-claude.spec.ts`,** the M0 single-cat spike. It had not worked since M1: its config keys no longer exist (`defaultModel`, a top-level `permissionMode`), its repo had no commit, and it expected one cat to do the work itself. `live-team.spec.ts` covers the real flow.
+
+## 2026-11-14 - M5 criterion 2 accepted
+
+- **Rerun** (`live-team`, `haiku`, the user's plan): the result was the same. Tux made one task, which reached review with a commit on its branch, at 2 cents API-equivalent.
+- **Accepted on the user's decision:** a real run with Claude Code completes the M1 flow on the final art, with captions on. Tux choosing one task for an endpoint and its tests is a model's judgment. Parallel workers are covered by the mock team tests and were shown live in M1.
+- **The live test's parallelism assertion stays** as the record of what M1 asked for. Its failure now means the model kept the work in one task, not that the flow broke.
+

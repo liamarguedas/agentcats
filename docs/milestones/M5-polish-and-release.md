@@ -67,7 +67,7 @@ The UI is a projection of the event log, so replay is a read-only view over stor
 
 ## Acceptance criteria
 - [ ] On a clean machine, `npx agentcats --demo` shows a working board with no agent CLI installed.
-- [ ] A real run with Claude Code completes the M1 sample flow with the final art and captions.
+- [x] A real run with Claude Code completes the M1 sample flow with the final art and captions. (Twice, 2026-11-14; the lead kept the work in one task both times, see `docs/decisions.md`.)
 - [x] Replay of a recorded session works, and an exported session has no file contents unless the box was checked.
 - [ ] CI is green on Linux and macOS; first tagged release is published.
 - [x] README demo GIF matches the actual product.
