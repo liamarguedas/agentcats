@@ -1,6 +1,6 @@
 {
   "name": "agentcats",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A local whiteboard where coding agents are cats.",
   "license": "MIT",
   "type": "module",
