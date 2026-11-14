@@ -78,12 +78,21 @@ const copies = [
   [join(cli, 'bin', 'check-node.mjs'), 'bin/check-node.mjs'],
   [uiDist, 'ui'],
   [join(root, 'LICENSE'), 'LICENSE'],
-  [join(root, 'README.md'), 'README.md'],
 ];
 for (const [from, to] of copies) {
   await mkdir(dirname(join(out, to)), { recursive: true });
   await cp(from, join(out, to), { recursive: true });
 }
+
+// npm shows the README without the repository around it: point its relative
+// links and images at GitHub.
+const REPO = 'https://github.com/liamarguedas/agentcats';
+const readme = (await readFile(join(root, 'README.md'), 'utf8')).replace(
+  /(!?)\[([^\]]*)\]\((?!https?:|#)([^)]+)\)/g,
+  (_match, image, text, path) =>
+    `${image}[${text}](${REPO}/${image ? 'raw' : 'blob'}/main/${path})`,
+);
+await writeFile(join(out, 'README.md'), readme);
 
 const manifest = {
   name: cliPackage.name,

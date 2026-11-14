@@ -84,3 +84,28 @@ describe('AgentcatsConfig', () => {
     expect(AgentcatsConfig.safeParse({ port: 70_000 }).success).toBe(false);
   });
 });
+
+describe('docs/configuration.md', () => {
+  it('documents every config key', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const doc = await readFile(new URL('../../../docs/configuration.md', import.meta.url), 'utf8');
+    const keys: string[] = [];
+    const walk = (shape: Record<string, unknown>, prefix: string) => {
+      for (const [key, value] of Object.entries(shape)) {
+        const path = `${prefix}${key}`;
+        let node: unknown = value;
+        // Unwrap defaults and prefaults down to an object, if there is one.
+        for (let i = 0; i < 4 && node && !(node as { shape?: unknown }).shape; i++) {
+          node = (node as { def?: { innerType?: unknown } }).def?.innerType;
+        }
+        const nested = (node as { shape?: Record<string, unknown> } | undefined)?.shape;
+        if (nested) walk(nested, `${path}.`);
+        else keys.push(path);
+      }
+    };
+    walk(AgentcatsConfig.shape, '');
+    expect(keys.length).toBeGreaterThan(40);
+    const missing = keys.filter((k) => !doc.includes(`\`${k}\``));
+    expect(missing).toEqual([]);
+  });
+});

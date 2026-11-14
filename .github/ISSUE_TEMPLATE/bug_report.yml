@@ -1,0 +1,38 @@
+name: Bug report
+description: Something does not work as the docs say.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `npx agentcats doctor`
+      description: Run it in the project where it happened.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options: [Claude Code, Codex, Mock / demo, More than one]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: agentcats version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: session
+    attributes:
+      label: Session export (optional)
+      description: In the board, Replay, then Export…, without file contents. Read it before attaching; redaction catches common secrets, not every secret.

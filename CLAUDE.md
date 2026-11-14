@@ -1,7 +1,8 @@
 # agentcats
 
 Local whiteboard where coding agents are cats.
-TypeScript pnpm monorepo: `packages/protocol`, `packages/kit`, `packages/daemon`, `packages/adapters/{claude,mock}`, `packages/ui`, `packages/cli`.
+TypeScript pnpm monorepo: `packages/protocol`, `packages/kit`, `packages/daemon`, `packages/adapters/{claude,acp,codex,mock,conformance}`, `packages/ui`, `packages/cli`.
+User docs are in `docs/` (start with `docs/architecture.md`); every decision is in `docs/decisions.md`.
 
 ## Commands
 

@@ -712,3 +712,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Theme:** system, light or dark, switched from the header and remembered in the browser. Each dark palette block applies under the OS setting unless light is pinned, and under `data-theme='dark'`.
 - **Narrow screens:** the office keeps its proportions (minimum 760 px) and scrolls sideways. The header wraps instead of breaking button labels.
 - **Laptop screen:** at 1280×800 the whole office and the first row of tasks fit without scrolling.
+
+## 2026-11-14 - M5 documentation
+
+- **The README reads in a minute:** the pitch, the demo GIF, `npx agentcats --demo`, the real setup, what it does, safety, known limitations, links. The details moved to `docs/guide.md`, `docs/configuration.md`, `docs/security.md`, `docs/architecture.md` and `docs/adapters.md`.
+- **`docs/configuration.md` cannot fall behind the schema:** a test walks `AgentcatsConfig` and fails for any key the page does not mention.
+- **The demo GIF is recorded from the product:** `packages/ui/scripts/record-demo.mjs` runs `--demo` and does what a person would: answers the approval, looks at a cat, opens the cost meter. It captures frames with Playwright and encodes them in Node with gifenc (MIT), because there is no ffmpeg dependency. The GIF is 800×450, 60 s in real time, 5.4 MB. Rerun the script when the board changes.
+- **The npm README's links point to GitHub:** the pack rewrites relative links and images, since npm shows the README without the repository.
+- **The code of conduct is short and original,** based on the Contributor Covenant's ideas, with reports going privately to the maintainer. Security reports use GitHub's private advisories.

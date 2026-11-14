@@ -82,7 +82,7 @@ function Walker({ spot, area, children }: { spot: Spot; area: Area; children: Re
     <div
       className={`office__cat${walking ? ' office__cat--walking' : ''}`}
       // Near a wall, bubbles and cards open toward the room instead of off the edge.
-      data-edge={spot.x < 16 ? 'left' : spot.x > 84 ? 'right' : undefined}
+      data-edge={spot.x < 25 ? 'left' : spot.x > 84 ? 'right' : undefined}
       data-area={area}
       style={{ left: `${String(spot.x)}%`, top: `${String(spot.y)}%` }}
     >

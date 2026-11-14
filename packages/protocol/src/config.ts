@@ -121,8 +121,7 @@ export const AgentcatsConfig = z.strictObject({
     .strictObject({
       /** Run a debrief after each reviewed task to propose learnings. */
       debrief: z.boolean().default(true),
-      /** Model for debrief and consolidation calls; `null` is the agent's default. */
-      /** `null` uses the default adapter's fast tier (`haiku` for Claude). */
+      /** Model for debriefs and consolidations; `null` is the default adapter's fast tier (`haiku` for Claude). */
       model: z.string().min(1).nullable().default(null),
       /** Most lines a cat's `learnings.md` may hold; going over proposes a consolidation. */
       cap: z.int().min(5).max(200).default(30),
