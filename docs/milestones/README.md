@@ -12,6 +12,7 @@ A local, open source whiteboard where coding agents are cats. An orchestrator ca
 | M3 | [M3-hire-and-fire.md](M3-hire-and-fire.md) | Retire, resurrect, and hire through a real sample-task eval |
 | M4 | [M4-second-adapter.md](M4-second-adapter.md) | Codex adapter, conformance suite, mixed teams |
 | M5 | [M5-polish-and-release.md](M5-polish-and-release.md) | Art, memes, replay, docs, `npx agentcats` release |
+| M6 | [M6-canvas.md](M6-canvas.md) | The board as a full-screen canvas with side panels, zones that grow with the team |
 
 Do them in order. Do not start a milestone until the previous one meets its acceptance criteria.
 
