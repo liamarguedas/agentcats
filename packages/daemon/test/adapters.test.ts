@@ -64,14 +64,17 @@ async function snapshot() {
   return Snapshot.parse((await api('GET', '/api/snapshot')).body);
 }
 
-async function waitFor<T>(read: (b: BoardState) => T | null | undefined | false): Promise<T> {
+async function waitFor<T>(
+  read: (b: BoardState) => T | null | undefined | false,
+  timeout = 15_000,
+): Promise<T> {
   let value: T | null | undefined | false;
   await vi.waitFor(
     async () => {
       value = read((await snapshot()).board);
       expect(value).toBeTruthy();
     },
-    { timeout: 15_000, interval: 25 },
+    { timeout, interval: 25 },
   );
   return value as T;
 }
@@ -160,45 +163,54 @@ describe('cats whose adapter reports no cost', () => {
 });
 
 describe('interviews across adapters', () => {
-  it('compares candidates on two adapters, with an unknown estimate', async () => {
-    const { projectPath } = await start({}, [
-      mock({ scenarioFor: () => 'interview-pass' }),
-      blind({ scenarioFor: () => 'interview-pass' }),
-    ]);
-    const dir = join(projectPath, '.agentcats', 'interviews');
-    await mkdir(join(dir, 'answer', 'hidden'), { recursive: true });
-    await writeFile(
-      join(dir, 'answer.md'),
-      '---\ntitle: Answer\nrepo: fixture\ncheck: node check.cjs\n---\n\nWrite 42 to answer.txt.\n',
-    );
-    await writeFile(
-      join(dir, 'answer', 'hidden', 'check.cjs'),
-      "process.exit(require('node:fs').readFileSync('answer.txt', 'utf8').trim() === '42' ? 0 : 1);\n",
-    );
-    const proposed = await api('POST', '/api/interviews', {
-      role: { description: 'Compare agents', tier: 'balanced' },
-      sampleId: 'answer',
-      adapters: ['mock', 'blind'],
-    });
-    expect(proposed.status).toBe(201);
-    const interview = (proposed.body as { interview: Interview }).interview;
-    expect(interview).toMatchObject({
-      candidateCount: 2,
-      candidateAdapters: ['mock', 'blind'],
-      estimateUsd: null,
-    });
+  // Candidates run real trials at once: slow while every package's tests run in parallel.
+  it(
+    'compares candidates on two adapters, with an unknown estimate',
+    { timeout: 60_000 },
+    async () => {
+      const { projectPath } = await start({}, [
+        mock({ scenarioFor: () => 'interview-pass' }),
+        blind({ scenarioFor: () => 'interview-pass' }),
+      ]);
+      const dir = join(projectPath, '.agentcats', 'interviews');
+      await mkdir(join(dir, 'answer', 'hidden'), { recursive: true });
+      await writeFile(
+        join(dir, 'answer.md'),
+        '---\ntitle: Answer\nrepo: fixture\ncheck: node check.cjs\n---\n\nWrite 42 to answer.txt.\n',
+      );
+      await writeFile(
+        join(dir, 'answer', 'hidden', 'check.cjs'),
+        "process.exit(require('node:fs').readFileSync('answer.txt', 'utf8').trim() === '42' ? 0 : 1);\n",
+      );
+      const proposed = await api('POST', '/api/interviews', {
+        role: { description: 'Compare agents', tier: 'balanced' },
+        sampleId: 'answer',
+        adapters: ['mock', 'blind'],
+      });
+      expect(proposed.status).toBe(201);
+      const interview = (proposed.body as { interview: Interview }).interview;
+      expect(interview).toMatchObject({
+        candidateCount: 2,
+        candidateAdapters: ['mock', 'blind'],
+        estimateUsd: null,
+      });
 
-    await api('POST', `/api/interviews/${interview.id}/start`);
-    const decided = await waitFor(
-      (b) => b.interviews[interview.id]?.status === 'deciding' && b.interviews[interview.id],
-    );
-    const board = (await snapshot()).board;
-    expect(decided.candidates.map((c) => board.cats[c.catId]?.adapter)).toEqual(['mock', 'blind']);
-    expect(decided.candidates.every((c) => c.result?.passed)).toBe(true);
-    const blindCandidate = decided.candidates[1]!;
-    expect(blindCandidate.result?.costUsd).toBeNull();
-    expect(blindCandidate.score?.cost).toBe(50); // unknown cost is neither rewarded nor punished
-  });
+      await api('POST', `/api/interviews/${interview.id}/start`);
+      const decided = await waitFor(
+        (b) => b.interviews[interview.id]?.status === 'deciding' && b.interviews[interview.id],
+        45_000,
+      );
+      const board = (await snapshot()).board;
+      expect(decided.candidates.map((c) => board.cats[c.catId]?.adapter)).toEqual([
+        'mock',
+        'blind',
+      ]);
+      expect(decided.candidates.every((c) => c.result?.passed)).toBe(true);
+      const blindCandidate = decided.candidates[1]!;
+      expect(blindCandidate.result?.costUsd).toBeNull();
+      expect(blindCandidate.score?.cost).toBe(50); // unknown cost is neither rewarded nor punished
+    },
+  );
 
   it('refuses an adapter the daemon does not have', async () => {
     await start({});

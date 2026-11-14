@@ -799,7 +799,7 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Reproduced first** in the browser tests: the mock lead now understands `/lead-asks` and waits for an approval with a long argument. The new test checks that the bubble's top is inside the office.
 - **Fix:** after each render, the office measures, for every cat with a bubble, the distance from its feet to the top of its bubble, and grows to the height where all of them fit with 12 px to spare. Cats stand at a share of the height, so one division per cat gives the answer. Layout offsets are used, not screen positions, so a walking cat or a bubble still popping in measures the same. The office shrinks back when the bubble goes.
 - **Rejected:** flipping the bubble below the cat (it would collide with the hover card, which opens below), and clamping the request text (it hides what the user is approving).
-- **Also fixed, a flake:** the daemon test that scores three interview candidates waited 15 s for their trials. Alone they take about 5 s, but during `pnpm check`, with every package's tests in parallel, they took 18 s once. The wait for the trials is now 45 s, with a 60 s test timeout.
+- **Also fixed, a flake:** the daemon tests that wait for interview candidates (in `hiring.test.ts` and `adapters.test.ts`) waited 15 s for their trials. Alone they take about 5 s, but during `pnpm check`, with every package's tests in parallel, they took 18 s once. The wait for the trials is now 45 s, with a 60 s test timeout.
 
 ## 2026-11-14 - Settings on the board, and user-wide defaults
 
