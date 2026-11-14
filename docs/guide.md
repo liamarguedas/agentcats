@@ -5,16 +5,37 @@ Settings are in [configuration](configuration.md), and the most used ones are un
 
 ## The board
 
-The office takes the top of the board:
+The office fills the screen, on a canvas you can pan and zoom, like a drawing in Excalidraw:
 
-- **The whiteboard** on the left: Tux, the lead, plans here. Idle cats and cats that just finished wait in front of it.
+- **The whiteboard** at the top: Tux, the lead, plans here. Idle cats and cats that just finished wait in rows next to it.
 - **The desks** in the middle: a cat that is thinking or working sits at its own desk, with a laptop.
-- **The meeting table** on the right: cats that need you go there. They are waiting for an approval, blocked, paused, or in trouble.
+- **The meeting tables** to the side: cats that need you go there. They are waiting for an approval, blocked, paused, or in trouble.
 
+The office grows with the team: a row of desks per four workers, a table per two cats waiting for you.
 Cats walk between the areas as their status changes.
+
+Moving around the canvas:
+
+| Do | To |
+| --- | --- |
+| Drag the floor, scroll, or the arrow keys | Pan |
+| Ctrl or Cmd and scroll, pinch, + and -, or the buttons at the bottom left | Zoom |
+| **Fit** or F | Frame the whole office |
+
+The board keeps your view of each project in the browser until you press Fit.
+Until you move it, the view follows the team as it grows.
+
+Names, bubbles and cards float above the canvas at a readable size, whatever the zoom.
+A bubble never covers another bubble or a cat: when there is no room over its cat, it moves aside and a line joins it to its cat.
+Zoomed far out, an approval becomes a **?** badge; click it to zoom in on the cat.
+
+**Needs you** in the header counts the cats waiting for you; click it to bring them all into view, or press N to go through them one at a time.
+A cat that needs you while it is out of view shows as a marker at the edge of the canvas, pointing its way; click the marker to go there.
+
 Hover over a cat, or Tab to it, for its card: status, agent, level and XP, current task, spend, and Pause and Stop.
+Tab goes through the cats in order and brings each one into view.
 An interview candidate has no Pause or Stop: Cancel interview stops the whole trial.
-Click a cat for its panel with its learnings, history and properties.
+Click a cat for its panel with its learnings, history and properties; it opens on the left, and the canvas stays live beside it.
 A cat takes its meme's name when it is free; rename it under Properties.
 The name is unique on the board and names its folder, `.agentcats/cats/<name>/`, which moves with it.
 The lead is told the new name; a running session uses it from its next start.
@@ -29,7 +50,10 @@ On a focused cat:
 | P | Pause it, or resume it (not a candidate) |
 | Enter | Open its panel |
 
-Below the office are the tasks; on the right, the chat with the lead and the event log.
+The chat with the lead, the tasks and the event log are panels on the right, behind the tabs at the top.
+Click a tab to open its panel, and the open one to close it; the board remembers which was open.
+The chat is open on your first visit.
+On a narrow screen, such as a phone, the panels slide up from the bottom.
 The ◐ button in the header switches between the system theme, light and dark.
 
 ## A request, start to finish

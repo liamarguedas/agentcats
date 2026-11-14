@@ -67,6 +67,12 @@ export interface CatCardProps {
   readonly layout?: 'card' | 'token';
   /** Just reached a higher level: confetti for a few seconds. */
   readonly promoted?: boolean;
+  /**
+   * For the `token` layout, which half to draw: the cat itself, on the
+   * canvas, or what floats over it (name, bubble, details card), drawn in
+   * the screen-space layer so it keeps its size whatever the zoom.
+   */
+  readonly part?: 'token' | 'overlay';
 }
 
 const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
@@ -77,6 +83,41 @@ export function CatCard(props: CatCardProps) {
   // A candidate's trial is stopped from its interview (Cancel interview), not cat by cat.
   const controls = !props.readOnly && cat.role !== 'candidate';
   const status = paused ? 'blocked' : cat.status;
+  const photo = (
+    <button
+      type="button"
+      className="cat-card__photo"
+      aria-label={`${cat.name}: open details`}
+      aria-keyshortcuts={props.readOnly ? undefined : controls ? 'A D P' : 'A D'}
+      onClick={props.onOpen}
+      onKeyDown={(e) => {
+        if (props.readOnly || e.altKey || e.ctrlKey || e.metaKey) return;
+        const key = e.key.toLowerCase();
+        if (props.approval && (key === 'a' || key === 'd')) {
+          e.preventDefault();
+          props.onApprove(props.approval.id, key === 'a' ? 'allow' : 'deny');
+        } else if (controls && key === 'p' && (paused || ACTIVE.has(cat.status))) {
+          e.preventDefault();
+          if (paused) props.onResume();
+          else props.onPause();
+        }
+      }}
+    >
+      <CatPhoto
+        catId={cat.id}
+        variant={cat.variant}
+        look={props.promoted ? 'promoted' : status}
+        name={cat.name}
+      />
+    </button>
+  );
+  if (props.part === 'token') {
+    return (
+      <div className={`cat-token cat-token--${size} cat-token--${status}`} data-cat={cat.name}>
+        {photo}
+      </div>
+    );
+  }
   return (
     <section
       className={`cat-card cat-card--${size} cat-card--${status} cat-card--${props.layout ?? 'card'}`}
@@ -85,35 +126,10 @@ export function CatCard(props: CatCardProps) {
     >
       <div className="cat-card__stage">
         <Bubble {...props} />
-        <button
-          type="button"
-          className="cat-card__photo"
-          aria-label={`${cat.name}: open details`}
-          aria-keyshortcuts={props.readOnly ? undefined : controls ? 'A D P' : 'A D'}
-          onClick={props.onOpen}
-          onKeyDown={(e) => {
-            if (props.readOnly || e.altKey || e.ctrlKey || e.metaKey) return;
-            const key = e.key.toLowerCase();
-            if (props.approval && (key === 'a' || key === 'd')) {
-              e.preventDefault();
-              props.onApprove(props.approval.id, key === 'a' ? 'allow' : 'deny');
-            } else if (controls && key === 'p' && (paused || ACTIVE.has(cat.status))) {
-              e.preventDefault();
-              if (paused) props.onResume();
-              else props.onPause();
-            }
-          }}
-        >
-          <CatPhoto
-            catId={cat.id}
-            variant={cat.variant}
-            look={props.promoted ? 'promoted' : status}
-            name={cat.name}
-          />
-        </button>
+        {props.part !== 'overlay' && photo}
         {props.layout === 'token' && (
-          <span className="cat-card__label">
-            {cat.name}
+          <span className="cat-card__label" title={cat.name}>
+            <span className="cat-card__label-name">{cat.name}</span>
             {cat.role === 'worker' && <span className="cat-card__level">Lv {cat.level}</span>}
           </span>
         )}

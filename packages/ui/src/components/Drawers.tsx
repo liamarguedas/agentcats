@@ -7,7 +7,7 @@ import {
   type Task,
   type Usage,
 } from '@agentcats/protocol';
-import { type ReactNode, type SyntheticEvent, useEffect, useState } from 'react';
+import { type ReactNode, type SyntheticEvent, useEffect, useId, useState } from 'react';
 
 import { InlineText } from './InlineText.js';
 import { plural, TASK_STATUS_LABEL } from './TaskCard.js';
@@ -37,39 +37,30 @@ function Drawer({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const titleId = useId();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      // A dialog over the panel (retiring, hiring) closes first.
+      if (e.key === 'Escape' && !document.querySelector('[aria-modal="true"]')) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
   }, [onClose]);
+  // A panel beside the canvas, not over it: the board stays live and usable.
   return (
-    <div className="drawer-backdrop" onClick={onClose}>
-      <aside
-        className="drawer"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => {
-          e.stopPropagation();
-        }}
-      >
-        <header className="drawer__header">
-          <h2 className="drawer__title">{title}</h2>
-          <button
-            type="button"
-            className="button button--ghost"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </header>
-        <div className="drawer__body">{children}</div>
-      </aside>
-    </div>
+    <aside className="drawer" role="dialog" aria-labelledby={titleId}>
+      <header className="drawer__header">
+        <h2 className="drawer__title" id={titleId}>
+          {title}
+        </h2>
+        <button type="button" className="button button--ghost" onClick={onClose} aria-label="Close">
+          ✕
+        </button>
+      </header>
+      <div className="drawer__body">{children}</div>
+    </aside>
   );
 }
 

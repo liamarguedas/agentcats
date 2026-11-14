@@ -200,10 +200,6 @@ code {
   outline-offset: -3px;
 }
 
-.canvas__content {
-  padding: 24px;
-}
-
 .canvas__controls {
   position: absolute;
   bottom: 14px;
@@ -313,34 +309,6 @@ code {
   font-size: 14px;
 }
 
-.board__lead {
-  display: flex;
-  justify-content: center;
-}
-
-.board__team {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: flex-start;
-  gap: 24px;
-  padding-top: 20px;
-  border-top: 1px dashed var(--line);
-}
-
-.board__team > .board__empty {
-  padding: 16px 0;
-  text-align: center;
-}
-
-.seat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  width: 260px;
-}
-
 .section-title {
   display: flex;
   align-items: center;
@@ -365,6 +333,20 @@ code {
   align-items: center;
   justify-content: flex-end;
   gap: 8px 18px;
+}
+
+.needs-you {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+}
+
+.needs-you__count {
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #fff;
+  font-variant-numeric: tabular-nums;
 }
 
 .app__header-right > * {
@@ -1096,25 +1078,36 @@ code {
   min-height: 1.2em;
 }
 
-.drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  display: flex;
-  justify-content: flex-end;
-  background: rgb(0 0 0 / 22%);
-  animation: fade-in 120ms ease-out;
-}
-
+/* A cat's or a task's details: a panel on the left of the canvas, which
+   stays live beside it. */
 .drawer {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 12px;
+  z-index: 25;
   display: flex;
   flex-direction: column;
-  width: min(100%, 460px);
-  height: 100%;
-  border-left: 1px solid var(--line);
+  width: min(460px, calc(100% - 24px));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow);
-  animation: slide-in 160ms ease-out;
+  overflow: hidden;
+  animation: slide-in-left 160ms ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer {
+    animation: none;
+  }
 }
 
 .drawer__header {
@@ -1277,8 +1270,10 @@ code {
 
 .toasts {
   position: fixed;
-  right: 16px;
+  /* Bottom middle, clear of the panels at the sides and the zoom controls. */
   bottom: 16px;
+  left: 50%;
+  translate: -50% 0;
   z-index: 30;
   display: flex;
   flex-direction: column;
@@ -1309,19 +1304,6 @@ code {
 
 .toast--error {
   border-left: 4px solid var(--danger);
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
-
-@keyframes slide-in {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
 }
 
 /* Levels and XP */
@@ -1603,13 +1585,6 @@ code {
   cursor: pointer;
 }
 
-/* Keep toasts beside an open drawer instead of on top of it. */
-@media (min-width: 900px) {
-  .app--drawer-open .toasts {
-    right: calc(min(100%, 460px) + 16px);
-  }
-}
-
 .drawer__subtitle {
   margin: 4px 0 -4px;
   font-size: 12px;
@@ -1870,6 +1845,49 @@ code {
   .form__row,
   .form__row--three {
     grid-template-columns: 1fr;
+  }
+
+  /* Panels are bottom sheets (App's SHEET_SHARE), the tabs along the bottom. */
+  .dock {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    flex-direction: column-reverse;
+    width: auto;
+    height: calc(55% - 8px);
+  }
+
+  .dock--closed {
+    height: auto;
+  }
+
+  .dock__tabs {
+    align-self: stretch;
+    justify-content: space-around;
+  }
+
+  .drawer {
+    top: auto;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    z-index: 27;
+    width: auto;
+    height: calc(55% - 8px);
+  }
+
+  .canvas__controls {
+    top: 8px;
+    bottom: auto;
+  }
+
+  .app__header {
+    padding: 8px 12px;
+  }
+
+  .app__header-right {
+    gap: 6px 10px;
   }
 }
 
@@ -2439,6 +2457,9 @@ button.team-spend:focus-visible {
 
 .office__label {
   position: absolute;
+  /* Zoomed out, the label keeps its size on screen. */
+  scale: max(1, 1 / var(--s, 1));
+  transform-origin: 0 0;
   top: 10px;
   left: 14px;
   color: var(--ink-2);
@@ -2450,7 +2471,8 @@ button.team-spend:focus-visible {
 
 .office__board {
   position: absolute;
-  top: 40px;
+  /* Below the zone label, which grows on screen when zoomed out. */
+  top: 64px;
   left: 170px;
   display: flex;
   flex-direction: column;
@@ -2531,11 +2553,6 @@ button.team-spend:focus-visible {
     top 900ms cubic-bezier(0.45, 0, 0.25, 1);
 }
 
-.office__cat:hover,
-.office__cat:focus-within {
-  z-index: 10;
-}
-
 .office__cat--walking .cat-photo {
   animation: walk 300ms ease-in-out 3;
 }
@@ -2546,16 +2563,12 @@ button.team-spend:focus-visible {
   }
 }
 
-/* A cat in the office: small, with its details in a card on hover or focus. */
+/* A cat in the office: its photo on the canvas. Its name, bubble and details
+   card float over the canvas in the screen-space layer (.anchor), at their
+   own size whatever the zoom. */
 
-.cat-card--token {
-  position: relative;
-  width: auto;
-  gap: 0;
-}
-
-.cat-card--token .cat-card__stage {
-  min-height: 0;
+.cat-token {
+  display: flex;
 }
 
 .cat-card__photo {
@@ -2571,19 +2584,99 @@ button.team-spend:focus-visible {
   outline-offset: 2px;
 }
 
-.cat-card--token .cat-photo {
+.cat-token .cat-photo {
   --cat-size: 92px;
 }
 
-.cat-card--token.cat-card--lead .cat-photo {
+.cat-token--lead .cat-photo {
   --cat-size: 118px;
+}
+
+/* Cats waiting at the whiteboard stand in a row, a little smaller. */
+.office__cat[data-area='whiteboard'] .cat-token--worker .cat-photo {
+  --cat-size: 76px;
+}
+
+/* The screen-space layer: one anchor per cat, at its feet. The canvas sets
+   --ox, --oy and --s as the view moves; a cat's spot (--wx, --wy) slides
+   when it walks, in step with the cat itself. */
+
+@property --wx {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+@property --wy {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
+.canvas__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.anchor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  translate: calc((var(--ox) + var(--s) * var(--wx)) * 1px)
+    calc((var(--oy) + var(--s) * var(--wy)) * 1px);
+  transition:
+    --wx 900ms cubic-bezier(0.45, 0, 0.25, 1),
+    --wy 900ms cubic-bezier(0.45, 0, 0.25, 1);
+  /* From the feet to the top of the head, in screen px. */
+  --head: calc(var(--s) * var(--ch) * 1px);
+}
+
+.anchor {
+  z-index: 1;
+}
+
+.anchor[data-open] {
+  z-index: 5;
+}
+
+/* Its details are open in the panel: no card on top of that. */
+.anchor[data-details] .cat-card__meta {
+  visibility: hidden !important;
+}
+
+/* The card is the size of the cat's name tag, just under its feet; the
+   bubble, the details and the captions are placed from it. */
+.anchor > .cat-card {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  display: block;
+  width: max-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  translate: -50% 0;
+}
+
+.anchor .cat-card__stage {
+  position: static;
+  display: block;
+  width: auto;
+  min-height: 0;
 }
 
 .cat-card__label {
   display: inline-flex;
+  max-width: 140px;
   align-items: center;
   gap: 5px;
-  margin-top: 2px;
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--surface);
@@ -2591,6 +2684,13 @@ button.team-spend:focus-visible {
   font-size: 12.5px;
   font-weight: 650;
   white-space: nowrap;
+  pointer-events: none;
+}
+
+.cat-card__label-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cat-card--lead .cat-card__label::after {
@@ -2615,9 +2715,8 @@ button.team-spend:focus-visible {
 
 .cat-card--token .cat-card__meta {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + var(--card-drop, 6px));
   left: 50%;
-  z-index: 20;
   /* Hidden but laid out, so the office can measure it and open it where it fits. */
   display: flex;
   visibility: hidden;
@@ -2625,41 +2724,21 @@ button.team-spend:focus-visible {
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  scale: var(--counter-scale, 1);
-  transform-origin: top center;
   background: var(--surface);
   box-shadow: var(--shadow);
-  transform: translateX(-50%);
+  translate: calc(-50% + var(--card-shift, 0px)) 0;
+  pointer-events: auto;
 }
 
-.cat-card--token:hover .cat-card__meta,
-.cat-card--token:focus-within .cat-card__meta {
+.anchor[data-open] .cat-card__meta {
   visibility: visible;
   animation: bubble-in 140ms ease-out;
 }
 
-/* No room below the cat (the bottom rows): the card opens above it. */
-.office__cat[data-open='up'] .cat-card--token .cat-card__meta {
+/* No room below the cat: the card opens above it, and above its bubble. */
+.anchor[data-card='up'] .cat-card__meta {
   top: auto;
-  bottom: calc(100% + 6px);
-}
-
-/* One card at a time: pointing at a cat hides the card of the one with focus. */
-.office__floor:hover .cat-card--token:not(:hover) .cat-card__meta {
-  visibility: hidden;
-}
-
-/* Cats waiting at the whiteboard stand in a row, a little smaller. */
-.office__cat[data-area='whiteboard'] .cat-card--worker .cat-photo {
-  --cat-size: 76px;
-}
-
-.office__cat[data-edge='left'] .meme-caption {
-  inset: auto -90px 30px 0;
-}
-
-.office__cat[data-edge='right'] .meme-caption {
-  inset: auto 0 30px -90px;
+  bottom: calc(100% + var(--card-rise, 0px));
 }
 
 .cat-card--token .cat-card__name {
@@ -2672,19 +2751,56 @@ button.team-spend:focus-visible {
   font-size: 11.5px;
 }
 
-/* Bubbles float above the cat in the office, readable at any zoom. */
+/* A bubble over the cat's head. The office moves it (--shift, --lift, or
+   below the cat) when it would cover another bubble or cat or leave the
+   view; then a line (--leader-*) joins it to its cat instead of the tail. */
 .cat-card--token .bubble {
   position: absolute;
-  scale: var(--counter-scale, 1);
-  transform-origin: bottom center;
-  bottom: calc(100% - 6px);
+  bottom: calc(100% + 3px + var(--head) + 4px + var(--lift, 0px));
   left: 50%;
-  z-index: 15;
   width: max-content;
   max-width: 250px;
   margin: 0;
-  transform: translateX(-50%);
+  translate: calc(-50% + var(--shift, 0px)) 0;
   font-size: 13px;
+  pointer-events: auto;
+}
+
+.cat-card--token .bubble::after {
+  left: calc(50% - var(--shift, 0px));
+}
+
+.anchor[data-leader] .cat-card--token .bubble::after {
+  display: none;
+}
+
+.anchor[data-leader] .cat-card--token .bubble::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: -1;
+  width: var(--leader-length);
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ink-2) 55%, transparent);
+  transform-origin: 0 50%;
+  rotate: var(--leader-angle);
+}
+
+.anchor[data-bubble='below'] .cat-card--token .bubble {
+  top: calc(100% + 10px);
+  bottom: auto;
+}
+
+.anchor[data-bubble='below'] .cat-card--token .bubble::after {
+  top: -8px;
+  bottom: auto;
+  rotate: 180deg;
+}
+
+.anchor[data-bubble='below'][data-leader] .cat-card--token .bubble::before {
+  top: 0;
 }
 
 .cat-card--token .bubble__text {
@@ -2696,30 +2812,112 @@ button.team-spend:focus-visible {
 }
 
 .cat-card--token .meme-caption {
-  inset: auto -40px 30px;
+  inset: auto;
+  bottom: calc(100% + 3px + var(--head) * 0.35);
+  left: 50%;
+  width: max-content;
+  max-width: 200px;
   font-size: 13px;
+  translate: -50% 0;
 }
 
-.office__cat[data-edge='left'] .bubble,
-.office__cat[data-edge='left'] .cat-card__meta {
-  left: 0;
-  transform: none;
+.cat-card--token.cat-card--lead .meme-caption {
+  font-size: 15px;
 }
 
-.office__cat[data-edge='right'] .bubble,
-.office__cat[data-edge='right'] .cat-card__meta {
-  right: 0;
-  left: auto;
-  transform: none;
+.cat-card--token .xp-pop {
+  right: auto;
+  bottom: calc(100% + 3px + var(--head) * 0.6);
+  left: calc(50% + var(--head) * 0.3);
 }
 
-.office__cat[data-edge='left'] .bubble::after {
-  left: 40px;
+.cat-card--token .retire-suggestion {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  width: 240px;
+  translate: -50% 0;
+  pointer-events: auto;
 }
 
-.office__cat[data-edge='right'] .bubble::after {
-  right: 26px;
-  left: auto;
+.anchor[data-open] .retire-suggestion {
+  visibility: hidden;
+}
+
+/* Zoomed far out: no bubbles; a cat asking for approval shows a badge
+   that brings it close enough to answer. */
+.approval-badge {
+  position: absolute;
+  /* Beside the cat's head, so it never covers the zone's label above. */
+  bottom: calc(var(--head) * 0.55);
+  left: calc(var(--head) * 0.5 + 14px);
+  display: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--warn);
+  color: #fff;
+  font-weight: 800;
+  box-shadow: var(--shadow);
+  translate: -50% 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.canvas__overlay[data-zoom='far'] .approval-badge {
+  display: grid;
+}
+
+.canvas__overlay[data-zoom='far'] .bubble,
+.canvas__overlay[data-zoom='far'] .cat-card__level {
+  display: none;
+}
+
+.canvas__overlay[data-zoom='far'] .cat-card__label {
+  padding: 1px 6px;
+  font-size: 11px;
+}
+
+/* A cat that needs you, out of view: a marker on the edge, its way. */
+.edge-marker {
+  position: absolute;
+  /* Under the bubbles: a marker must never hide an Allow or Deny button. */
+  z-index: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--warn);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--warn) 14%, var(--surface));
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  translate: -50% -50%;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.edge-marker::before {
+  margin-right: 4px;
+}
+
+.edge-marker[data-side='up']::before {
+  content: '↑';
+}
+
+.edge-marker[data-side='down']::before {
+  content: '↓';
+}
+
+.edge-marker[data-side='left']::before {
+  content: '←';
+}
+
+.edge-marker[data-side='right']::before {
+  content: '→';
 }
 
 /* The cat's photo, and the prop for its state. */

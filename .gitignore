@@ -8,5 +8,6 @@ coverage/
 test-results/
 playwright-report/
 .e2e-state.json
+.e2e-canvas-state.json
 packages/cli/pack/
 .claude/

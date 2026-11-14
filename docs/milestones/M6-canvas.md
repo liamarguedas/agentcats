@@ -71,15 +71,15 @@ Decided with the user on 2026-11-14, before the spike:
 - The README GIF, the banner and the social preview are rendered again from the new board.
 
 ## Acceptance criteria
-- [ ] Step 0 is recorded in `docs/decisions.md`: the screenshots, the frame times, the decisions, and the go.
-- [ ] With 12 cats and 3 of them needing you, one click on **Needs you** brings all 3 into view, and `N` steps through them (browser test).
-- [ ] No bubble or card is cut off: a browser test opens them for cats at every zone edge, at the minimum and maximum zoom, with a panel open.
-- [ ] 16 cats on the board, no overlaps between cats, desks and the table (browser test on positions).
-- [ ] Panning and zooming with 16 cats walking keeps the frame interval at most 17 ms at the 95th percentile, with fewer than 5% of frames over 20 ms, on the CI runner (measured in the browser test; changed on 2026-11-14, see the decisions log).
-- [ ] The whole board works from the keyboard: focus moves through the cats and follows them into view, and A, D, P and Enter work.
-- [ ] Panels collapse and open, and remember it; the canvas is usable at 400 px wide with touch, and at 1280 x 800 and 1920 x 1080.
-- [ ] Replay works on the canvas, read-only.
-- [ ] Every existing board flow still passes its browser test; the README GIF matches the new board.
+- [x] Step 0 is recorded in `docs/decisions.md`: the screenshots, the frame times, the decisions, and the go.
+- [x] With 12 cats and 3 of them needing you, one click on **Needs you** brings all 3 into view, and `N` steps through them (browser test).
+- [x] No bubble or card is cut off: a browser test opens them for cats at every zone edge, at the minimum and maximum zoom, with a panel open.
+- [x] 16 cats on the board, no overlaps between cats, desks and the table (browser test on positions).
+- [x] Panning and zooming with 16 cats walking keeps the frame interval at most 17 ms at the 95th percentile, with fewer than 5% of frames over 20 ms, on the CI runner (measured in the browser test; changed on 2026-11-14, see the decisions log).
+- [x] The whole board works from the keyboard: focus moves through the cats and follows them into view, and A, D, P and Enter work.
+- [x] Panels collapse and open, and remember it; the canvas is usable at 400 px wide with touch, and at 1280 x 800 and 1920 x 1080.
+- [x] Replay works on the canvas, read-only.
+- [x] Every existing board flow still passes its browser test; the README GIF matches the new board.
 
 ## Not in this milestone
 - Placing cats by hand, drawing, notes or other Excalidraw tools on the canvas.

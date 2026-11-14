@@ -70,8 +70,8 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
   },
   {
-    // Tests may assert presence with `!`; a wrong guess fails the test anyway.
-    files: ['**/*.test.ts', '**/*.spec.ts'],
+    // Tests and their helpers may assert presence with `!`; a wrong guess fails the test anyway.
+    files: ['**/*.test.ts', '**/*.spec.ts', '**/e2e/**/*.ts'],
     rules: { '@typescript-eslint/no-non-null-assertion': 'off' },
   },
   {
