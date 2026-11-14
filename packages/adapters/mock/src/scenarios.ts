@@ -365,6 +365,18 @@ const orchestrator: Scenario = {
       await ctx.say(`I suggested retiring ${retire[1] ?? ''}. Please confirm it on the board.`);
       return 'end_turn';
     }
+    // `/lead-asks` makes the lead itself wait for an approval, with a long
+    // argument, like Claude Code's lead asking before a command.
+    if (/^\/lead-asks\b/m.test(request)) {
+      const decision = await ctx.requestApproval({
+        toolName: 'Bash',
+        kind: 'execute',
+        inputSummary: 'git log --oneline -- 01a1db25-a484-72a0-9551-23105731dd33',
+      });
+      ctx.addUsage(300, 40);
+      await ctx.say(decision === 'allow' ? 'Checked the history.' : 'Fine, I will not look.');
+      return 'end_turn';
+    }
     const hire = /^\/hire (.+)$/m.exec(request);
     if (hire) {
       const { estimate_usd } = (await ctx.callTool('propose_hire', { role: hire[1] })) as {

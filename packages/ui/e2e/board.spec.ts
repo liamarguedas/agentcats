@@ -199,6 +199,25 @@ test('a focused cat answers its approval from the keyboard, and shows its detail
   await page.mouse.move(0, 0);
 });
 
+test("the lead's approval bubble fits in the office, however long the request", async ({
+  page,
+}) => {
+  await openBoard(page);
+  await chat(page, 'Look at the history\n/lead-asks');
+  const bubble = page.getByRole('alertdialog', { name: 'Approval request from Tux' });
+  await expect(bubble).toBeVisible({ timeout: 15_000 });
+  // The office scrolls sideways, so anything above its top edge is cut off.
+  await expect(async () => {
+    const box = (await bubble.boundingBox())!;
+    const office = (await page.getByRole('region', { name: 'Office' }).boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(office.y);
+  }).toPass({ timeout: 5_000 });
+  await expect(bubble.getByRole('button', { name: 'Allow' })).toBeInViewport();
+  await shot(page, 'lead-approval');
+  await bubble.getByRole('button', { name: 'Allow' }).click();
+  await expect(bubble).toBeHidden();
+});
+
 test('a crashing worker is retried once, then failed, and can be re-run', async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Build the thing\n/single\n/crash');

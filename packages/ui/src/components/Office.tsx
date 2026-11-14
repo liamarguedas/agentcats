@@ -1,5 +1,5 @@
 import type { Cat } from '@agentcats/protocol';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** Where a cat stands: planning at the whiteboard, at its desk, or at the table waiting for you. */
 export type Area = 'whiteboard' | 'desks' | 'meeting';
@@ -84,11 +84,40 @@ function Walker({ spot, area, children }: { spot: Spot; area: Area; children: Re
       // Near a wall, bubbles and cards open toward the room instead of off the edge.
       data-edge={spot.x < 25 ? 'left' : spot.x > 84 ? 'right' : undefined}
       data-area={area}
+      data-y={spot.y}
       style={{ left: `${String(spot.x)}%`, top: `${String(spot.y)}%` }}
     >
       {children}
     </div>
   );
+}
+
+/** Space kept between a bubble and the top of the office. */
+const BUBBLE_MARGIN = 12;
+
+/**
+ * How tall the office must be for every cat's bubble to fit below its top
+ * edge (the office scrolls sideways, so anything above it is cut off). A cat
+ * stands at a share of the height, so it needs (feet to bubble top) / share.
+ * Measured with layout offsets, which ignore transforms, so a cat that is
+ * still walking or a bubble that is still popping in gives the same answer.
+ */
+function heightForBubbles(office: HTMLElement): number {
+  let needed = 0;
+  for (const cat of office.querySelectorAll<HTMLElement>('.office__cat')) {
+    const bubble = cat.querySelector<HTMLElement>('.bubble');
+    const share = Number(cat.dataset['y']) / 100;
+    if (!bubble || !(share > 0)) continue;
+    // The bubble's top, relative to the cat's box.
+    let top = 0;
+    for (let el: HTMLElement | null = bubble; el && el !== cat;) {
+      top += el.offsetTop;
+      el = el.offsetParent as HTMLElement | null;
+    }
+    const reach = cat.offsetHeight - top;
+    needed = Math.max(needed, (reach + BUBBLE_MARGIN) / share);
+  }
+  return Math.ceil(needed);
 }
 
 /**
@@ -113,13 +142,23 @@ export function Office({
   const spots = placeCats(lead, workers);
   const rows = Math.max(1, Math.ceil(workers.length / DESK_COLUMNS));
   const desks = Math.max(DESK_COLUMNS, rows * DESK_COLUMNS);
+  // Room above the first row for an approval bubble, which must never be cut off.
+  const minHeight = 420 + (rows - 1) * 150;
+  const officeRef = useRef<HTMLElement>(null);
+  // After every render, grow the office if a long approval needs more room.
+  // Written straight to the element: no state, so no second render.
+  useLayoutEffect(() => {
+    const office = officeRef.current;
+    if (!office) return;
+    office.style.minHeight = `${String(Math.max(minHeight, heightForBubbles(office)))}px`;
+  });
   return (
     <div className="office-scroll">
       <section
+        ref={officeRef}
         className="office"
         aria-label="Office"
-        // Room above the first row for an approval bubble, which must never be cut off.
-        style={{ minHeight: `${String(420 + (rows - 1) * 150)}px` }}
+        style={{ minHeight: `${String(minHeight)}px` }}
       >
         <div className="office__area office__area--whiteboard" aria-hidden="true">
           <span className="office__label">Whiteboard</span>

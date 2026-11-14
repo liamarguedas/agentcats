@@ -792,3 +792,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **npm README:** the pack now also rewrites relative `src`, `srcset` and `href` attributes in HTML, not only Markdown links, so the banner and the license link work on npmjs.com.
 - **Social preview** (1280 x 640): GitHub's API cannot set it; the maintainer uploads `docs/media/social-preview.png` under Settings.
 - **Demo GIF re-recorded** with the faded cut-outs, so it still matches the product.
+
+## 2026-11-14 - Bubbles never cut off at the top of the office
+
+- **Bug, reported with a screenshot:** the lead's approval bubble was cut off at the top of the office when the request was long (a UUID wrapping to two lines). The office sits in a sideways-scrolling container, and `overflow-x: auto` also clips vertically, so anything above the office's top edge disappears. The fixed headroom (`420px` plus a row per three workers) is not enough for a tall bubble over the lead, who stands high at the whiteboard.
+- **Reproduced first** in the browser tests: the mock lead now understands `/lead-asks` and waits for an approval with a long argument. The new test checks that the bubble's top is inside the office.
+- **Fix:** after each render, the office measures, for every cat with a bubble, the distance from its feet to the top of its bubble, and grows to the height where all of them fit with 12 px to spare. Cats stand at a share of the height, so one division per cat gives the answer. Layout offsets are used, not screen positions, so a walking cat or a bubble still popping in measures the same. The office shrinks back when the bubble goes.
+- **Rejected:** flipping the bubble below the cat (it would collide with the hover card, which opens below), and clamping the request text (it hides what the user is approving).
+- **Also fixed, a flake:** the daemon test that scores three interview candidates waited 15 s for their trials. Alone they take about 5 s, but during `pnpm check`, with every package's tests in parallel, they took 18 s once. The wait for the trials is now 45 s, with a 60 s test timeout.

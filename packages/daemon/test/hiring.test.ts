@@ -31,14 +31,17 @@ async function board(): Promise<BoardState> {
   return Snapshot.parse((await t.api('GET', '/api/snapshot')).body).board;
 }
 
-async function waitFor<T>(read: (b: BoardState) => T | undefined | null | false): Promise<T> {
+async function waitFor<T>(
+  read: (b: BoardState) => T | undefined | null | false,
+  timeout = 15_000,
+): Promise<T> {
   let value: T | undefined | null | false;
   await vi.waitFor(
     async () => {
       value = read(await board());
       expect(value).toBeTruthy();
     },
-    { timeout: 15_000, interval: 25 },
+    { timeout, interval: 25 },
   );
   return value as T;
 }
@@ -196,65 +199,76 @@ async function propose(body: Record<string, unknown>) {
   });
 }
 
+/**
+ * Three candidates run real trials (worktrees, the check, the lint) at once:
+ * about 5 s alone, but over 15 s while every package's tests run in parallel.
+ */
+const TRIALS_MS = 45_000;
+
 describe('interviews', () => {
-  it('scores three candidates, keeps the failing one from winning, and hires the pick', async () => {
-    await setup(scripted('interview-verbose', 'interview-pass', 'interview-fail'));
-    await answerSample();
-    const samples = (await t.api('GET', '/api/interviews/samples')).body as {
-      samples: { id: string }[];
-    };
-    expect(samples.samples.map((s) => s.id)).toEqual(
-      expect.arrayContaining(['add-function', 'fix-failing-test', 'refactor', 'answer']),
-    );
+  it(
+    'scores three candidates, keeps the failing one from winning, and hires the pick',
+    { timeout: 60_000 },
+    async () => {
+      await setup(scripted('interview-verbose', 'interview-pass', 'interview-fail'));
+      await answerSample();
+      const samples = (await t.api('GET', '/api/interviews/samples')).body as {
+        samples: { id: string }[];
+      };
+      expect(samples.samples.map((s) => s.id)).toEqual(
+        expect.arrayContaining(['add-function', 'fix-failing-test', 'refactor', 'answer']),
+      );
 
-    const proposed = await propose({ candidates: 3 });
-    expect(proposed.status).toBe(201);
-    const interview = (proposed.body as { interview: Interview }).interview;
-    expect(interview).toMatchObject({ status: 'proposed', estimateUsd: 0.75, candidates: [] });
-    expect(Object.values((await board()).cats).some((c) => c.role === 'candidate')).toBe(false);
+      const proposed = await propose({ candidates: 3 });
+      expect(proposed.status).toBe(201);
+      const interview = (proposed.body as { interview: Interview }).interview;
+      expect(interview).toMatchObject({ status: 'proposed', estimateUsd: 0.75, candidates: [] });
+      expect(Object.values((await board()).cats).some((c) => c.role === 'candidate')).toBe(false);
 
-    await t.api('POST', `/api/interviews/${interview.id}/start`);
-    const decided = await waitFor(
-      (b) => b.interviews[interview.id]?.status === 'deciding' && b.interviews[interview.id],
-    );
-    const [verbose, pass, fail] = decided.candidates;
-    expect(pass?.result).toMatchObject({ passed: true, lintClean: true });
-    expect(verbose?.result).toMatchObject({ passed: true });
-    expect(fail?.result).toMatchObject({ passed: false });
-    expect(fail?.result?.failure).toContain('The check failed');
-    expect(pass?.score?.total).toBeGreaterThan(verbose?.score?.total ?? 100);
-    expect(fail?.score?.total).toBeNull();
+      await t.api('POST', `/api/interviews/${interview.id}/start`);
+      const decided = await waitFor(
+        (b) => b.interviews[interview.id]?.status === 'deciding' && b.interviews[interview.id],
+        TRIALS_MS,
+      );
+      const [verbose, pass, fail] = decided.candidates;
+      expect(pass?.result).toMatchObject({ passed: true, lintClean: true });
+      expect(verbose?.result).toMatchObject({ passed: true });
+      expect(fail?.result).toMatchObject({ passed: false });
+      expect(fail?.result?.failure).toContain('The check failed');
+      expect(pass?.score?.total).toBeGreaterThan(verbose?.score?.total ?? 100);
+      expect(fail?.score?.total).toBeNull();
 
-    const refused = await t.api('POST', `/api/interviews/${interview.id}/pick`, {
-      catId: fail!.catId,
-    });
-    expect(refused.status).toBe(409);
+      const refused = await t.api('POST', `/api/interviews/${interview.id}/pick`, {
+        catId: fail!.catId,
+      });
+      expect(refused.status).toBe(409);
 
-    const picked = await t.api('POST', `/api/interviews/${interview.id}/pick`, {
-      catId: pass!.catId,
-    });
-    expect(picked.status).toBe(200);
-    const after = await board();
-    expect(after.interviews[interview.id]).toMatchObject({
-      status: 'completed',
-      winnerCatId: pass!.catId,
-    });
-    expect(
-      Object.values(after.cats)
-        .filter((c) => c.role !== 'orchestrator')
-        .map((c) => [c.id, c.role]),
-    ).toEqual([[pass!.catId, 'worker']]);
-    const winner = after.cats[pass!.catId]!;
-    expect(winner.learnings.map((l) => l.text)).toEqual(['Keep diffs small']);
-    expect(await readFile(join(cats('cats'), winner.name, 'profile.md'), 'utf8')).toContain(
-      'Writes small, careful changes',
-    );
-    expect(await exists(join(t.worktreesDir, 'interviews', interview.id))).toBe(false);
+      const picked = await t.api('POST', `/api/interviews/${interview.id}/pick`, {
+        catId: pass!.catId,
+      });
+      expect(picked.status).toBe(200);
+      const after = await board();
+      expect(after.interviews[interview.id]).toMatchObject({
+        status: 'completed',
+        winnerCatId: pass!.catId,
+      });
+      expect(
+        Object.values(after.cats)
+          .filter((c) => c.role !== 'orchestrator')
+          .map((c) => [c.id, c.role]),
+      ).toEqual([[pass!.catId, 'worker']]);
+      const winner = after.cats[pass!.catId]!;
+      expect(winner.learnings.map((l) => l.text)).toEqual(['Keep diffs small']);
+      expect(await readFile(join(cats('cats'), winner.name, 'profile.md'), 'utf8')).toContain(
+        'Writes small, careful changes',
+      );
+      expect(await exists(join(t.worktreesDir, 'interviews', interview.id))).toBe(false);
 
-    // The hire works like any worker.
-    const task = await t.api('POST', '/api/tasks', { title: 'Real work', catId: winner.id });
-    await waitFor(statusIs((task.body as { task: Task }).task.id, 'review'));
-  });
+      // The hire works like any worker.
+      const task = await t.api('POST', '/api/tasks', { title: 'Real work', catId: winner.id });
+      await waitFor(statusIs((task.body as { task: Task }).task.id, 'review'));
+    },
+  );
 
   it('refuses an interview over its budget, and one for a full team', async () => {
     await setup({}, { interviews: { budgetUsd: 0.1 }, workers: { max: 1 } });
