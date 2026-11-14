@@ -184,7 +184,10 @@ test('16 cats stand apart, and Fit shows them all', async ({ page }) => {
                 box: el.getBoundingClientRect(),
               }));
             const cats = boxes('.cat-token', (el) => el.getAttribute('data-cat') ?? '?');
-            if (document.querySelector('.office__cat--walking')) problems.push('a cat is walking');
+            for (const walking of document.querySelectorAll('.office__cat--walking')) {
+              const name = walking.querySelector('.cat-token')?.getAttribute('data-cat') ?? '?';
+              problems.push(`${name} is walking to ${walking.getAttribute('data-area') ?? '?'}`);
+            }
             const apart = (a: DOMRect, b: DOMRect) =>
               a.right <= b.left + 0.5 ||
               b.right <= a.left + 0.5 ||
@@ -296,6 +299,8 @@ test('the board works from the keyboard: Enter opens a cat, P pauses and resumes
   await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).toHaveText(
     /Working|Thinking/,
   );
+  // It walked to the table and back; once there, it stops walking.
+  await expect(page.locator('.office__cat--walking')).toHaveCount(0, { timeout: 3_000 });
   await page.keyboard.press('Enter');
   const details = page.getByRole('dialog', { name: new RegExp(`^${name}`) });
   await expect(details).toBeVisible();

@@ -207,9 +207,12 @@ function Walker({
   const previous = useRef(spot);
   const [walking, setWalking] = useState(false);
   const touched = useRef(false);
+  // Keyed on the coordinates: a new spot object each render must not restart
+  // the effect, whose cleanup would cancel the end of the walk.
+  const { x, y } = spot;
   useEffect(() => {
-    if (previous.current.x === spot.x && previous.current.y === spot.y) return;
-    previous.current = spot;
+    if (previous.current.x === x && previous.current.y === y) return;
+    previous.current = { x, y };
     setWalking(true);
     const timer = setTimeout(() => {
       setWalking(false);
@@ -217,7 +220,7 @@ function Walker({
     return () => {
       clearTimeout(timer);
     };
-  }, [spot]);
+  }, [x, y]);
   return (
     <div
       className={`office__cat${walking ? ' office__cat--walking' : ''}`}
