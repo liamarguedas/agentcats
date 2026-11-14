@@ -68,10 +68,10 @@ The UI is a projection of the event log, so replay is a read-only view over stor
 ## Acceptance criteria
 - [ ] On a clean machine, `npx agentcats --demo` shows a working board with no agent CLI installed.
 - [ ] A real run with Claude Code completes the M1 sample flow with the final art and captions.
-- [ ] Replay of a recorded session works, and an exported session has no file contents unless the box was checked.
+- [x] Replay of a recorded session works, and an exported session has no file contents unless the box was checked.
 - [ ] CI is green on Linux and macOS; first tagged release is published.
-- [ ] README demo GIF matches the actual product.
-- [ ] Someone else, given only the docs, can write a skeleton adapter and pass the conformance suite (test this on a friend if you can).
+- [x] README demo GIF matches the actual product.
+- [x] Someone else, given only the docs, can write a skeleton adapter and pass the conformance suite (test this on a friend if you can). (A fresh agent with only the docs, 2026-11-14; see `docs/decisions.md`.)
 
 ## After release (not part of this milestone)
 Kiro or an ACP generic adapter, shareable team configs, cat personalities affecting prompts, a plugin system for custom interviews and caption packs.
