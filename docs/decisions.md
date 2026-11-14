@@ -692,3 +692,11 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Dependency licenses** (`pnpm licenses list --prod`, 2026-11-14):
   - 90 MIT, 7 ISC, 5 Apache-2.0, 3 BSD and 1 Unlicense, all compatible with our MIT license.
   - The Claude Agent SDK and its platform binaries list no SPDX license. They are under Anthropic's Commercial Terms, so they stay npm dependencies and are never bundled.
+
+## 2026-11-14 - M5 art decision
+
+- **The cats are meme cats from the Kaggle dataset "Cats from memes"**, labeled Apache 2.0, with backgrounds removed. The user chose this over two alternatives: original drawn cats, or a local import tool that would keep the photos off npm.
+- **The risk was raised before deciding:** the uploader says the photos were "collected from memes", so the label may not hold. It is recorded in `docs/assets.md` with what to do if a rights holder objects.
+- **17 looks, 212 KB in total.** They were picked by hand from contact sheets of the 2,283 images: one clear cat each, no captions. `tools/cat-art/cutout.py` rebuilds them from the picks. BiRefNet-lite was used because ISNet left half-transparent bodies on close-up faces.
+- **A look is picked when a cat is created**: the one the fewest cats have, recorded on `cat.created` and in `profile.md`. The lead always gets the boss look (`buff-cat`). Cats from older logs get a stable look derived from their id.
+- **Names from file names:** a pack whose files name their memes gives cats those names when they are free. This dataset's files are `cat (N).jpg`, so it changes nothing yet. **Renaming a cat on the board is deferred:** cat folders are keyed by name, so a rename has to move the folder with it.

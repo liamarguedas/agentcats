@@ -1,0 +1,22 @@
+{
+  "dataset": "https://www.kaggle.com/datasets/vekosek/cats-from-memes (version 5)",
+  "cats": [
+    { "id": "ginger-stare", "file": "cats_from_memes/cat (1002).jpg" },
+    { "id": "grey-wonder", "file": "cats_from_memes/cat (1010).jpg" },
+    { "id": "olive-squint", "file": "cats_from_memes/cat (1011).jpg" },
+    { "id": "standing-kitten", "file": "cats_from_memes/cat (1012).jpg" },
+    { "id": "tabby-loaf", "file": "cats_from_memes/cat (1015).jpg" },
+    { "id": "white-shock", "file": "cats_from_memes/cat (1022).jpg" },
+    { "id": "tabby-awe", "file": "cats_from_memes/cat (1023).jpg" },
+    { "id": "calico-side-eye", "file": "cats_from_memes/cat (1028).jpg" },
+    { "id": "buff-cat", "file": "cats_from_memes/cat (1030).jpg" },
+    { "id": "smug-smile", "file": "cats_from_memes/cat (1031).jpg" },
+    { "id": "calico-grin", "file": "cats_from_memes/cat (1038).jpg" },
+    { "id": "peeking-kitten", "file": "cats_from_memes/cat (1042).jpg" },
+    { "id": "big-eyes", "file": "cats_from_memes/cat (1043).jpg" },
+    { "id": "polite-paws", "file": "cats_from_memes/cat (1051).jpg" },
+    { "id": "fluff-kitten", "file": "cats_from_memes/cat (1052).jpg" },
+    { "id": "scream", "file": "cats_from_memes/cat (1057).jpg" },
+    { "id": "tuxedo-lounge", "file": "cats_from_memes/cat (1064).jpg" }
+  ]
+}

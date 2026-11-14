@@ -19,6 +19,7 @@ function catCreated(ts: number, name: string): AgentcatsEvent {
       model: null,
       permissionMode: 'accept_edits',
       budget: { maxUsd: 2, maxTokens: null, maxMinutes: null },
+      variant: null,
     },
   };
 }

@@ -2,7 +2,13 @@ import { type FSWatcher, watch } from 'node:fs';
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { Cat, Learning, LearningDraft, LearningsVersion } from '@agentcats/protocol';
+import {
+  type Cat,
+  fallbackVariant,
+  type Learning,
+  type LearningDraft,
+  type LearningsVersion,
+} from '@agentcats/protocol';
 
 import { renameWithRetry, writeFileAtomic } from './fs-util.js';
 import { parseLearningsFile, serializeLearningsFile, withIds } from './learnings.js';
@@ -172,6 +178,7 @@ export class CatMemory {
       `- Model: ${cat.model ?? 'agent default'}`,
       `- Created: ${new Date(cat.createdAt).toISOString().slice(0, 10)}`,
       `- Id: ${cat.id}`,
+      `- Look: ${cat.variant ?? fallbackVariant(cat.id)} (meme cat; see docs/assets.md in agentcats)`,
       '',
       PERSONA_HEADING,
       '',

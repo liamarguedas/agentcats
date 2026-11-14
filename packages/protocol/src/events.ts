@@ -53,6 +53,8 @@ export const CatCreatedEvent = z.strictObject({
     model: z.string().min(1).nullable(),
     permissionMode: PermissionMode,
     budget: Budget,
+    /** Its look (`CAT_VARIANTS`); missing in logs from before M5. */
+    variant: z.string().min(1).max(64).nullable().default(null),
   }),
 });
 

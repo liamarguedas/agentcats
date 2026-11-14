@@ -7,12 +7,14 @@ import {
   type ApprovalDecision,
   assertTransition,
   autonomousCommands,
+  CAT_VARIANTS,
   type Cat,
   type HireRole,
   type Interview,
   type InterviewSample,
   type LearningsVersion,
   levelForXp,
+  pickVariant,
   type PauseReason,
   readablePathsFor,
   RUNTIME_DIR_NAME,
@@ -39,6 +41,8 @@ import type { WorktreeManager } from './worktrees.js';
 import { medianCost, xpForVerdict } from './xp.js';
 
 const ORCHESTRATOR_NAME = 'Tux';
+/** The boss's look. */
+const LEAD_VARIANT = 'buff-cat';
 const WORKER_NAMES = [
   'Mochi',
   'Miso',
@@ -1397,10 +1401,23 @@ export class CatManager {
       adapterId ?? this.#roleAdapter(role === 'orchestrator' ? 'orchestrator' : 'worker'),
     );
     const taken = new Set(this.cats().map((c) => c.name));
+    // The lead looks like the boss; others get the look fewest cats have.
+    const variant =
+      role === 'orchestrator' && CAT_VARIANTS.some((v) => v.id === LEAD_VARIANT)
+        ? LEAD_VARIANT
+        : pickVariant(
+            [...this.cats(), ...Object.values(this.o.log.board.retired).map((r) => r.cat)].map(
+              (c) => c.variant,
+            ),
+          );
+    // A look whose source file named its meme lends that name, if it is free.
+    const memeName = CAT_VARIANTS.find((v) => v.id === variant)?.name ?? null;
     const name =
       role === 'orchestrator'
         ? ORCHESTRATOR_NAME
-        : (WORKER_NAMES.find((n) => !taken.has(n)) ?? `Cat ${String(taken.size + 1)}`);
+        : memeName && !taken.has(memeName)
+          ? memeName
+          : (WORKER_NAMES.find((n) => !taken.has(n)) ?? `Cat ${String(taken.size + 1)}`);
     const catId = randomBytes(8).toString('hex');
     this.o.log.append({
       type: 'cat.created',
@@ -1421,6 +1438,7 @@ export class CatManager {
           maxTokens: config.budget.perCatTokens,
           maxMinutes: config.budget.perCatMinutes,
         },
+        variant,
       },
     });
     const agent = this.#newAgent(catId);

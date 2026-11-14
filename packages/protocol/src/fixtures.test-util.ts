@@ -15,6 +15,7 @@ export const sampleEvents = {
       model: null,
       permissionMode: 'accept_edits',
       budget: { maxUsd: 2, maxTokens: null, maxMinutes: null },
+      variant: 'ginger-stare',
     },
   },
   'task.created': {

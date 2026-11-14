@@ -67,6 +67,8 @@ export const Cat = z.strictObject({
   /** Mirror of `.agentcats/cats/<name>/learnings.md`, which is the source of truth. */
   learnings: z.array(Learning).max(500),
   createdAt: Timestamp,
+  /** Its look, from `CAT_VARIANTS`; `null` for a cat from before looks (the UI derives one). */
+  variant: z.string().min(1).max(64).nullable().default(null),
 });
 export type Cat = z.infer<typeof Cat>;
 

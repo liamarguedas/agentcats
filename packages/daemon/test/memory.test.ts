@@ -140,6 +140,15 @@ describe('cat folders', () => {
       },
       { timeout: 10_000 },
     );
+    // Its look is picked at creation and recorded in the profile; the lead looks like the boss.
+    expect(cat.variant).not.toBeNull();
+    expect(await readFile(join(dir, 'profile.md'), 'utf8')).toContain(
+      `- Look: ${cat.variant ?? ''}`,
+    );
+    const board = Snapshot.parse((await t.api('GET', '/api/snapshot')).body).board;
+    expect(Object.values(board.cats).find((c) => c.role === 'orchestrator')?.variant).toBe(
+      'buff-cat',
+    );
     expect(await readFile(join(dir, 'learnings.md'), 'utf8')).toContain(
       `# ${cat.name}'s learnings`,
     );
