@@ -156,11 +156,14 @@ export class Memory {
 
   async #open(cat: Cat): Promise<void> {
     await this.o.files.ensure(cat, cat.learnings);
-    await this.writeStats(cat.id);
-    await this.sync(cat.id);
+    // Watch before syncing: an edit made before the watcher starts is caught
+    // by the sync, one made after by the watcher. The other order missed
+    // edits made in between.
     this.o.files.watch(cat.name, () => {
       this.o.track(this.sync(cat.id));
     });
+    await this.writeStats(cat.id);
+    await this.sync(cat.id);
   }
 
   /** Bring the board in line with the file, if someone edited it by hand. */
