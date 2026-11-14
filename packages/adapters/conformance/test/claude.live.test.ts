@@ -20,6 +20,7 @@ describe.runIf(LIVE)('live', () => {
       approval:
         'Run exactly this with the Bash tool: curl -sI https://example.com . If it is denied, reply "denied" and stop.',
       write: 'Use the Write tool to create conformance.txt in the current directory containing: ok',
+      long: 'Count from 1 to 400, one number per line, with no other text.',
     },
     timeoutMs: 180_000,
   });

@@ -720,3 +720,16 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **The demo GIF is recorded from the product:** `packages/ui/scripts/record-demo.mjs` runs `--demo` and does what a person would: answers the approval, looks at a cat, opens the cost meter. It captures frames with Playwright and encodes them in Node with gifenc (MIT), because there is no ffmpeg dependency. The GIF is 800×450, 60 s in real time, 5.4 MB. Rerun the script when the board changes.
 - **The npm README's links point to GitHub:** the pack rewrites relative links and images, since npm shows the README without the repository.
 - **The code of conduct is short and original,** based on the Contributor Covenant's ideas, with reports going privately to the maintainer. Security reports use GitHub's private advisories.
+
+## 2026-11-14 - M5 criterion 6: a fresh contributor writes an adapter
+
+- **Test:** a separate agent, in its own git worktree, was given only the docs. Its task was a skeleton adapter (`echo`, a Node child process that echoes prompts and asks before commands) with a conformance target. It was told not to study the existing adapters' code.
+- **Result:** the suite passed, 9 of 9, on its first run, after about 15 steps. Its code was not kept; it was a test of the docs.
+- **Gaps it found, now fixed in `docs/adapters.md`:**
+  - **`ConformanceTarget`:** the page now points to it, and says the crash check needs a real `pid`, approvals are skipped without `capabilities.approvals`, and the interrupt check needs `prompts.long`.
+  - **Kit helpers:** how `spawnGuarded`, `killProcessTree` and `AsyncQueue` are used, and that `Session.pid` is the guardian's.
+  - **Imports:** which come from `@agentcats/protocol/adapter` and which from `@agentcats/protocol`, and `isPush`.
+  - **Dependencies:** a direct adapter's, and how a runtime file survives bundling.
+  - **What to send:** `billing`, usage without a cost, a crash mid-turn, `interrupt`, and when to declare `hooks` or `sandbox`.
+  - **What the suite does not cover.**
+- **The suite got stronger from it:** it now checks that `interrupt()` cancels a running turn and leaves the session usable (the board's Pause relies on that), and that a session allows one `events()` iterator. The mock, the scripted ACP agent and live Claude give it a long prompt.

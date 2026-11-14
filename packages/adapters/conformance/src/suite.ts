@@ -32,6 +32,12 @@ export interface ConformanceTarget {
      * before edits in `ask`) sets it.
      */
     readonly approvalMode?: 'ask' | 'accept_edits' | 'auto';
+    /**
+     * A turn that keeps the agent busy for a while, to check `interrupt()`
+     * (the board's Pause). Omitted skips that check; give one if
+     * `capabilities.interrupt` is true.
+     */
+    readonly long?: string;
     /** A turn that creates `conformance.txt` in the working directory. */
     readonly write: string;
   };
@@ -178,6 +184,28 @@ export function describeConformance(target: ConformanceTarget): void {
         });
       });
     }
+
+    it('interrupts a running turn and stays usable', async () => {
+      const long = target.prompts.long;
+      const { probe } = await start();
+      if (!long || !adapter.capabilities.interrupt) return;
+      const from = probe.events.length;
+      await probe.session.send(long);
+      await probe.waitFor((e) => e.type === 'turn.started', from);
+      await probe.session.interrupt();
+      const ended = await probe.waitFor((e) => e.type === 'turn.ended', from);
+      expect(ended).toMatchObject({ stopReason: 'cancelled' });
+      // The session is still there for the next message.
+      expect(await probe.turn(target.prompts.reply)).toMatchObject({ stopReason: 'end_turn' });
+      await probe.session.kill();
+      await probe.ended();
+      expect(checkSessionInvariants(probe.events)).toEqual([]);
+    });
+
+    it('allows one events() iterator per session', async () => {
+      const { probe } = await start();
+      expect(() => probe.session.events()).toThrow();
+    });
 
     it('leaves no process behind when killed', async () => {
       const { probe } = await start();

@@ -7,5 +7,10 @@ import { describeConformance } from '../src/index.js';
 describeConformance({
   name: 'mock',
   create: () => createMockAdapter({ timeScale: 0, realFiles: true, spawnProcess: true }),
-  prompts: { reply: 'say hello', approval: '/approval', write: '/conformance-write' },
+  prompts: {
+    reply: 'say hello',
+    approval: '/approval',
+    write: '/conformance-write',
+    long: '/hang',
+  },
 });

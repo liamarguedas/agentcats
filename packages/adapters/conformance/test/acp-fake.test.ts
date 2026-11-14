@@ -31,5 +31,10 @@ describeConformance({
       modeFor: (policy) => (policy?.access === 'read_only' ? 'read-only' : 'auto'),
       modelOption: 'model',
     }),
-  prompts: { reply: 'say hello', approval: 'approve the tests', write: 'write the file' },
+  prompts: {
+    reply: 'say hello',
+    approval: 'approve the tests',
+    write: 'write the file',
+    long: 'hang until cancelled',
+  },
 });

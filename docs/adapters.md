@@ -21,7 +21,9 @@ packages/adapters/<name>/
 ```
 
 Copy `package.json`, `tsconfig.json` and `tsconfig.build.json` from `packages/adapters/codex`, then change the name to `@agentcats/adapter-<name>` and the dependencies to yours.
+An ACP adapter depends on `@agentcats/adapter-acp` and `@agentcats/protocol`, like Codex; a direct adapter on `@agentcats/kit` (for `spawnGuarded`) and `@agentcats/protocol`.
 Keep `"private": true`: only the `agentcats` package is published, with adapters bundled into it.
+If your adapter reads a file at runtime, such as an agent script, resolve it with `new URL('../bin/agent.mjs', import.meta.url)` and add it to the files `packages/cli/scripts/pack.mjs` copies, so it survives bundling.
 Pin every dependency to an exact version at least two weeks old.
 Run `pnpm install` at the root.
 
@@ -30,6 +32,7 @@ If your adapter uses an agent SDK, add the SDK to `AGENT_SDKS` in `eslint.config
 ## 2. Implement the adapter
 
 The contract is `packages/protocol/src/adapter.ts`; its comments are the reference.
+Import the contract's types (`Adapter`, `Session`, `SpawnOptions`, `AgentEvent`, `AdapterError`) from `@agentcats/protocol/adapter`, and shared types and rules (`PermissionMode`, `ToolKind`, `Usage`, `Billing`, `alwaysAskReason`, `isPush`) from `@agentcats/protocol`.
 
 ```ts
 import type { Adapter } from '@agentcats/protocol/adapter';
@@ -75,6 +78,20 @@ For an ACP agent, pass an `AcpAgentConfig` to `createAcpAdapter` instead: the st
 
 The guarantees the daemon relies on are listed on `Session`: `session.started` first, `session.ended` exactly once and last, turns that never overlap, every `turn.started` matched by one `turn.ended`.
 
+What to send when:
+
+- **`session.started.billing`**: `metered` (pay per use), `subscription`, or `unknown` when the agent does not say.
+- **`usage` without a cost**: tokens if you have them, `costUsd: null` and `costSource: 'unknown'`; or no `usage` events at all.
+- **A crash mid-turn**: an `error` event, `turn.ended` with `stopReason: 'error'`, then `session.ended` with `reason: 'crashed'`. A process that exits on its own after a clean shutdown is `exited`; one you killed is `killed`, whatever its exit code.
+- **`interrupt()`**: end the running turn with `stopReason: 'cancelled'`, and keep the session usable.
+- **`policyEnforcement`**: `hooks` when your adapter (or the agent, through a hook) checks every action against `SpawnOptions.policy` before it runs; `sandbox` when the agent's own sandbox is the only fence; `none` when there is neither.
+
+### Helpers in `@agentcats/kit`
+
+- **`spawnGuarded(command, args, { cwd, env })`** starts the agent under a guardian process and returns the guardian as a `ChildProcess`, whose stdin, stdout and stderr are piped straight to the agent. Report `child.pid` as `Session.pid`.
+- **`killProcessTree(pid)`** kills the guardian and everything under it. Use it in `kill()`; `child.kill()` alone leaves the agent running on Windows.
+- **`AsyncQueue`** is an async iterable you push events into; `events()` can return it. It allows one iterator, as `Session` requires.
+
 ### Rules that keep users safe
 
 - **Start every process with `spawnGuarded`** from `@agentcats/kit`, and kill the whole tree in `kill()`. Then the agent cannot outlive agentcats, even after a hard kill.
@@ -84,7 +101,30 @@ The guarantees the daemon relies on are listed on `Session`: `session.started` f
 
 ## 3. Pass the conformance suite
 
-The suite (`packages/adapters/conformance`) checks the contract against a real session: a valid turn, a follow-up, approvals allowed and denied, a kill that leaves no process, usage or an honest "cost unknown", the working directory, a crash reported as the session ending, and `preflight`.
+The suite (`packages/adapters/conformance`) checks the contract against a real session:
+
+- a valid turn, and a follow-up in the same session;
+- approvals allowed and denied;
+- an interrupt that cancels a turn and leaves the session usable;
+- one `events()` iterator per session;
+- a kill that leaves no process;
+- usage, or an honest "cost unknown";
+- the working directory;
+- a crash reported as the session ending;
+- `preflight`.
+
+Its options are `ConformanceTarget` in `packages/adapters/conformance/src/suite.ts`.
+Some checks depend on your adapter:
+- The crash check kills `Session.pid` from outside, so an adapter whose `pid` is `null` (an in-process agent) skips it.
+- An adapter whose `capabilities.approvals` is false skips the approval checks.
+- The interrupt check runs only if you give `prompts.long`.
+
+The suite does not cover everything.
+Test these in your package's own tests:
+- policy enforcement: `read_only`, `protectedPaths`, `allowedCommands`;
+- `complete()`;
+- the `busy` and `closed` errors;
+- `unsupported` options.
 
 Add a target in `packages/adapters/conformance/test/<name>.test.ts`:
 
@@ -100,6 +140,7 @@ describeConformance({
     reply: 'Reply with one short sentence.',
     approval: 'Run exactly this shell command: curl -sI https://example.com',
     write: 'Create a file named conformance.txt containing: ok',
+    long: 'Count from 1 to 400, one number per line.', // for the interrupt check
   },
 });
 ```
