@@ -733,3 +733,10 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
   - **What to send:** `billing`, usage without a cost, a crash mid-turn, `interrupt`, and when to declare `hooks` or `sandbox`.
   - **What the suite does not cover.**
 - **The suite got stronger from it:** it now checks that `interrupt()` cancels a running turn and leaves the session usable (the board's Pause relies on that), and that a session allows one `events()` iterator. The mock, the scripted ACP agent and live Claude give it a long prompt.
+
+## 2026-11-14 - M5 criterion 2: live Claude run of the M1 flow
+
+- **First run** (`live-team`, `haiku`, the user's Pro plan, the final office art, captions on):
+  - Tux planned the work; a worker built `POST /login` with tests on its own branch (4 files, +406, 19 tests passing). The task reached review, at 3 cents API-equivalent.
+  - The test failed only on parallelism: Tux made one task instead of two. Its reason was that the endpoint and its tests touch the same files, so one task avoids merge conflicts. That is a model's judgment call, not a fault in the flow; the M1 run split the same request in two. No caption fired, because nothing failed.
+- **Removed `packages/ui/e2e/live-claude.spec.ts`,** the M0 single-cat spike. It had not worked since M1: its config keys no longer exist (`defaultModel`, a top-level `permissionMode`), its repo had no commit, and it expected one cat to do the work itself. `live-team.spec.ts` covers the real flow.
