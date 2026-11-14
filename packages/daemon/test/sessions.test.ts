@@ -37,6 +37,8 @@ describe('sessions', () => {
       ]);
       const res = SessionEventsResponse.parse((await get(second, '/api/sessions/1/events')).body);
       expect(res.events[0]?.type).toBe('daemon.started');
+      // The lead was created in the first run, so the second starts with it on the board.
+      expect(Object.values(res.initialBoard.cats).map((c) => c.role)).toContain('orchestrator');
       expect(res.events.every((e) => e.seq >= sessions[1]!.firstSeq)).toBe(true);
       expect(res).toMatchObject({ projectPath, homeDir: homedir() });
       expect((await get(second, '/api/sessions/7/events')).status).toBe(404);

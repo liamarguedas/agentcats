@@ -1,4 +1,11 @@
-import { type AgentcatsEvent, type Cat, levelSpec, type Task } from '@agentcats/protocol';
+import {
+  type AgentcatsEvent,
+  type BoardState,
+  type Cat,
+  levelSpec,
+  prepareExport,
+  type Task,
+} from '@agentcats/protocol';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import { ApiRequestError, type BoardClient, type ConnectionState } from './board-client.js';
@@ -14,14 +21,44 @@ import {
   RetireDialog,
 } from './components/Hiring.js';
 import { LearningsSection, LevelSection, levelPerks } from './components/Learnings.js';
+import { ReplayBar, SessionPicker } from './components/Replay.js';
 import { TaskCard } from './components/TaskCard.js';
+import { ReplayPlayer } from './replay.js';
 
 const CONNECTION_LABEL: Record<ConnectionState, string> = {
   connecting: 'Connecting…',
   live: 'Live',
   reconnecting: 'Reconnecting…',
   unauthorized: 'Token rejected',
+  replay: 'Replay',
 };
+
+interface Replay {
+  readonly player: ReplayPlayer;
+  readonly label: string;
+  /** What an export needs; `null` for an imported file, which already is one. */
+  readonly source: {
+    readonly initialBoard: BoardState;
+    readonly events: readonly AgentcatsEvent[];
+    readonly projectPath: string;
+    readonly homeDir: string;
+    readonly startedAt: number;
+  } | null;
+}
+
+/** Save a JSON file through the browser. */
+function download(name: string, data: unknown): void {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1_000);
+}
+
+const fileStamp = (ts: number) => new Date(ts).toISOString().slice(0, 16).replace(/[:T]/g, '-');
 
 type Drawer = { kind: 'task'; id: string } | { kind: 'cat'; id: string } | null;
 
@@ -86,7 +123,11 @@ function undoVersionOf(events: readonly AgentcatsEvent[], catId: string): string
 }
 
 export function App({ client }: { client: BoardClient }) {
-  const view = useSyncExternalStore(client.subscribe, client.getView);
+  const [replay, setReplay] = useState<Replay | null>(null);
+  const [picking, setPicking] = useState(false);
+  const source = replay?.player ?? client;
+  const view = useSyncExternalStore(source.subscribe, source.getView);
+  useEffect(() => () => replay?.player.dispose(), [replay]);
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [hiring, setHiring] = useState(false);
   const [retiring, setRetiring] = useState<string | null>(null);
@@ -198,7 +239,18 @@ export function App({ client }: { client: BoardClient }) {
       .filter((p) => p.catId === catId)
       .sort((a, b) => a.createdAt - b.createdAt);
 
+  const readOnly = () => {
+    setErrors((list) => [
+      ...list.slice(-2),
+      { id: Date.now(), text: 'This is a replay: nothing can be changed. Exit the replay first.' },
+    ]);
+  };
+
   async function run(action: () => Promise<unknown>) {
+    if (replay) {
+      readOnly();
+      return;
+    }
     try {
       await action();
     } catch (error) {
@@ -220,8 +272,17 @@ export function App({ client }: { client: BoardClient }) {
   // Stable per open task, so the drawer refetches only when the task changes.
   const loadHistory = useCallback(
     async () =>
-      openTaskId ? (await client.request('taskEvents', { taskId: openTaskId })).events : [],
-    [client, openTaskId],
+      !openTaskId
+        ? []
+        : replay
+          ? replay.player.getView().events.filter((e) => e.taskId === openTaskId)
+          : (await client.request('taskEvents', { taskId: openTaskId })).events,
+    [client, openTaskId, replay],
+  );
+
+  const loadSessions = useCallback(
+    async () => (await client.request('sessions')).sessions,
+    [client],
   );
 
   const catCard = (cat: Cat, size: 'lead' | 'worker') => (
@@ -250,11 +311,16 @@ export function App({ client }: { client: BoardClient }) {
         setRetiring(cat.id);
       }}
       onDismissRetire={() => void run(() => client.request('dismissRetire', { catId: cat.id }))}
+      readOnly={replay !== null}
     />
   );
 
   /** Run a request and report whether it worked, for forms that keep their input on failure. */
   async function attempt(action: () => Promise<unknown>): Promise<boolean> {
+    if (replay) {
+      readOnly();
+      return false;
+    }
     try {
       await action();
       return true;
@@ -270,21 +336,34 @@ export function App({ client }: { client: BoardClient }) {
   const openCat = drawer?.kind === 'cat' ? board.cats[drawer.id] : undefined;
 
   return (
-    <div className={`app${drawer ? ' app--drawer-open' : ''}`}>
+    <div className={`app${drawer ? ' app--drawer-open' : ''}${replay ? ' app--replay' : ''}`}>
       <header className="app__header">
         <h1 className="app__title">
           agent<span>cats</span>
         </h1>
         <div className="app__header-right">
-          <button
-            type="button"
-            className="button button--small"
-            onClick={() => {
-              setHiring(true);
-            }}
-          >
-            Hire a cat
-          </button>
+          {!replay && (
+            <button
+              type="button"
+              className="button button--small"
+              onClick={() => {
+                setPicking(true);
+              }}
+            >
+              Replay
+            </button>
+          )}
+          {!replay && (
+            <button
+              type="button"
+              className="button button--small"
+              onClick={() => {
+                setHiring(true);
+              }}
+            >
+              Hire a cat
+            </button>
+          )}
           <span
             className="team-spend"
             title={estimated ? 'Includes API-equivalent estimates' : 'Reported cost'}
@@ -300,7 +379,13 @@ export function App({ client }: { client: BoardClient }) {
       <main className="board">
         <div className="board__canvas">
           <section className="board__lead" aria-label="Lead">
-            {lead ? catCard(lead, 'lead') : <p className="board__empty">Waiting for the daemon…</p>}
+            {lead ? (
+              catCard(lead, 'lead')
+            ) : (
+              <p className="board__empty">
+                {replay ? 'No lead yet at this point of the replay.' : 'Waiting for the daemon…'}
+              </p>
+            )}
           </section>
           <section className="board__team" aria-label="Workers">
             {workers.length === 0 ? (
@@ -379,6 +464,7 @@ export function App({ client }: { client: BoardClient }) {
           cat={lead}
           events={events}
           live={view.connection === 'live'}
+          readOnly={replay !== null}
           onSend={(text) => run(() => client.request('chat', {}, { text }))}
         />
         <EventLog events={events} />
@@ -577,6 +663,55 @@ export function App({ client }: { client: BoardClient }) {
             </>
           )}
         </CatDrawer>
+      )}
+      {picking && (
+        <SessionPicker
+          loadSessions={loadSessions}
+          onClose={() => {
+            setPicking(false);
+          }}
+          onPick={(session) => {
+            void run(async () => {
+              const res = await client.request('sessionEvents', { index: String(session.index) });
+              setDrawer(null);
+              setPicking(false);
+              setReplay({
+                player: new ReplayPlayer(res.initialBoard, res.events, client.getView().adapters),
+                label: `session from ${new Date(session.startedAt).toLocaleDateString()}`,
+                source: { ...res, startedAt: session.startedAt },
+              });
+            });
+          }}
+          onImport={(file, name) => {
+            setDrawer(null);
+            setPicking(false);
+            setReplay({
+              player: new ReplayPlayer(file.initialBoard, file.events, client.getView().adapters),
+              label: `${name}${file.includesContents ? '' : ' (long texts cut)'}`,
+              source: null,
+            });
+          }}
+        />
+      )}
+      {replay && (
+        <ReplayBar
+          player={replay.player}
+          label={replay.label}
+          onExport={
+            replay.source
+              ? ((src) => (includeContents: boolean) => {
+                  download(
+                    `agentcats-session-${fileStamp(src.startedAt)}.json`,
+                    prepareExport(src.initialBoard, src.events, { ...src, includeContents }),
+                  );
+                })(replay.source)
+              : null
+          }
+          onExit={() => {
+            setDrawer(null);
+            setReplay(null);
+          }}
+        />
       )}
     </div>
   );

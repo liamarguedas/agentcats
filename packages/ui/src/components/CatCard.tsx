@@ -56,6 +56,8 @@ export interface CatCardProps {
   readonly adapter: AdapterInfo | undefined;
   readonly onReviewRetire: () => void;
   readonly onDismissRetire: () => void;
+  /** A replay: show the cat as it was, with no controls. */
+  readonly readOnly?: boolean;
 }
 
 const ACTIVE = new Set<Cat['status']>(['thinking', 'working', 'waiting_approval', 'blocked']);
@@ -84,18 +86,24 @@ export function CatCard(props: CatCardProps) {
           <p>
             The lead suggests retiring {cat.name}: {props.retireSuggestion}
           </p>
-          <div className="drawer__actions">
-            <button
-              type="button"
-              className="button button--small button--danger"
-              onClick={props.onReviewRetire}
-            >
-              Retire…
-            </button>
-            <button type="button" className="button button--small" onClick={props.onDismissRetire}>
-              Keep
-            </button>
-          </div>
+          {!props.readOnly && (
+            <div className="drawer__actions">
+              <button
+                type="button"
+                className="button button--small button--danger"
+                onClick={props.onReviewRetire}
+              >
+                Retire…
+              </button>
+              <button
+                type="button"
+                className="button button--small"
+                onClick={props.onDismissRetire}
+              >
+                Keep
+              </button>
+            </div>
+          )}
         </div>
       )}
       <div className="cat-card__meta">
@@ -119,28 +127,31 @@ export function CatCard(props: CatCardProps) {
         {task && size === 'worker' && <p className="cat-card__task">{task.title}</p>}
         <Spend cat={cat} usage={usage} adapter={props.adapter} />
         <div className="cat-card__actions">
-          {paused ? (
-            <button type="button" className="button button--small" onClick={props.onResume}>
-              Resume
-            </button>
-          ) : (
+          {!props.readOnly &&
+            (paused ? (
+              <button type="button" className="button button--small" onClick={props.onResume}>
+                Resume
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button button--small"
+                onClick={props.onPause}
+                disabled={!ACTIVE.has(cat.status)}
+              >
+                Pause
+              </button>
+            ))}
+          {!props.readOnly && (
             <button
               type="button"
               className="button button--small"
-              onClick={props.onPause}
-              disabled={!ACTIVE.has(cat.status)}
+              onClick={props.onKill}
+              disabled={!ACTIVE.has(cat.status) && !paused}
             >
-              Pause
+              Stop
             </button>
           )}
-          <button
-            type="button"
-            className="button button--small"
-            onClick={props.onKill}
-            disabled={!ACTIVE.has(cat.status) && !paused}
-          >
-            Stop
-          </button>
           <button
             type="button"
             className="button button--small button--ghost"
@@ -165,7 +176,7 @@ export function CatCard(props: CatCardProps) {
   );
 }
 
-function Bubble({ cat, approval, lastMessage, onApprove }: CatCardProps) {
+function Bubble({ cat, approval, lastMessage, onApprove, readOnly }: CatCardProps) {
   if (approval) {
     return (
       <div
@@ -177,7 +188,7 @@ function Bubble({ cat, approval, lastMessage, onApprove }: CatCardProps) {
           {KIND_ICON[approval.kind]} May I use <strong>{approval.toolName}</strong>?
         </p>
         <code className="bubble__code">{approval.inputSummary}</code>
-        <div className="bubble__actions">
+        <div className="bubble__actions" hidden={readOnly}>
           <button
             type="button"
             className="button button--primary"

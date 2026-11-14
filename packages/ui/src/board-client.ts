@@ -16,7 +16,7 @@ import {
 } from '@agentcats/protocol';
 import type { z } from 'zod';
 
-export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'unauthorized';
+export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'unauthorized' | 'replay';
 
 /** Everything the UI renders. Replaced, never mutated, so React can compare by reference. */
 export interface BoardView {

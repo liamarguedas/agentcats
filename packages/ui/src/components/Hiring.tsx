@@ -21,7 +21,7 @@ const TIER_LABEL: Record<ModelTier, string> = {
   best: 'Best and most expensive',
 };
 
-function Dialog({
+export function Dialog({
   title,
   onClose,
   children,

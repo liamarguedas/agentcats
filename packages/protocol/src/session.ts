@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
 import { Timestamp } from './common.js';
+import type { Task } from './entities.js';
 import { AgentcatsEvent } from './events.js';
+import { BoardState } from './projection.js';
 import { redactDeep } from './redact.js';
 
 /**
@@ -60,6 +62,8 @@ export const SessionExport = z.strictObject({
   exportedAt: Timestamp,
   /** Whether long agent output, task descriptions and summaries were kept in full. */
   includesContents: z.boolean(),
+  /** The board when the session started: cats and tasks from earlier sessions. */
+  initialBoard: BoardState,
   events: z.array(AgentcatsEvent).min(1),
 });
 export type SessionExport = z.infer<typeof SessionExport>;
@@ -92,6 +96,7 @@ export interface ExportOptions {
  * so file contents an agent printed do not travel with the file.
  */
 export function prepareExport(
+  initialBoard: BoardState,
   events: readonly AgentcatsEvent[],
   options: ExportOptions,
 ): SessionExport {
@@ -115,16 +120,21 @@ export function prepareExport(
             description: cut(event.payload.description, EXPORT_LIMITS.taskDescription),
           },
         };
-      case 'task.updated':
-        return typeof event.payload.summary === 'string'
-          ? {
-              ...event,
-              payload: {
-                ...event.payload,
-                summary: cut(event.payload.summary, EXPORT_LIMITS.taskSummary),
-              },
-            }
-          : event;
+      case 'task.updated': {
+        const { summary, result } = event.payload;
+        return {
+          ...event,
+          payload: {
+            ...event.payload,
+            ...(typeof summary === 'string' && {
+              summary: cut(summary, EXPORT_LIMITS.taskSummary),
+            }),
+            ...(result && {
+              result: { ...result, summary: cut(result.summary, EXPORT_LIMITS.taskSummary) },
+            }),
+          },
+        };
+      }
       case 'message.user':
         return {
           ...event,
@@ -136,13 +146,34 @@ export function prepareExport(
   });
   // Agent messages cut to nothing are dropped: they only continued a message already cut.
   const events_ = trimmed.filter((e) => e.type !== 'message.agent' || e.payload.text !== '');
+  const board = options.includeContents
+    ? initialBoard
+    : {
+        ...initialBoard,
+        tasks: Object.fromEntries(
+          Object.entries(initialBoard.tasks).map(([id, task]) => [id, trimTask(task)]),
+        ),
+      };
   return SessionExport.parse({
     format: SESSION_EXPORT_FORMAT,
     version: 1,
     exportedAt: options.now ?? Date.now(),
     includesContents: options.includeContents,
+    initialBoard: redactDeep(hidePaths(board, options)),
     events: redactDeep(hidePaths(events_, options)),
   });
+}
+
+function trimTask(task: Task): Task {
+  return {
+    ...task,
+    description: cut(task.description, EXPORT_LIMITS.taskDescription),
+    summary: task.summary === null ? null : cut(task.summary, EXPORT_LIMITS.taskSummary),
+    result: task.result && {
+      ...task.result,
+      summary: cut(task.result.summary, EXPORT_LIMITS.taskSummary),
+    },
+  };
 }
 
 function cut(text: string, limit: number): string {

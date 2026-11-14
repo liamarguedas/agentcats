@@ -155,6 +155,8 @@ export type SessionsResponse = z.infer<typeof SessionsResponse>;
  * the UI hide them in an export (`prepareExport`).
  */
 export const SessionEventsResponse = z.strictObject({
+  /** The board when the session started. */
+  initialBoard: BoardState,
   events: z.array(AgentcatsEvent),
   projectPath: z.string().min(1),
   homeDir: z.string().min(1),

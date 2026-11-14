@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AgentcatsEvent } from './events.js';
+import { emptyBoard } from './projection.js';
 import { REDACTED } from './redact.js';
 import { EXPORT_LIMITS, prepareExport, SessionExport, splitSessions } from './session.js';
 
@@ -48,10 +49,14 @@ describe('prepareExport', () => {
   it('cuts long agent output across chunks, and drops chunks past the cut', () => {
     seq = 0;
     const long = 'x'.repeat(EXPORT_LIMITS.agentMessage - 10);
-    const file = prepareExport([agent('m1', long), agent('m1', 'y'.repeat(50)), agent('m1', 'z')], {
-      ...OPTIONS,
-      includeContents: false,
-    });
+    const file = prepareExport(
+      emptyBoard(),
+      [agent('m1', long), agent('m1', 'y'.repeat(50)), agent('m1', 'z')],
+      {
+        ...OPTIONS,
+        includeContents: false,
+      },
+    );
     expect(file.events).toHaveLength(2);
     const texts = file.events.map((e) => (e.type === 'message.agent' ? e.payload.text : ''));
     expect(texts[0]).toBe(long);
@@ -74,7 +79,7 @@ describe('prepareExport', () => {
       notice(2, 'Kept C:\\Users\\user\\x and /home/user/.agentcats'),
     ];
     for (const includeContents of [true, false]) {
-      const file = prepareExport(events, {
+      const file = prepareExport(emptyBoard(), events, {
         ...OPTIONS,
         projectPath: '/home/user/work/app',
         homeDir: '/home/user',

@@ -14,6 +14,8 @@ import { extname, resolve, sep } from 'node:path';
 
 import {
   API_PREFIX,
+  applyEvent,
+  emptyBoard,
   type ErrorResponse,
   PROTOCOL_VERSION,
   type RouteName,
@@ -217,8 +219,10 @@ export function createHttpServer(options: HttpServerOptions): {
       if (!Number.isInteger(index) || !session) {
         throw new ApiError('not_found', `No session ${param(params, 'index')}`);
       }
+      const all = log.allEvents();
       return Promise.resolve({
-        events: log.eventsBetween(session.firstSeq, session.lastSeq),
+        initialBoard: all.filter((e) => e.seq < session.firstSeq).reduce(applyEvent, emptyBoard()),
+        events: all.filter((e) => e.seq >= session.firstSeq && e.seq <= session.lastSeq),
         projectPath: options.projectPath,
         homeDir: homedir(),
       });

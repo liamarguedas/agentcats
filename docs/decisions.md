@@ -651,3 +651,15 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
   - A key typed into a task description reaches the agent as `[redacted]`. Secrets go to agents through their environment, not the board.
   - Streamed agent text is held back until a line ends (or 2,000 characters), so a key split across chunks is still caught. Codex text therefore appears on the board a line at a time; Claude sends whole messages and is unaffected.
 - **Port in use and an old Node** now get a one-line explanation instead of a stack trace. The Node check runs in plain JavaScript before any module an old Node lacks is loaded.
+
+## 2026-11-13 - M5 replay and export decisions
+
+- **A session is one run of agentcats**, marked by a new `daemon.started` event. A log from before M5 is one session.
+- **Replay runs in the browser**, on the same projection as the live board, from the board as it stood when the session began (`initialBoard`), so cats from earlier sessions are there. It never writes to the daemon: actions are hidden or refused with a message.
+- **Idle gaps longer than 3 seconds play as 3 seconds**, so a cat waiting an hour for an approval does not replay as an hour. The bar says so in its tooltip.
+- **Export is built in the browser** with `prepareExport` from the protocol. It always redacts secrets and replaces the project path and the home directory. Without the "Include file contents and long outputs" box, which is off by default, it also cuts the following:
+  - agent messages, to 200 characters each;
+  - task descriptions, to 200;
+  - summaries, to 500;
+  - user messages, to 500.
+- **Import never touches the daemon**: a file is validated against `SessionExport` and replayed locally.

@@ -38,11 +38,14 @@ export function ChatPanel({
   cat,
   events,
   live,
+  readOnly = false,
   onSend,
 }: {
   cat: Cat | undefined;
   events: readonly AgentcatsEvent[];
   live: boolean;
+  /** A replay: show the conversation, offer no input. */
+  readOnly?: boolean;
   onSend: (text: string) => Promise<void>;
 }) {
   const messages = useMemo(() => (cat ? toMessages(events, cat.id) : []), [events, cat]);
@@ -59,8 +62,9 @@ export function ChatPanel({
       <ol ref={listRef} className="chat__list">
         {messages.length === 0 && (
           <li className="chat__empty">
-            Tell {cat?.name ?? 'the lead cat'} what you want built. It plans the work and hands it
-            to worker cats, each on its own branch.
+            {readOnly
+              ? 'Nothing has been said to the lead yet at this point of the replay.'
+              : `Tell ${cat?.name ?? 'the lead cat'} what you want built. It plans the work and hands it to worker cats, each on its own branch.`}
           </li>
         )}
         {messages.map((m) => (
@@ -81,13 +85,15 @@ export function ChatPanel({
           </li>
         )}
       </ol>
-      <PromptBox
-        disabled={!cat || !live || busy || cat.pausedReason !== null}
-        placeholder={
-          busy ? `${cat.name} is busy…` : `Ask ${cat?.name ?? 'the lead'} to build something`
-        }
-        onSubmit={onSend}
-      />
+      {!readOnly && (
+        <PromptBox
+          disabled={!cat || !live || busy || cat.pausedReason !== null}
+          placeholder={
+            busy ? `${cat.name} is busy…` : `Ask ${cat?.name ?? 'the lead'} to build something`
+          }
+          onSubmit={onSend}
+        />
+      )}
     </section>
   );
 }

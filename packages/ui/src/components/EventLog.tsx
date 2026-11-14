@@ -148,7 +148,7 @@ export function EventLog({ events }: { events: readonly AgentcatsEvent[] }) {
         {rows.map((row) => (
           <li
             key={row.key}
-            className={`event-log__row event-log__row--${row.type.split('.')[0] ?? ''}`}
+            className={`event-log__row event-log__row--${row.type.split('.')[0] ?? ''} event-log__row--${row.type.replace('.', '-')}`}
           >
             <span className="event-log__seq">#{row.seq}</span>
             <time className="event-log__time">{time(row.ts)}</time>

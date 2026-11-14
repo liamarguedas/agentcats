@@ -287,6 +287,59 @@ test('the board resyncs after a reload', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
 });
 
+test('a past session replays read-only, exports without long texts, and imports back', async ({
+  page,
+}) => {
+  await openBoard(page);
+  await page.getByRole('button', { name: 'Replay', exact: true }).click();
+  const picker = page.getByRole('dialog', { name: 'Replay a session' });
+  await picker.getByRole('button', { name: /This run/ }).click();
+
+  const bar = page.getByRole('region', { name: 'Replay' });
+  await expect(bar).toBeVisible();
+  await expect(page.getByTestId('connection')).toHaveText('Replay');
+  await expect(page.getByRole('button', { name: 'Hire a cat' })).toBeHidden();
+  // The run so far, scrubbed to its end: the workers from earlier tests are back.
+  await bar.getByLabel('Position').focus();
+  await page.keyboard.press('End');
+  await expect(page.getByTestId('cat-Mochi')).toBeVisible();
+  await expect(bar).toContainText(/event (\d+) of \1(?!\d)/);
+  await shot(page, 'replay');
+  await page.keyboard.press('Home');
+  await bar.getByRole('button', { name: 'Play', exact: true }).click();
+  await expect(bar.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await bar.getByRole('button', { name: 'Pause', exact: true }).click();
+
+  await bar.getByRole('button', { name: 'Export…' }).click();
+  await expect(bar.getByLabel('Include file contents and long outputs')).not.toBeChecked();
+  const [file] = await Promise.all([
+    page.waitForEvent('download'),
+    bar.getByRole('button', { name: 'Download' }).click(),
+  ]);
+  expect(file.suggestedFilename()).toMatch(/^agentcats-session-[\d-]+\.json$/);
+  const path = await file.path();
+  const exported = JSON.parse(readFileSync(path, 'utf8')) as {
+    format: string;
+    includesContents: boolean;
+    events: { type: string; payload: { text?: string } }[];
+  };
+  expect(exported).toMatchObject({ format: 'agentcats-session', includesContents: false });
+  const { projectPath } = JSON.parse(readFileSync(E2E_STATE_FILE, 'utf8')) as {
+    projectPath: string;
+  };
+  // JSON escapes backslashes, so a Windows path appears with them doubled.
+  expect(JSON.stringify(exported)).not.toContain(JSON.stringify(projectPath).slice(1, -1));
+
+  await bar.getByRole('button', { name: 'Exit replay' }).click();
+  await expect(page.getByTestId('connection')).toHaveText('Live');
+
+  await page.getByRole('button', { name: 'Replay', exact: true }).click();
+  await page.locator('input[type=file]').setInputFiles(path);
+  await expect(bar).toContainText('(long texts cut)');
+  await expect(bar.getByRole('button', { name: 'Export…' })).toBeHidden();
+  await bar.getByRole('button', { name: 'Exit replay' }).click();
+});
+
 test('without a token it explains how to open the board', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByText('Open the board from the link printed by')).toBeVisible();

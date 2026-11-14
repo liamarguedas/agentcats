@@ -137,6 +137,10 @@ code {
   background: var(--danger);
 }
 
+.connection--replay::before {
+  background: var(--info);
+}
+
 .board {
   grid-area: board;
   display: flex;
@@ -364,8 +368,8 @@ code {
   overflow-wrap: anywhere;
 }
 
-.event-log__row--daemon .event-log__type,
-.event-log__row--daemon .event-log__text {
+.event-log__row--daemon-error .event-log__type,
+.event-log__row--daemon-error .event-log__text {
   color: var(--danger);
 }
 
@@ -1914,4 +1918,175 @@ code {
 
 .form__row--candidates {
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+/* Replay */
+
+.app--replay {
+  grid-template:
+    'header header' auto
+    'board sidebar' 1fr
+    'replay replay' auto / 1fr minmax(320px, 400px);
+}
+
+.app--replay .app__header {
+  background: color-mix(in srgb, var(--info) 7%, var(--surface));
+}
+
+.replay-bar {
+  grid-area: replay;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.replay-bar__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.replay-bar__row--meta {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.replay-bar__play {
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  font-size: 13px;
+}
+
+.replay-bar__speed select {
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-bar__scrub {
+  flex: 1;
+  min-width: 80px;
+  accent-color: var(--accent);
+}
+
+.replay-bar__scrub:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 3px;
+  border-radius: 999px;
+}
+
+/* Toasts sit above the replay bar, not on it. */
+.app--replay .toasts {
+  bottom: 96px;
+}
+
+.replay-bar__time {
+  min-width: 96px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-bar__label strong {
+  color: var(--info);
+}
+
+.replay-bar__actions,
+.replay-bar__export {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.replay-bar__export label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+}
+
+.replay-picker__hint {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.replay-picker__error {
+  margin: 0 0 12px;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.replay-picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.replay-picker__session {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.replay-picker__session:hover {
+  border-color: var(--accent);
+}
+
+.replay-picker__session:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.replay-picker__when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.replay-picker__badge {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+.replay-picker__meta {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.replay-picker__import {
+  align-self: flex-start;
+  cursor: pointer;
 }
