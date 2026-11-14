@@ -120,6 +120,28 @@ function heightForBubbles(office: HTMLElement): number {
   return Math.ceil(needed);
 }
 
+/** Space kept between a cat's card and the edge of the office. */
+const CARD_MARGIN = 8;
+
+/**
+ * Open each cat's details card below the cat when it fits in the office,
+ * else above it (the cats in the bottom rows), else where there is more
+ * room. Cards are laid out while hidden, so they can be measured.
+ */
+function placeCards(office: HTMLElement): void {
+  const height = office.clientHeight;
+  for (const cat of office.querySelectorAll<HTMLElement>('.office__cat')) {
+    const card = cat.querySelector<HTMLElement>('.cat-card__meta');
+    const share = Number(cat.dataset['y']) / 100;
+    if (!card || !(share > 0)) continue;
+    const feet = share * height;
+    const below = height - feet - CARD_MARGIN;
+    const above = feet - cat.offsetHeight - CARD_MARGIN;
+    const needed = card.offsetHeight + 6;
+    cat.dataset['open'] = needed <= below || below >= above ? 'down' : 'up';
+  }
+}
+
 /**
  * The office: a whiteboard where the lead plans and idle cats wait, desks
  * where cats work, and a meeting table where cats wait for you.
@@ -151,6 +173,7 @@ export function Office({
     const office = officeRef.current;
     if (!office) return;
     office.style.minHeight = `${String(Math.max(minHeight, heightForBubbles(office)))}px`;
+    placeCards(office);
   });
   return (
     <div className="office-scroll">

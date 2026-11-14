@@ -2520,7 +2520,9 @@ button.team-spend:focus-visible {
   top: calc(100% + 6px);
   left: 50%;
   z-index: 20;
-  display: none;
+  /* Hidden but laid out, so the office can measure it and open it where it fits. */
+  display: flex;
+  visibility: hidden;
   width: 270px;
   padding: 12px 14px;
   border: 1px solid var(--line);
@@ -2528,17 +2530,23 @@ button.team-spend:focus-visible {
   background: var(--surface);
   box-shadow: var(--shadow);
   transform: translateX(-50%);
-  animation: bubble-in 140ms ease-out;
 }
 
 .cat-card--token:hover .cat-card__meta,
 .cat-card--token:focus-within .cat-card__meta {
-  display: flex;
+  visibility: visible;
+  animation: bubble-in 140ms ease-out;
+}
+
+/* No room below the cat (the bottom rows): the card opens above it. */
+.office__cat[data-open='up'] .cat-card--token .cat-card__meta {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 /* One card at a time: pointing at a cat hides the card of the one with focus. */
 .office__floor:hover .cat-card--token:not(:hover) .cat-card__meta {
-  display: none;
+  visibility: hidden;
 }
 
 /* Cats waiting at the whiteboard stand in a row, a little smaller. */

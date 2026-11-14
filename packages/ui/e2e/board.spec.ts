@@ -218,6 +218,29 @@ test("the lead's approval bubble fits in the office, however long the request", 
   await expect(bubble).toBeHidden();
 });
 
+test("a cat's card opens where it fits, also for cats in the bottom row", async ({ page }) => {
+  await openBoard(page);
+  await chat(page, 'Sort the imports\n/single');
+  const card = tasks(page).locator('.task-card', { hasText: 'Sort the imports' });
+  await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
+  const name = ((await card.locator('.task-card__cat').textContent()) ?? '').trim();
+  // Done: it waits in the row at the bottom of the whiteboard.
+  const cat = page.locator(`.office__cat:has([data-testid="cat-${name}"])`);
+  await expect(cat).toHaveAttribute('data-area', 'whiteboard');
+  await page.getByRole('button', { name: `${name}: open details` }).hover();
+  const meta = page.getByTestId(`cat-${name}`).locator('.cat-card__meta');
+  await expect(meta).toBeVisible();
+  // The office scrolls sideways, so anything below its bottom edge is cut off.
+  await expect(async () => {
+    const box = (await meta.boundingBox())!;
+    const office = (await page.getByRole('region', { name: 'Office' }).boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(office.y + office.height);
+    expect(box.y).toBeGreaterThanOrEqual(office.y);
+  }).toPass({ timeout: 5_000 });
+  await shot(page, 'card-bottom-row');
+  await page.mouse.move(0, 0);
+});
+
 test('a crashing worker is retried once, then failed, and can be re-run', async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Build the thing\n/single\n/crash');

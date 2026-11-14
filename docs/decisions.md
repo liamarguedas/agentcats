@@ -812,3 +812,9 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **Tests never touch the real home:** Vitest and the browser tests set `AGENTCATS_HOME` to a temp folder.
 - **Also:** the board's `attempt` helper was a copy of `run` since `run` started reporting success; they are one now.
 - **Also fixed, a CI failure on macOS:** a session that ended as a test closed its daemon removed its PID from `pids.json` in the background (`void pids.remove(...)`); the test then deleted the project between the temp write and the rename, and the rejection went unhandled. The removal now warns on failure, like the add, and `daemon.close()` waits for pending PID-file writes (`PidRegistry.settled()`).
+
+## 2026-11-14 - Cards open where they fit
+
+- **Bug, reported with a screenshot:** hovering a cat in the bottom row (cats waiting at the whiteboard, the second desk row, the front meeting seats) opened its details card below the cat, past the office's bottom edge, where the sideways-scrolling office cuts it off.
+- **Reproduced first** in the browser tests: a finished worker waits in the bottom row; its card must end inside the office.
+- **Fix:** cards are now hidden with `visibility` instead of `display: none`, so they keep their size and can be measured. After each render the office compares each cat's card with the room below and above it and opens it above (`data-open="up"`) when it does not fit below. Measured rather than a fixed row rule, since the lead and the back meeting seats sit mid-height and a card's height depends on its contents.
