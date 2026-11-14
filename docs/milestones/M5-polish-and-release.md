@@ -66,10 +66,10 @@ The UI is a projection of the event log, so replay is a read-only view over stor
 - Announce wherever you want to share it; optional.
 
 ## Acceptance criteria
-- [ ] On a clean machine, `npx agentcats --demo` shows a working board with no agent CLI installed.
+- [x] On a clean machine, `npx agentcats --demo` shows a working board with no agent CLI installed. (The published 0.1.0, installed from npm into an empty folder, 2026-11-14.)
 - [x] A real run with Claude Code completes the M1 sample flow with the final art and captions. (Twice, 2026-11-14; the lead kept the work in one task both times, see `docs/decisions.md`.)
 - [x] Replay of a recorded session works, and an exported session has no file contents unless the box was checked.
-- [ ] CI is green on Linux and macOS; first tagged release is published.
+- [x] CI is green on Linux and macOS; first tagged release is published. (Linux, macOS and Windows; `v0.1.0` on npm and GitHub, 2026-11-14.)
 - [x] README demo GIF matches the actual product.
 - [x] Someone else, given only the docs, can write a skeleton adapter and pass the conformance suite (test this on a friend if you can). (A fresh agent with only the docs, 2026-11-14; see `docs/decisions.md`.)
 

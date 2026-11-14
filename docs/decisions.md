@@ -764,3 +764,16 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **The drawer's "Saved" now means saved.** `run()` swallowed API errors, so a refused save still said "Saved". It now resolves to whether the request worked.
 - **Interview candidates have no Pause or Stop** on their card, and P does nothing on them. Pausing one candidate would skew the comparison; Cancel interview stops the trial as a whole. Before, the buttons showed disabled.
 - **No changeset:** 0.1.0 is not on npm yet, so these ship in it; its changelog entry describes the whole first release. The `v0.1.0` tag goes on the commit that is published.
+
+## 2026-11-14 - agentcats 0.1.0 is published; M5 is done
+
+- **Published** `agentcats@0.1.0` to npm from `packages/cli/pack`, built from 7bcd56c. The user published it from their own terminal, because npm asks for a second factor in the browser; an automated `npm login` earlier got the account briefly blocked for bot activity, so logins and publishes stay manual.
+- **Checked from the registry:** the published package, installed into an empty folder, passed `smoke.mjs` (a demo board whose scripted cats deliver a task for review).
+- **Tagged** `v0.1.0` on 7bcd56c and created the GitHub release with the changelog entry.
+- **Repository settings:** private vulnerability reporting is on (`docs/security.md` sends reports there); the description, homepage and topics are set.
+- **M5 is done.** Every acceptance criterion is checked and CI is green on Linux, macOS and Windows.
+
+### Handoff
+
+- There is no milestone after M5. Next releases follow `docs/releasing.md`: a changeset per user-facing change, `pnpm changeset version`, `pnpm release:build`, the smoke test, then a manual `npm publish`.
+- Open items: the cat pictures' unclear rights (`docs/assets.md`); a few cutouts have a straight edge where the meme photo was cropped; the live test's parallelism assertion fails when the lead keeps the work in one task.
