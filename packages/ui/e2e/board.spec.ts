@@ -277,7 +277,8 @@ test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await retired.locator('summary').click();
   await expect(retired).toContainText('Miso');
   await expect(retired).toContainText('Taking a nap');
-  await shot(page, 'retired-list');
+  await expect(retired.getByRole('img', { name: 'Miso, retired' })).toBeVisible();
+  await retired.screenshot({ path: `${SHOTS}/retired-list.png`, animations: 'disabled' });
   await retired.getByRole('button', { name: 'Bring back' }).click();
   await expect(page.getByTestId('cat-Miso')).toContainText(/\d+ XP/);
   await expect(retired).toHaveCount(0);

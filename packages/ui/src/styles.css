@@ -1702,7 +1702,14 @@ code {
 }
 
 .retired__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 650;
+}
+
+.retired__name .cat-photo {
+  --cat-size: 52px;
 }
 
 .retired__item .button {
@@ -2684,7 +2691,7 @@ button.team-spend:focus-visible {
   bottom: 0;
   left: 8%;
   width: 84%;
-  height: 42%;
+  height: 34%;
   border-radius: 4px;
   background: linear-gradient(#c79a63, #b0844f);
   box-shadow: inset 0 3px 0 #d8b07c;

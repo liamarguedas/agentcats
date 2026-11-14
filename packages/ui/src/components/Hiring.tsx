@@ -11,6 +11,8 @@ import type {
 } from '@agentcats/protocol';
 import { type ReactNode, type SyntheticEvent, useEffect, useState } from 'react';
 
+import { CatPhoto } from './Cat.js';
+
 /** An interview estimate in words; `null` when an agent in it cannot report cost. */
 export const estimateText = (usd: number | null) =>
   usd === null ? 'cost unknown' : `about $${usd.toFixed(2)}`;
@@ -595,9 +597,12 @@ export function RetiredList({
           Retired <span className="panel__count">{retired.length}</span>
         </summary>
         <ul className="retired__list">
-          {retired.map(({ retired: r }) => (
+          {retired.map(({ retired: r, cat }) => (
             <li key={r.catId} className="retired__item">
-              <span className="retired__name">📦 {r.name}</span>
+              <span className="retired__name">
+                <CatPhoto catId={cat.id} variant={cat.variant} look="fired" name={r.name} />
+                {r.name}
+              </span>
               <span className="drawer__muted">
                 level {r.level} · {r.xp} XP · {r.reason} ·{' '}
                 {new Date(r.retiredAt).toLocaleDateString()}
