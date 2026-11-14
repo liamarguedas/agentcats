@@ -48,6 +48,8 @@ export interface CatCardProps {
   readonly onOpen: () => void;
   /** The latest XP change, shown briefly as a pop-up. */
   readonly xpPop: { readonly id: string; readonly text: string } | null;
+  /** A meme caption about this cat, shown for a few seconds. */
+  readonly caption?: { readonly id: string; readonly text: string } | null;
   /** Learnings waiting for the user's review. */
   readonly pendingLearnings: number;
   /** Why the lead suggests retiring this cat, if it does. */
@@ -75,6 +77,11 @@ export function CatCard(props: CatCardProps) {
       <div className="cat-card__stage">
         <Bubble {...props} />
         <CatSprite status={status} />
+        {props.caption && (
+          <p key={props.caption.id} className="meme-caption" role="status">
+            {props.caption.text}
+          </p>
+        )}
         {props.xpPop && (
           <span key={props.xpPop.id} className="xp-pop" aria-live="polite">
             {props.xpPop.text}

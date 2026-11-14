@@ -61,8 +61,11 @@ export async function startTestDaemon(
   uiDir: string | null = null,
   /** Wrap the mock, for example to record spawn options. */
   wrap: (adapter: Adapter) => Adapter = (adapter) => adapter,
+  /** Prepare the project before the daemon starts, for example write files into `.agentcats`. */
+  beforeStart: (projectPath: string) => Promise<void> = () => Promise.resolve(),
 ): Promise<TestDaemon> {
   const projectPath = await tempProject();
+  await beforeStart(projectPath);
   const worktreesDir = await tempDir('agentcats-wt-');
   const daemon = await startDaemon({
     projectPath,

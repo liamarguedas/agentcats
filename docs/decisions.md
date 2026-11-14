@@ -670,3 +670,10 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 - **"Cost unknown" is never drawn as $0.** A cat counts as cost-unknown by the same rule as its card: its agent reports no cost. Such cats are counted by working time, their budgets are time budgets, and their tasks are ranked by working time. Tasks now record that time (`TaskResult.activeMs`).
 - **History comes from the event log** (`GET /api/usage`), thinned to the last point per cat per minute, with names for cats no longer on the board. A replay builds the same view from its own events.
 - **Colors:** the data-viz reference palette, run through its validator on our light and dark surfaces. Both pass. Three light slots sit below 3:1 contrast, which is why the chart always has a legend and the table, and direct labels when there are up to four lines. Past seven cats, the cheapest fold into "Other".
+
+## 2026-11-13 - M5 caption decisions
+
+- **The daemon picks the caption and records it** as a `caption` event, so every viewer and every replay shows the same line. It watches the log and answers five moments: a task fails, a cat is promoted, a cat hits its budget, a cat is retired, an interview rejects candidates.
+- **Templates live in `.agentcats/captions.json`**, copied from `packages/daemon/captions/default.json` on first run. Placeholders: `{cat}`, `{task}`, `{level}`, `{cats}`. A kind missing from the file uses the defaults. An invalid file falls back to the defaults, with a warning on the board. The default lines are original.
+- **Serious mode:** `"captions": { "enabled": false }` stops captions at the source.
+- **On the board:** a caption sits on the cat's card in meme lettering for a few seconds. One about a cat no longer on the board, such as a retirement or rejected candidates, is a toast.

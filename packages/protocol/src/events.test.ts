@@ -9,6 +9,7 @@ describe('AgentcatsEvent', () => {
       [
         'approval.requested',
         'approval.resolved',
+        'caption',
         'cat.created',
         'cat.hired',
         'cat.level_changed',

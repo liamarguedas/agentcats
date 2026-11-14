@@ -1,0 +1,28 @@
+{
+  "task_failed": [
+    "{cat} knocked \"{task}\" off the table. On purpose.",
+    "{cat} tried. {cat} failed. {cat} is now napping about it.",
+    "\"{task}\" was like that when {cat} got here.",
+    "{cat} coughed up a hairball of regret about \"{task}\"."
+  ],
+  "cat_promoted": [
+    "{cat} reached level {level}. Treats for everyone, mostly {cat}.",
+    "Level {level}! {cat} now gets the good chair.",
+    "{cat} is level {level} and expects a bigger box."
+  ],
+  "budget_hit": [
+    "{cat} ate the whole budget. Every crunchy bit.",
+    "No more treats: {cat} hit the budget.",
+    "{cat} spent it all on catnip. Raise the budget to carry on."
+  ],
+  "cat_retired": [
+    "{cat} has left the building. The building was a cardboard box.",
+    "{cat} retires to a sunny windowsill. Goodbye, {cat}.",
+    "{cat} was let go, and acts like it was their idea."
+  ],
+  "interview_rejected": [
+    "{cats} did not get the job. Something may get knocked over on the way out.",
+    "Thank you, {cats}. We will not be in touch.",
+    "{cats}: great whiskers, wrong fit."
+  ]
+}

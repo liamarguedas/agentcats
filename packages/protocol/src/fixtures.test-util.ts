@@ -306,6 +306,14 @@ export const sampleEvents = {
     type: 'daemon.started',
     payload: { version: 'dev' },
   },
+  caption: {
+    id: 'e31',
+    seq: 31,
+    ts: 31_000,
+    type: 'caption',
+    catId: 'cat-1',
+    payload: { kind: 'task_failed', text: 'Mochi knocked "Add hello" off the table.' },
+  },
 } as const satisfies { [T in EventType]: Extract<AgentcatsEvent, { type: T }> };
 
 /** The samples as an array ordered by seq. */

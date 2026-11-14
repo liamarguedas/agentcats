@@ -342,6 +342,7 @@ export function applyEvent(state: BoardState, event: AgentcatsEvent): BoardState
     case 'notice':
     case 'daemon.error':
     case 'daemon.started':
+    case 'caption':
       return next;
   }
 }

@@ -346,6 +346,29 @@ export const DaemonErrorEvent = z.strictObject({
   }),
 });
 
+/** The moments that get a meme caption. */
+export const CaptionKind = z.enum([
+  'task_failed',
+  'cat_promoted',
+  'budget_hit',
+  'cat_retired',
+  'interview_rejected',
+]);
+export type CaptionKind = z.infer<typeof CaptionKind>;
+
+/**
+ * A meme caption for something that just happened, picked from the user's
+ * template file. Recorded, so a replay shows the same line.
+ */
+export const CaptionEvent = z.strictObject({
+  ...envelope,
+  type: z.literal('caption'),
+  payload: z.strictObject({
+    kind: CaptionKind,
+    text: z.string().min(1).max(300),
+  }),
+});
+
 /** The daemon started: the boundary between two sessions, for replay. */
 export const DaemonStartedEvent = z.strictObject({
   ...envelope,
@@ -402,6 +425,7 @@ export const AgentcatsEvent = z.discriminatedUnion('type', [
   NoticeEvent,
   DaemonErrorEvent,
   DaemonStartedEvent,
+  CaptionEvent,
 ]);
 export type AgentcatsEvent = z.infer<typeof AgentcatsEvent>;
 

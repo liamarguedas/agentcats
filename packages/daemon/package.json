@@ -14,7 +14,8 @@
   "files": [
     "dist",
     "prompts",
-    "interviews"
+    "interviews",
+    "captions"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

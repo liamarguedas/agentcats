@@ -34,6 +34,7 @@ describe('AgentcatsConfig', () => {
       xp: { accepted: 10, testsFirstTry: 5, underCost: 3, rejectedPenalty: 10 },
       memory: { debrief: true, model: null, cap: 30, autoAcceptAfter: null },
       attribution: false,
+      captions: { enabled: true },
       stuckTimeoutMs: 300_000,
       approvalTimeoutMs: 300_000,
       port: 0,

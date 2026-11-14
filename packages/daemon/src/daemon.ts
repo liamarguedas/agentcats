@@ -5,6 +5,7 @@ import { type AgentcatsConfig, RUNTIME_DIR_NAME, TOKEN_FRAGMENT_KEY } from '@age
 import type { Adapter } from '@agentcats/protocol/adapter';
 
 import { CatManager } from './cat-manager.js';
+import { Captioner, loadCaptions } from './captions.js';
 import { ConfigError, loadConfig } from './config.js';
 import { acquireDaemonLock, type DaemonLock } from './daemon-lock.js';
 import { EventLog } from './event-log.js';
@@ -94,6 +95,17 @@ async function startLocked(
   const store = new SqliteStore(join(runtimeDir, 'agentcats.db'));
   const log = new EventLog(store);
   log.append({ type: 'daemon.started', payload: { version: options.version ?? 'dev' } });
+  let captioner: Captioner | null = null;
+  if (config.captions.enabled) {
+    const { templates, problem } = await loadCaptions(projectPath);
+    if (problem) {
+      log.append({
+        type: 'notice',
+        payload: { level: 'warning', code: 'captions_invalid', message: problem.slice(0, 500) },
+      });
+    }
+    captioner = new Captioner(log, templates);
+  }
   let mcpUrl = '';
   const manager = new CatManager({
     log,
@@ -110,6 +122,7 @@ async function startLocked(
   try {
     await manager.start();
   } catch (error) {
+    captioner?.stop();
     await manager.close();
     store.close();
     throw error;
@@ -134,6 +147,7 @@ async function startLocked(
       });
     });
   } catch (error) {
+    captioner?.stop();
     await manager.close();
     store.close();
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
@@ -160,6 +174,7 @@ async function startLocked(
     close: () =>
       (closing ??= (async () => {
         await manager.close();
+        captioner?.stop();
         closeSockets();
         await new Promise<void>((done) => {
           server.close(() => {

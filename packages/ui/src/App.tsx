@@ -225,6 +225,18 @@ export function App({ client }: { client: BoardClient }) {
     })
     .slice(-3)
     .reverse();
+  // A caption about a cat on the board sits on its card; any other (a retired cat,
+  // rejected candidates) is a toast.
+  const memeToasts = recent
+    .filter(
+      (e): e is Extract<AgentcatsEvent, { type: 'caption' }> =>
+        e.type === 'caption' && !(e.catId && board.cats[e.catId]) && !dismissed.has(e.id),
+    )
+    .slice(-2);
+  const captionOf = (catId: string) => {
+    const caption = recent.findLast((e) => e.type === 'caption' && e.catId === catId);
+    return caption?.type === 'caption' ? { id: caption.id, text: caption.payload.text } : null;
+  };
   const xpPopOf = (catId: string) => {
     const xp = recent.findLast((e) => e.type === 'xp.changed' && e.catId === catId);
     if (xp?.type !== 'xp.changed') return null;
@@ -321,6 +333,7 @@ export function App({ client }: { client: BoardClient }) {
         setDrawer({ kind: 'cat', id: cat.id });
       }}
       xpPop={xpPopOf(cat.id)}
+      caption={captionOf(cat.id)}
       pendingLearnings={proposalsOf(cat.id).length}
       retireSuggestion={board.retireProposals[cat.id]?.reason ?? null}
       adapter={view.adapters.find((a) => a.id === cat.adapter)}
@@ -501,6 +514,21 @@ export function App({ client }: { client: BoardClient }) {
               aria-label="Dismiss"
               onClick={() => {
                 setDismissed((set) => new Set([...set, n.id]));
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+        {memeToasts.map((e) => (
+          <div key={e.id} className="toast toast--meme" role="status">
+            <span className="toast__meme-text">{e.payload.text}</span>
+            <button
+              type="button"
+              className="button button--ghost button--small"
+              aria-label="Dismiss"
+              onClick={() => {
+                setDismissed((set) => new Set([...set, e.id]));
               }}
             >
               ✕

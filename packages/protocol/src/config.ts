@@ -139,6 +139,12 @@ export const AgentcatsConfig = z.strictObject({
    * the commits are the user's.
    */
   attribution: z.boolean().default(false),
+  /**
+   * Meme captions on failures, promotions, budgets, retirements and
+   * rejections, from `.agentcats/captions.json`. `enabled: false` is the
+   * serious mode.
+   */
+  captions: z.strictObject({ enabled: z.boolean().default(true) }).prefault({}),
   /** A worker with no events for this long is marked `blocked`. */
   stuckTimeoutMs: z
     .int()

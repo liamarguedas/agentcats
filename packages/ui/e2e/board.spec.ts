@@ -181,6 +181,8 @@ test('a crashing worker is retried once, then failed, and can be re-run', async 
   const card = tasks(page).locator('.task-card', { hasText: 'Build the thing' });
   await expect(card.locator('.chip')).toHaveText('Failed', { timeout: 20_000 });
   await expect(card).toContainText('attempt 2');
+  // A meme caption on the worker who failed, from the default template file.
+  await expect(page.locator('.cat-card .meme-caption')).toBeVisible();
   await shot(page, 'failed');
 
   await card.click();
