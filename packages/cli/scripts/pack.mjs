@@ -106,7 +106,8 @@ const manifest = {
   description: cliPackage.description,
   license: cliPackage.license,
   type: 'module',
-  bin: { agentcats: './bin/agentcats.mjs' },
+  // No leading ./: npm 11.20 drops such a bin as invalid when publishing.
+  bin: { agentcats: 'bin/agentcats.mjs' },
   engines: cliPackage.engines,
   repository: { type: 'git', url: 'git+https://github.com/liamarguedas/agentcats.git' },
   keywords: ['agents', 'claude-code', 'codex', 'ai', 'whiteboard', 'cats'],

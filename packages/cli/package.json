@@ -8,7 +8,7 @@
     "node": ">=22.13"
   },
   "bin": {
-    "agentcats": "./bin/agentcats.mjs"
+    "agentcats": "bin/agentcats.mjs"
   },
   "files": [
     "bin",

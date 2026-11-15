@@ -41,6 +41,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -F @agentcats/ui build
       - run: pnpm -F agentcats pack:build
+      # What npm would change when publishing, it changes silently (it once
+      # dropped the bin): fail instead. Pinned to the npm the release uses.
+      - name: Publish dry run, with nothing for npm to correct
+        shell: bash
+        run: |
+          npx -y npm@11.20.0 publish --dry-run packages/cli/pack 2>&1 | tee "$RUNNER_TEMP/publish.log"
+          if grep -q "auto-corrected" "$RUNNER_TEMP/publish.log"; then exit 1; fi
       - name: Install the packed package in an empty folder
         shell: bash
         run: |
