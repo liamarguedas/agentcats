@@ -297,9 +297,8 @@ test('the board works from the keyboard: Enter opens a cat, P pauses and resumes
   await page.keyboard.press('p');
   await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).toHaveText('Paused');
   await page.keyboard.press('p');
-  await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).toHaveText(
-    /Working|Thinking/,
-  );
+  // Resumed: the mock finishes its task quickly, so it may already be done.
+  await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).not.toHaveText('Paused');
   // It walked to the table and back; once there, it stops walking.
   await expect(page.locator('.office__cat--walking')).toHaveCount(0, { timeout: 3_000 });
   await page.keyboard.press('Enter');
