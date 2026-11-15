@@ -223,6 +223,9 @@ const px = (box: Box) => ({
   height: `${String(box.height)}px`,
 });
 
+/** How long a walk between spots takes (`styles.css` agrees). */
+const WALK_MS = 900;
+
 /** One cat on the floor, sliding to its spot, with a little walk while it moves. */
 function Walker({
   spot,
@@ -249,7 +252,7 @@ function Walker({
     setWalking(true);
     const timer = setTimeout(() => {
       setWalking(false);
-    }, 900);
+    }, WALK_MS);
     return () => {
       clearTimeout(timer);
     };
@@ -291,6 +294,35 @@ interface Rect {
   readonly bottom: number;
 }
 
+interface Segment {
+  readonly from: { readonly x: number; readonly y: number };
+  readonly to: { readonly x: number; readonly y: number };
+}
+
+/** Whether the segment passes through the rectangle (Liang-Barsky clipping). */
+export function crosses({ from, to }: Segment, r: Rect): boolean {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  let t0 = 0;
+  let t1 = 1;
+  for (const [p, q] of [
+    [-dx, from.x - r.left],
+    [dx, r.right - from.x],
+    [-dy, from.y - r.top],
+    [dy, r.bottom - from.y],
+  ] as const) {
+    if (p === 0) {
+      if (q < 0) return false;
+      continue;
+    }
+    const t = q / p;
+    if (p < 0) t0 = Math.max(t0, t);
+    else t1 = Math.min(t1, t);
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
 const overlaps = (a: Rect, b: Rect) =>
   a.left < b.right + BUBBLE_GAP &&
   b.left < a.right + BUBBLE_GAP &&
@@ -309,15 +341,27 @@ const moveBy = (r: Rect, dx: number, dy: number): Rect => ({
 });
 
 /** Where a bubble may go, from its spot over the cat's head, nearest first. */
+/** How far the search for a free spot goes: steps of half a bubble's width and height. */
+const SPREAD_X = 8;
+const SPREAD_Y = 8;
+
 function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost: number }[] {
   const w = width(over) + BUBBLE_GAP;
   const h = height(over) + BUBBLE_GAP;
   const list: { rect: Rect; below: boolean; cost: number }[] = [];
-  for (const dx of [0, -0.55, 0.55, -1.1, 1.1, -1.65, 1.65, -2.2, 2.2].map((k) => k * w)) {
-    for (const lift of [0, 0.5 * h, h, 1.5 * h, 2 * h, 3 * h]) {
-      list.push({ rect: moveBy(over, dx, -lift), below: false, cost: Math.abs(dx) + 1.5 * lift });
+  // A grid around the cat, out to a few bubbles away: in a crowded room the
+  // nearest free spot can be well aside, and a line still joins it to its cat.
+  for (let i = -SPREAD_X; i <= SPREAD_X; i++) {
+    const dx = i * 0.55 * w;
+    for (let j = 0; j <= SPREAD_Y; j++) {
+      const step = j * 0.5 * h;
+      list.push({ rect: moveBy(over, dx, -step), below: false, cost: Math.abs(dx) + 1.5 * step });
+      list.push({
+        rect: moveBy(under, dx, step),
+        below: true,
+        cost: Math.abs(dx) + 0.9 * h + 1.5 * step,
+      });
     }
-    list.push({ rect: moveBy(under, dx, 0), below: true, cost: Math.abs(dx) + 0.9 * h });
   }
   return list.sort((a, b) => a.cost - b.cost);
 }
@@ -331,19 +375,23 @@ function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost
  * the view settles and after renders; while the view moves everything
  * moves together, so the result holds.
  */
-function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
+function arrange(overlay: HTMLElement, visible: Rect): { placed: Rect[]; walking: boolean } {
   const origin = overlay.getBoundingClientRect();
+  // Under CSS `zoom` on the page, client rects are zoomed and the visible
+  // area (from clientWidth) is not: measure everything in the layer's own px.
+  const zoom = overlay.clientWidth > 0 ? origin.width / overlay.clientWidth : 1;
   const local = (r: DOMRect): Rect => ({
-    left: r.left - origin.left,
-    top: r.top - origin.top,
-    right: r.right - origin.left,
-    bottom: r.bottom - origin.top,
+    left: (r.left - origin.left) / zoom,
+    top: (r.top - origin.top) / zoom,
+    right: (r.right - origin.left) / zoom,
+    bottom: (r.bottom - origin.top) / zoom,
   });
   const scale = scaleOf(overlay);
   const anchors = [...overlay.querySelectorAll<HTMLElement>('.anchor')];
   for (const anchor of anchors) {
     for (const name of [
       '--lift',
+      '--drop',
       '--shift',
       '--card-shift',
       '--card-rise',
@@ -356,6 +404,17 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     }
     delete anchor.dataset['bubble'];
     delete anchor.dataset['leader'];
+    // Still walking to its spot: its bubble waits until it gets there.
+    const style = getComputedStyle(anchor);
+    const moving =
+      Math.abs(
+        Number(style.getPropertyValue('--wx')) - Number(anchor.style.getPropertyValue('--wx')),
+      ) > 0.5 ||
+      Math.abs(
+        Number(style.getPropertyValue('--wy')) - Number(anchor.style.getPropertyValue('--wy')),
+      ) > 0.5;
+    if (moving) anchor.dataset['moving'] = '';
+    else delete anchor.dataset['moving'];
   }
   // Every cat, from the top of its head to the bottom of its name tag.
   const bodies = new Map<HTMLElement, { body: Rect; feet: { x: number; y: number } }>();
@@ -379,6 +438,7 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     const bubble = anchor.querySelector<HTMLElement>('.bubble');
     const cat = bodies.get(anchor);
     if (!bubble || bubble.offsetParent === null || !cat) continue;
+    if (anchor.dataset['moving'] !== undefined) continue;
     const over = local(bubble.getBoundingClientRect());
     // Below the cat, the bubble starts under its name tag (styles.css).
     const under = { ...over, top: cat.body.bottom + 7, bottom: cat.body.bottom + 7 + height(over) };
@@ -392,20 +452,42 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
   // The front rows first: their bubbles stay closest to their cats.
   bubbles.sort((a, b) => b.over.bottom - a.over.bottom);
   const placed: Rect[] = [];
+  /** The lines from moved bubbles to their cats. */
+  const lines: Segment[] = [];
   const bubbleOf = new Map<HTMLElement, { rect: Rect; below: boolean }>();
   for (const b of bubbles) {
+    const cat = bodies.get(b.anchor);
+    if (!cat) continue;
+    // Over its cat, the tail points at it; moved away, a line joins them.
+    const lineFor = (o: { rect: Rect; below: boolean }): Segment | null => {
+      const dx = o.rect.left - (o.below ? b.under : b.over).left;
+      const still = o.below ? o.rect.top === b.under.top : o.rect.top === b.over.top;
+      if (still && Math.abs(dx) <= width(b.over) / 2 - 18) return null;
+      return {
+        from: { x: (o.rect.left + o.rect.right) / 2, y: o.below ? o.rect.top : o.rect.bottom },
+        to: { x: cat.feet.x, y: o.below ? cat.body.bottom : cat.body.top },
+      };
+    };
     const options = candidates(b.over, b.under);
-    const apart = (r: Rect) => !placed.some((other) => overlaps(r, other));
+    // No bubble on another, nor on another bubble's line, nor a line across a bubble.
+    const apart = (o: { rect: Rect; below: boolean }) => {
+      const line = lineFor(o);
+      return (
+        !placed.some((other) => overlaps(o.rect, other)) &&
+        !lines.some((other) => crosses(other, o.rect)) &&
+        !(line && placed.some((other) => crosses(line, other)))
+      );
+    };
     // No cat is covered, its own included: a bubble over its photo would take
     // its clicks. Nor is a room's sign.
-    const clear = (r: Rect) =>
-      apart(r) &&
-      ![...bodies.values()].some((cat) => overlaps(r, cat.body)) &&
-      !signs.some((sign) => overlaps(r, sign));
+    const clear = (o: { rect: Rect; below: boolean }) =>
+      apart(o) &&
+      ![...bodies.values()].some((body) => overlaps(o.rect, body.body)) &&
+      !signs.some((sign) => overlaps(o.rect, sign));
     // Best covering nothing; else covering a cat but no bubble; else at least in view.
     const choice =
-      options.find((o) => inView(o.rect) && clear(o.rect)) ??
-      options.find((o) => inView(o.rect) && apart(o.rect)) ??
+      options.find((o) => inView(o.rect) && clear(o)) ??
+      options.find((o) => inView(o.rect) && apart(o)) ??
       options.find((o) => inView(o.rect)) ??
       options[0];
     if (!choice) continue;
@@ -413,17 +495,15 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     bubbleOf.set(b.anchor, choice);
     const dx = choice.rect.left - (choice.below ? b.under : b.over).left;
     const lift = choice.below ? 0 : b.over.top - choice.rect.top;
+    const drop = choice.below ? choice.rect.top - b.under.top : 0;
     if (choice.below) b.anchor.dataset['bubble'] = 'below';
+    if (drop !== 0) b.anchor.style.setProperty('--drop', `${String(drop)}px`);
     if (dx !== 0) b.anchor.style.setProperty('--shift', `${String(dx)}px`);
     if (lift !== 0) b.anchor.style.setProperty('--lift', `${String(lift)}px`);
-    // Still over its cat: the tail points at it. Moved away: a line to it.
-    const cat = bodies.get(b.anchor);
-    if (!cat || (lift === 0 && Math.abs(dx) <= width(b.over) / 2 - 18)) continue;
-    const from = {
-      x: (choice.rect.left + choice.rect.right) / 2,
-      y: choice.below ? choice.rect.top : choice.rect.bottom,
-    };
-    const to = { x: cat.feet.x, y: choice.below ? cat.body.bottom : cat.body.top };
+    const line = lineFor(choice);
+    if (!line) continue;
+    lines.push(line);
+    const { from, to } = line;
     b.anchor.dataset['leader'] = '';
     b.anchor.style.setProperty(
       '--leader-length',
@@ -465,7 +545,7 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     if (rect.top + nudge < visible.top + EDGE) nudge = visible.top + EDGE - rect.top;
     if (nudge !== 0) anchor.style.setProperty('--card-nudge', `${String(nudge)}px`);
   }
-  return placed;
+  return { placed, walking: anchors.some((a) => a.dataset['moving'] !== undefined) };
 }
 
 /**
@@ -584,23 +664,35 @@ export function Office({
 
   // The canvas's api is a new object on every render; keep the latest for the callbacks.
   const canvasRef = useRef(canvas);
-  const layoutPass = useCallback(() => {
+  const arrived = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Lay everything out; whether a cat is still walking to its spot. */
+  const layoutPass = useCallback((): boolean => {
     const api = canvasRef.current;
-    if (!overlay || !api) return;
-    const bubbles = arrange(overlay, api.visible());
-    placeMarkers(overlay, api, boxesRef.current, bubbles);
+    if (!overlay || !api) return false;
+    const { placed, walking } = arrange(overlay, api.visible());
+    placeMarkers(overlay, api, boxesRef.current, placed);
+    return walking;
   }, [overlay]);
   const scheduled = useRef(0);
   const schedule = useCallback(() => {
     cancelAnimationFrame(scheduled.current);
-    scheduled.current = requestAnimationFrame(layoutPass);
+    scheduled.current = requestAnimationFrame(function pass() {
+      // A cat is walking: place its bubble when it arrives, whether or not
+      // the browser reports the end of the walk.
+      clearTimeout(arrived.current);
+      if (layoutPass()) {
+        arrived.current = setTimeout(() => {
+          scheduled.current = requestAnimationFrame(pass);
+        }, WALK_MS + 50);
+      }
+    });
   }, [layoutPass]);
 
   // After every render: the bubbles' text, the team or the open card may have changed.
   useLayoutEffect(() => {
     boxesRef.current = boxes;
     canvasRef.current = canvas;
-    layoutPass();
+    if (layoutPass()) schedule();
   });
   useEffect(() => {
     const api = canvasRef.current;
@@ -616,6 +708,7 @@ export function Office({
       unsubscribe();
       overlay.removeEventListener('transitionend', schedule);
       cancelAnimationFrame(scheduled.current);
+      clearTimeout(arrived.current);
     };
   }, [overlay, schedule]);
 

@@ -125,6 +125,22 @@ test('Needs you brings the cats waiting for you into view, and N steps through t
   expect(seen.size).toBe(asking.length);
 });
 
+test('with the page zoomed by CSS, approval bubbles stay in view by their cats', async ({
+  page,
+}) => {
+  // Client rects are zoomed then, and the canvas's own sizes are not.
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.documentElement.style.zoom = '1.5';
+    });
+  });
+  await page.setViewportSize({ width: 1920, height: 1200 });
+  await openBoard(page, BASE);
+  const bubbles = page.getByRole('alertdialog', { name: /^Approval request from/ });
+  await expect(bubbles).toHaveCount(3);
+  for (const bubble of await bubbles.all()) await expectInView(page, bubble);
+});
+
 test('an edge marker brings its cat into view', async ({ page }) => {
   await openBoard(page, BASE);
   await zoomTo(page, 'max');
@@ -289,13 +305,39 @@ test('panning and zooming with 16 cats walking keeps frames on time', async ({ p
 test('the board works from the keyboard: Enter opens a cat, P pauses and resumes it', async ({
   page,
 }) => {
+  // Wide enough that the team fits with bubbles, not badges.
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await openBoard(page, BASE);
   const busy = (await cats()).find((c) => c.role === 'worker' && c.status === 'working');
   expect(busy).toBeDefined();
   const name = busy!.name;
   await photo(page, name).focus();
+  // Record, every frame, whether its bubble shows while it walks.
+  await page.evaluate((cat) => {
+    const w = window as unknown as { shownWhileWalking: boolean; walked: boolean };
+    w.shownWhileWalking = false;
+    w.walked = false;
+    const watch = () => {
+      const anchor = document.querySelector<HTMLElement>(`.anchor[data-cat="${cat}"]`);
+      const bubble = anchor?.querySelector<HTMLElement>('.bubble');
+      if (anchor?.dataset['moving'] !== undefined) {
+        w.walked = true;
+        if (bubble && getComputedStyle(bubble).visibility === 'visible') w.shownWhileWalking = true;
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  }, name);
   await page.keyboard.press('p');
   await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).toHaveText('Paused');
+  // It walks to the meeting room; its bubble shows when it gets there, not on the way.
+  await expect(page.locator(`.anchor[data-cat="${name}"] .bubble`)).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { walked: boolean }).walked)).toBe(true);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { shownWhileWalking: boolean }).shownWhileWalking,
+    ),
+  ).toBe(false);
   await page.keyboard.press('p');
   // Resumed: the mock finishes its task quickly, so it may already be done.
   await expect(page.getByTestId(`cat-${name}`).getByTestId('cat-status')).not.toHaveText('Paused');
