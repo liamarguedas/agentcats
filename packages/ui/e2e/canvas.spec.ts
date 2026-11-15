@@ -125,6 +125,22 @@ test('Needs you brings the cats waiting for you into view, and N steps through t
   expect(seen.size).toBe(asking.length);
 });
 
+test('with the page zoomed by CSS, approval bubbles stay in view by their cats', async ({
+  page,
+}) => {
+  // Client rects are zoomed then, and the canvas's own sizes are not.
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.documentElement.style.zoom = '1.5';
+    });
+  });
+  await page.setViewportSize({ width: 1920, height: 1200 });
+  await openBoard(page, BASE);
+  const bubbles = page.getByRole('alertdialog', { name: /^Approval request from/ });
+  await expect(bubbles).toHaveCount(3);
+  for (const bubble of await bubbles.all()) await expectInView(page, bubble);
+});
+
 test('an edge marker brings its cat into view', async ({ page }) => {
   await openBoard(page, BASE);
   await zoomTo(page, 'max');

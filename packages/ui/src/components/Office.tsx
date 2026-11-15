@@ -333,11 +333,14 @@ function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost
  */
 function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
   const origin = overlay.getBoundingClientRect();
+  // Under CSS `zoom` on the page, client rects are zoomed and the visible
+  // area (from clientWidth) is not: measure everything in the layer's own px.
+  const zoom = overlay.clientWidth > 0 ? origin.width / overlay.clientWidth : 1;
   const local = (r: DOMRect): Rect => ({
-    left: r.left - origin.left,
-    top: r.top - origin.top,
-    right: r.right - origin.left,
-    bottom: r.bottom - origin.top,
+    left: (r.left - origin.left) / zoom,
+    top: (r.top - origin.top) / zoom,
+    right: (r.right - origin.left) / zoom,
+    bottom: (r.bottom - origin.top) / zoom,
   });
   const scale = scaleOf(overlay);
   const anchors = [...overlay.querySelectorAll<HTMLElement>('.anchor')];

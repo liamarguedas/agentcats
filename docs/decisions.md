@@ -889,3 +889,9 @@ What a contributor needs to add a third adapter, for M5's contributor guide:
 
 - **Two changesets dropped before versioning:** "cards open where they fit" and "the lead's bubble fits". Both fixed the fixed-size office that 0.2.0 replaces with the canvas, so their changelog lines would have described a board that no longer exists; the canvas entry covers bubbles and cards staying in view. Removed from `.changeset/` rather than edited out of the changelog, which is never edited by hand.
 - **The first `npm publish` was refused (an expired login), and that saved the release:** npm 11.20 also "auto-corrected" the manifest by dropping the `agentcats` bin, because its path started with `./`, so `npx agentcats` would have broken. 0.1.0 was published with an older npm that kept it. The path is `bin/agentcats.mjs` now, and the CI package job runs `npm publish --dry-run` with that npm (pinned to 11.20.0) and fails if npm has anything to correct.
+
+## 2026-11-15 - Bubbles under CSS zoom on the page
+
+- **Found while re-shooting the launch video,** which renders the board at 2560 x 1440 with CSS `zoom` on the page (the screencast ignores the device scale factor): an approval bubble was thrown off the left edge with a long line to its cat. The office's layout pass took client rects, which are zoomed, and compared them with the visible area, which comes from `clientWidth` and is not. It now divides the rects by the layer's zoom (its client width over its layout width). Browser zoom is unaffected either way, since it does not change either measure.
+- **Reproduced first:** a browser test zooms the page by 1.5 and expects every approval bubble in view; it fails without the fix (a bubble at x = -71) and passes with it.
+
