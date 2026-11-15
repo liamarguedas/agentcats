@@ -45,8 +45,12 @@ jobs:
       # dropped the bin): fail instead. Pinned to the npm the release uses.
       - name: Publish dry run, with nothing for npm to correct
         shell: bash
+        # On a copy with a version never published: npm refuses even a dry run
+        # over a published version, and this checks the manifest, not the version.
         run: |
-          npx -y npm@11.20.0 publish --dry-run packages/cli/pack 2>&1 | tee "$RUNNER_TEMP/publish.log"
+          cp -r packages/cli/pack "$RUNNER_TEMP/dry-run"
+          cd "$RUNNER_TEMP/dry-run" && npm pkg set version=0.0.0-dry-run
+          npx -y npm@11.20.0 publish --dry-run --tag dry-run . 2>&1 | tee "$RUNNER_TEMP/publish.log"
           if grep -q "auto-corrected" "$RUNNER_TEMP/publish.log"; then exit 1; fi
       - name: Install the packed package in an empty folder
         shell: bash
