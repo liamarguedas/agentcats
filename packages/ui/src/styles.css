@@ -1270,15 +1270,29 @@ code {
 
 .toasts {
   position: fixed;
-  /* Bottom middle, clear of the panels at the sides and the zoom controls. */
-  bottom: 16px;
-  left: 50%;
-  translate: -50% 0;
+  /* Bottom left, above the zoom controls: the corner the board needs least. */
+  bottom: 64px;
+  left: 14px;
   z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  width: min(380px, calc(100% - 32px));
+  width: min(360px, calc(100% - 28px));
+}
+
+/* Beside a cat's or task's details, not over them. */
+.app:has(.drawer) .toasts {
+  left: 498px;
+}
+
+@media (width < 640px) {
+  .toasts,
+  .app:has(.drawer) .toasts {
+    top: 64px;
+    bottom: auto;
+    left: 8px;
+    width: calc(100% - 16px);
+  }
 }
 
 .toast {
@@ -2406,8 +2420,8 @@ button.team-spend:focus-visible {
   }
 }
 
-/* The office: whiteboard, desks, meeting table. Cats are placed in percent of
-   the room and slide when their status moves them. */
+/* The office: four rooms on the canvas. Cats are placed in canvas px and
+   walk between the rooms when their status moves them. */
 
 :root {
   --floor: #efe9df;
@@ -2415,6 +2429,7 @@ button.team-spend:focus-visible {
   --wood: #c9a27a;
   --wood-dark: #a9825b;
   --board-frame: #b9b2a6;
+  --wall: #d9cfbe;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2424,6 +2439,7 @@ button.team-spend:focus-visible {
     --wood: #6e5640;
     --wood-dark: #574332;
     --board-frame: #5a554d;
+    --wall: #48413a;
   }
 }
 
@@ -2433,52 +2449,171 @@ button.team-spend:focus-visible {
   --wood: #6e5640;
   --wood-dark: #574332;
   --board-frame: #5a554d;
+  --wall: #48413a;
 }
 
 .office {
   position: relative;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+}
+
+/* The rooms: each its own floor, walls and a sign on the door. */
+.room {
+  position: absolute;
+  border: 6px solid var(--wall);
+  border-radius: 20px;
+  background: var(--floor);
+  box-shadow: var(--shadow);
+  transition:
+    top 600ms ease,
+    height 600ms ease;
+}
+
+.room--office {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 62px, var(--floor-line) 62px 64px),
+    color-mix(in srgb, var(--wood) 20%, var(--floor));
+}
+
+.room--desks {
   background:
     linear-gradient(var(--floor-line) 1px, transparent 1px) 0 0 / 100% 44px,
     var(--floor);
-  box-shadow: var(--shadow);
 }
 
-.office__area {
+.room--meeting {
+  background:
+    radial-gradient(color-mix(in srgb, var(--warn) 22%, transparent) 1.5px, transparent 1.5px) 0 0 /
+      18px 18px,
+    color-mix(in srgb, var(--warn) 7%, var(--floor));
+}
+
+.room--lounge {
+  background:
+    repeating-linear-gradient(
+      45deg,
+      transparent 0 22px,
+      color-mix(in srgb, var(--ok) 7%, transparent) 22px 44px
+    ),
+    color-mix(in srgb, var(--ok) 6%, var(--floor));
+}
+
+.room--away {
+  border-style: dashed;
+  background:
+    repeating-linear-gradient(-45deg, transparent 0 18px, var(--floor-line) 18px 20px),
+    color-mix(in srgb, var(--ink-2) 6%, var(--floor));
+}
+
+/* Retired cats wait in their boxes; pointing at one offers to bring it back. */
+.office__away {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.away-cat {
   position: absolute;
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translate(-50%, -100%);
 }
 
-.office__area--meeting {
-  background: color-mix(in srgb, var(--warn) 5%, transparent);
+.away-cat .cat-photo {
+  --cat-size: 76px;
+  opacity: 0.85;
 }
 
-.office__label {
+.away-cat__name {
   position: absolute;
-  /* Zoomed out, the label keeps its size on screen. */
-  scale: max(1, 1 / var(--s, 1));
-  transform-origin: 0 0;
-  top: 10px;
-  left: 14px;
+  top: calc(100% + 3px);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--ink-2);
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 650;
-  letter-spacing: 0.06em;
+  white-space: nowrap;
+  scale: max(1, 1 / var(--s, 1));
+  transform-origin: 50% 0;
+}
+
+.away-cat__back {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.away-cat:hover .away-cat__back,
+.away-cat:focus-within .away-cat__back {
+  opacity: 1;
+}
+
+/* Nothing to point at on a touch screen: the button shows. */
+@media (hover: none) {
+  .away-cat__back {
+    opacity: 1;
+  }
+}
+
+/* The sign sits on the wall; zoomed out, it keeps its size on screen. */
+.room__sign {
+  position: absolute;
+  top: -19px;
+  left: 28px;
+  padding: 5px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 12%);
+  scale: max(1, 1 / var(--s, 1));
+  transform-origin: 0 50%;
+}
+
+.room__plant {
+  position: absolute;
+  bottom: 14px;
+  font-size: 38px;
+  line-height: 1;
+  user-select: none;
+}
+
+.room__plant--left {
+  left: 16px;
+}
+
+.room__plant--right {
+  right: 16px;
+}
+
+/* An idle cat rests on a cushion: its spot is where its paws are. */
+.office__cushion {
+  position: absolute;
+  width: 100px;
+  height: 24px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ok) 30%, var(--floor));
+  box-shadow: 0 3px 0 color-mix(in srgb, var(--ok) 40%, var(--wood-dark));
+  transform: translate(-50%, -45%);
 }
 
 .office__board {
   position: absolute;
-  /* Below the zone label, which grows on screen when zoomed out. */
-  top: 64px;
-  left: 170px;
+  top: 60px;
+  left: 270px;
   display: flex;
   flex-direction: column;
   gap: 9px;
   width: 300px;
-  height: 150px;
+  height: 160px;
   padding: 22px 18px;
   border: 5px solid var(--board-frame);
   border-radius: 6px;
@@ -2516,10 +2651,11 @@ button.team-spend:focus-visible {
   transform: translate(-50%, -40%);
 }
 
-/* Desks are placed in percent of the whole room, like the cats. */
+/* Desks, tables and cushions, in canvas px like the cats; decoration only. */
 .office__furniture {
   position: absolute;
   inset: 0;
+  pointer-events: none;
 }
 
 .office__table {
@@ -2543,10 +2679,13 @@ button.team-spend:focus-visible {
 .office__floor {
   position: absolute;
   inset: 0;
+  /* Only the cats take clicks: the rooms under the layer stay usable. */
+  pointer-events: none;
 }
 
 .office__cat {
   position: absolute;
+  pointer-events: auto;
   transform: translate(-50%, -100%);
   transition:
     left 900ms cubic-bezier(0.45, 0, 0.25, 1),
@@ -2592,8 +2731,8 @@ button.team-spend:focus-visible {
   --cat-size: 118px;
 }
 
-/* Cats waiting at the whiteboard stand in a row, a little smaller. */
-.office__cat[data-area='whiteboard'] .cat-token--worker .cat-photo {
+/* Cats in the break room curl up a little smaller. */
+.office__cat[data-area='lounge'] .cat-token--worker .cat-photo {
   --cat-size: 76px;
 }
 
@@ -2883,8 +3022,8 @@ button.team-spend:focus-visible {
 /* A cat that needs you, out of view: a marker on the edge, its way. */
 .edge-marker {
   position: absolute;
-  /* Under the bubbles: a marker must never hide an Allow or Deny button. */
-  z-index: 0;
+  /* Over the bubbles, but placed clear of them (Office's placeMarkers). */
+  z-index: 6;
   padding: 4px 10px;
   border: 1px solid var(--warn);
   border-radius: 999px;

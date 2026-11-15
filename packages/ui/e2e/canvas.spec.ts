@@ -96,7 +96,7 @@ test('Needs you brings the cats waiting for you into view, and N steps through t
   const asking = (await cats()).filter((c) => c.status === 'waiting_approval').map((c) => c.name);
   expect(asking).toHaveLength(3);
 
-  // Close in on the whiteboard: the meeting table is out of view, with markers at the edge.
+  // Close in on the middle: some of the cats that need you are out of view, with markers at the edge.
   await zoomTo(page, 'max');
   const markers = page.locator('.edge-marker:visible');
   await expect(markers).not.toHaveCount(0);
@@ -220,6 +220,7 @@ test('16 cats stand apart, and Fit shows them all', async ({ page }) => {
         { timeout: 10_000 },
       )
       .toEqual([]);
+    await page.waitForTimeout(1500);
     await shot(page, `team-of-16-${String(width)}x${String(height)}`);
   }
 });
@@ -337,6 +338,18 @@ test('panels open and collapse, and the board remembers them and the view', asyn
   await expect(zoomLabel(page)).toHaveText(zoomed!);
   await page.locator('.canvas__viewport').press('f');
   await expect(zoomLabel(page)).toHaveText(fitted!);
+
+  // Ctrl or Cmd with + and - zoom the canvas, not the page; with 0, fit it.
+  const percent = async () => Number((await zoomLabel(page).textContent())?.replace('%', ''));
+  await page.locator('body').press('Control+Equal');
+  await expect.poll(percent).toBeGreaterThan(Number(fitted!.replace('%', '')));
+  await page.locator('body').press('Control+Minus');
+  await page.locator('body').press('Control+Minus');
+  await expect.poll(percent).toBeLessThan(Number(fitted!.replace('%', '')));
+  expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+  await page.locator('body').press('Control+0');
+  await expect(zoomLabel(page)).toHaveText(fitted!);
+  await page.waitForTimeout(800);
   await page.reload();
   await expect(zoomLabel(page)).toHaveText(fitted!);
 });

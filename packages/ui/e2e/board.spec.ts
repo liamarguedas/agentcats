@@ -213,11 +213,8 @@ test("a cat's card opens where it fits, inside the visible canvas", async ({ pag
   const card = (await tasks(page)).locator('.task-card', { hasText: 'Sort the imports' });
   await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
   const name = ((await card.locator('.task-card__cat').textContent()) ?? '').trim();
-  // Done: it waits at the whiteboard.
-  await expect(page.locator(`.anchor[data-cat="${name}"]`)).toHaveAttribute(
-    'data-area',
-    'whiteboard',
-  );
+  // Done: it rests in the break room.
+  await expect(page.locator(`.anchor[data-cat="${name}"]`)).toHaveAttribute('data-area', 'lounge');
   await page.getByRole('button', { name: `${name}: open details` }).hover();
   const meta = page.getByTestId(`cat-${name}`).locator('.cat-card__meta');
   await expect(meta).toBeVisible();
@@ -352,6 +349,10 @@ test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await shot(page, 'retire-dialog');
   await dialog.getByRole('button', { name: 'Retire Miso' }).click();
   await expect(page.getByTestId('cat-Miso')).toHaveCount(0);
+  // Out of office, in its box, until it is brought back.
+  const away = page.getByRole('list', { name: 'Retired cats out of office' });
+  await expect(away).toContainText('Miso');
+  await expect(away.getByRole('img', { name: 'Miso, retired' })).toBeVisible();
 
   await showPanel(page, 'Tasks');
   const retired = page.getByRole('region', { name: 'Retired cats' });
@@ -360,9 +361,10 @@ test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await expect(retired).toContainText('Taking a nap');
   await expect(retired.getByRole('img', { name: 'Miso, retired' })).toBeVisible();
   await retired.screenshot({ path: `${SHOTS}/retired-list.png`, animations: 'disabled' });
-  await retired.getByRole('button', { name: 'Bring back' }).click();
+  await away.getByRole('button', { name: 'Bring Miso back' }).click();
   await expect(page.getByTestId('cat-Miso')).toContainText(/\d+ XP/);
   await expect(retired).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Out of office' })).toHaveCount(0);
 });
 
 test('a cat moved to an agent without cost reporting shows cost unknown, its time budget and a sandbox warning', async ({

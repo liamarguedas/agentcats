@@ -5,22 +5,25 @@ Settings are in [configuration](configuration.md), and the most used ones are un
 
 ## The board
 
-The office fills the screen, on a canvas you can pan and zoom, like a drawing in Excalidraw:
+The office fills the screen, on a canvas you can pan and zoom, like a drawing in Excalidraw.
+It has rooms, spread over the canvas:
 
-- **The whiteboard** at the top: Tux, the lead, plans here. Idle cats and cats that just finished wait in rows next to it.
-- **The desks** in the middle: a cat that is thinking or working sits at its own desk, with a laptop.
-- **The meeting tables** to the side: cats that need you go there. They are waiting for an approval, blocked, paused, or in trouble.
+- **The lead's office:** Tux, the lead, plans here at the whiteboard.
+- **The workspace:** a cat that is thinking or working sits at its own desk, with a laptop.
+- **The meeting room:** cats that need you go there. They are waiting for an approval, blocked, paused, or in trouble.
+- **The break room:** idle cats and cats that just finished rest on cushions.
+- **Out of office:** retired cats wait in their boxes. Point at one and click **Bring back** to rehire it. The room is there once a cat is retired.
 
-The office grows with the team: a row of desks per four workers, a table per two cats waiting for you.
-Cats walk between the areas as their status changes.
+Each room grows on its own: a row of desks per four workers, a table per two cats waiting for you, a row of cushions per three idle cats.
+Cats walk between the rooms as their status changes.
 
 Moving around the canvas:
 
 | Do | To |
 | --- | --- |
 | Drag the floor, scroll, or the arrow keys | Pan |
-| Ctrl or Cmd and scroll, pinch, + and -, or the buttons at the bottom left | Zoom |
-| **Fit** or F | Frame the whole office |
+| Ctrl or Cmd and scroll, Ctrl or Cmd and + or -, pinch, + and -, or the buttons at the bottom left | Zoom |
+| **Fit**, F, or Ctrl or Cmd and 0 | Frame the whole office |
 
 The board keeps your view of each project in the browser until you press Fit.
 Until you move it, the view follows the team as it grows.

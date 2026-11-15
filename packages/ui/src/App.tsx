@@ -593,6 +593,11 @@ export function App({ client }: { client: BoardClient }) {
             lead={lead}
             workers={workers}
             detailsOf={drawer?.kind === 'cat' ? drawer.id : null}
+            retired={retiredCats}
+            {...(!replay && {
+              onBringBack: (catId: string) =>
+                void run(() => client.request('resurrectCat', { catId })),
+            })}
             renderCat={(cat, part) =>
               catCard(cat, cat.role === 'orchestrator' ? 'lead' : 'worker', 'token', part)
             }

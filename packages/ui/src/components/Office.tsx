@@ -1,4 +1,4 @@
-import type { Cat } from '@agentcats/protocol';
+import type { Cat, RetiredEntry } from '@agentcats/protocol';
 import {
   type CSSProperties,
   type ReactNode,
@@ -10,18 +10,23 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
+import { CatPhoto } from './Cat.js';
 import { type Box, type CanvasApi, useCanvas } from './Canvas.js';
 
-/** Where a cat stands: planning at the whiteboard, at its desk, or at the table waiting for you. */
-export type Area = 'whiteboard' | 'desks' | 'meeting';
+/**
+ * Where a cat is: the lead in its office, a busy cat at its desk in the
+ * workspace, a cat that needs you in the meeting room, an idle or finished
+ * one in the break room.
+ */
+export type Area = 'office' | 'desks' | 'meeting' | 'lounge';
 
 export function areaOf(cat: Cat): Area {
-  if (cat.role === 'orchestrator') return 'whiteboard';
+  if (cat.role === 'orchestrator') return 'office';
   if (cat.pausedReason || ['waiting_approval', 'blocked', 'error'].includes(cat.status)) {
     return 'meeting';
   }
   if (cat.status === 'thinking' || cat.status === 'working') return 'desks';
-  return 'whiteboard';
+  return 'lounge';
 }
 
 /** Canvas coordinates in px: `x` is the cat's center, `y` where its feet are. */
@@ -30,76 +35,103 @@ export interface Spot {
   readonly y: number;
 }
 
-/** The office for a team, in canvas px: the zones and the size of the whole room. */
+/** The floor plan for a team, in canvas px: each room, and the size of the whole. */
 export interface Layout {
   readonly width: number;
   readonly height: number;
-  readonly whiteboard: Box;
+  readonly office: Box;
   readonly desks: Box;
   readonly meeting: Box;
+  readonly lounge: Box;
+  /** Retired cats; `null` while nobody is retired. */
+  readonly away: Box | null;
   /** One table per two seats. */
   readonly tables: number;
   readonly deskCount: number;
+  readonly cushions: number;
 }
 
+/** Space around the floor plan, and between the rooms. */
 const PAD = 40;
-const GAP = 48;
+const GAP = 120;
+/** From a room's top to the feet of its first row: room for its sign and a bubble. */
+const ROW_TOP = 210;
+/** Below the last row: room for the name tags. */
+const ROW_BOTTOM = 80;
+const OFFICE = { width: 620, height: 430 };
+/** The lead stands by the whiteboard (`styles.css` draws it). */
+const LEAD = { x: 150, y: 340 };
 const DESK_COLUMNS = 4;
 const DESK_WIDTH = 210;
 const DESK_ROW = 230;
-/** From the top of the desks zone to the feet of the first row: room for a bubble. */
-const DESK_TOP = 200;
-const IDLE_START = 560;
-/** Wide enough that name tags stay apart when zoomed out to Fit. */
-const IDLE_STEP = 150;
-const IDLE_ROW = 150;
-const BOARD_ROW_FEET = 280;
-const MEETING_WIDTH = 480;
+const DESKS_SIDE = 40;
+const SIDE_WIDTH = 640;
 /** Two cats per table, one table per row; a row leaves room for an approval bubble. */
-const MEETING_TOP = 230;
-const MEETING_ROW = 270;
+const MEETING_ROW = 320;
+const CUSHION_COLUMNS = 3;
+/** Wide enough that name tags stay apart when zoomed out to Fit. */
+const CUSHION_STEP = 170;
+const CUSHION_ROW = 170;
+
+const rowsHeight = (rows: number, step: number) => ROW_TOP + (rows - 1) * step + ROW_BOTTOM;
 
 /**
- * The room for a team of `workers`, `meeting` of them at the table and
- * `waiting` at the whiteboard. Desks sit in the middle, the whiteboard above
- * them and the meeting tables to their side. Waiting cats stand in rows next
- * to the board; a new row pushes the desks down.
+ * The floor plan for a team of `workers`, `meeting` of them waiting for you
+ * and `waiting` idle, and `retired` cats: the lead's office above the
+ * workspace, the meeting room and the break room beside them, and, once a
+ * cat is retired, the out-of-office room below those. Each room grows on its own: the
+ * workspace by a row of desks per four workers, the meeting room by a table
+ * per two cats, the break room by a row of cushions per three.
  */
-export function layoutFor(workers: number, meeting: number, waiting: number): Layout {
+export function layoutFor(workers: number, meeting: number, waiting: number, retired = 0): Layout {
   const rows = Math.max(1, Math.ceil(workers / DESK_COLUMNS));
-  const desksWidth = DESK_COLUMNS * DESK_WIDTH;
-  const idlePerRow = Math.max(
-    1,
-    Math.floor((desksWidth + GAP + MEETING_WIDTH - IDLE_START) / IDLE_STEP),
-  );
-  const idleRows = Math.max(1, Math.ceil(waiting / idlePerRow));
-  const whiteboard: Box = {
-    x: PAD,
+  const tables = Math.max(1, Math.ceil(meeting / 2));
+  const cushionRows = Math.max(1, Math.ceil(waiting / CUSHION_COLUMNS));
+  const desksWidth = DESK_COLUMNS * DESK_WIDTH + 2 * DESKS_SIDE;
+  const office: Box = {
+    x: PAD + (desksWidth - OFFICE.width) / 2,
     y: PAD,
-    width: desksWidth + GAP + MEETING_WIDTH,
-    height: BOARD_ROW_FEET + (idleRows - 1) * IDLE_ROW + 40,
+    ...OFFICE,
   };
   const desks: Box = {
     x: PAD,
-    y: whiteboard.y + whiteboard.height + GAP,
+    y: office.y + office.height + GAP,
     width: desksWidth,
-    height: DESK_TOP + (rows - 1) * DESK_ROW + 60,
+    height: rowsHeight(rows, DESK_ROW),
   };
-  const tables = Math.max(1, Math.ceil(meeting / 2));
   const meetingBox: Box = {
-    x: desks.x + desks.width + GAP,
-    y: desks.y,
-    width: MEETING_WIDTH,
-    height: Math.max(desks.height, MEETING_TOP + (tables - 1) * MEETING_ROW + 60),
+    x: PAD + desksWidth + GAP,
+    y: PAD,
+    width: SIDE_WIDTH,
+    height: Math.max(OFFICE.height, rowsHeight(tables, MEETING_ROW)),
   };
+  const lounge: Box = {
+    x: meetingBox.x,
+    y: meetingBox.y + meetingBox.height + GAP,
+    width: SIDE_WIDTH,
+    height: rowsHeight(cushionRows, CUSHION_ROW),
+  };
+  const away: Box | null =
+    retired > 0
+      ? {
+          x: lounge.x,
+          y: lounge.y + lounge.height + GAP,
+          width: SIDE_WIDTH,
+          height: rowsHeight(Math.ceil(retired / CUSHION_COLUMNS), CUSHION_ROW),
+        }
+      : null;
+  const right = away ?? lounge;
   return {
-    width: whiteboard.x + whiteboard.width + PAD,
-    height: Math.max(desks.y + desks.height, meetingBox.y + meetingBox.height) + PAD,
-    whiteboard,
+    width: meetingBox.x + SIDE_WIDTH + PAD,
+    height: Math.max(desks.y + desks.height, right.y + right.height) + PAD,
+    office,
     desks,
     meeting: meetingBox,
+    lounge,
+    away,
     tables,
     deskCount: rows * DESK_COLUMNS,
+    cushions: cushionRows * CUSHION_COLUMNS,
   };
 }
 
@@ -108,35 +140,36 @@ function deskSpot(layout: Layout, index: number): Spot {
   const col = index % DESK_COLUMNS;
   const row = Math.floor(index / DESK_COLUMNS);
   return {
-    x: layout.desks.x + (col + 0.5) * DESK_WIDTH,
-    y: layout.desks.y + DESK_TOP + row * DESK_ROW,
+    x: layout.desks.x + DESKS_SIDE + (col + 0.5) * DESK_WIDTH,
+    y: layout.desks.y + ROW_TOP + row * DESK_ROW,
   };
 }
 
-function whiteboardSpot(layout: Layout, index: number): Spot {
-  const { x, y, width } = layout.whiteboard;
-  // The lead stands beside the board; everyone else waits in rows next to it.
-  if (index === 0) return { x: x + 90, y: y + BOARD_ROW_FEET };
-  const perRow = Math.max(1, Math.floor((width - IDLE_START) / IDLE_STEP));
-  const i = index - 1;
-  return {
-    x: x + IDLE_START + (i % perRow) * IDLE_STEP + IDLE_STEP / 2,
-    y: y + BOARD_ROW_FEET + Math.floor(i / perRow) * IDLE_ROW,
-  };
+function leadSpot(layout: Layout): Spot {
+  return { x: layout.office.x + LEAD.x, y: layout.office.y + LEAD.y };
 }
 
 function meetingSpot(layout: Layout, index: number): Spot {
   const { x, y, width } = layout.meeting;
   return {
     x: x + width * (index % 2 === 0 ? 0.27 : 0.73),
-    y: y + MEETING_TOP + Math.floor(index / 2) * MEETING_ROW,
+    y: y + ROW_TOP + Math.floor(index / 2) * MEETING_ROW,
   };
 }
 
-/** The room for this team, as it stands now. */
-export function layoutForTeam(workers: readonly Cat[]): Layout {
+function cushionSpot(layout: Layout, index: number, room = layout.lounge): Spot {
+  const { x, y, width } = room;
+  const col = index % CUSHION_COLUMNS;
+  return {
+    x: x + width / 2 + (col - (CUSHION_COLUMNS - 1) / 2) * CUSHION_STEP,
+    y: y + ROW_TOP + Math.floor(index / CUSHION_COLUMNS) * CUSHION_ROW,
+  };
+}
+
+/** The floor plan for this team, as it stands now. */
+export function layoutForTeam(workers: readonly Cat[], retired = 0): Layout {
   const count = (area: Area) => workers.filter((c) => areaOf(c) === area).length;
-  return layoutFor(workers.length, count('meeting'), count('whiteboard'));
+  return layoutFor(workers.length, count('meeting'), count('lounge'), retired);
 }
 
 /** Where every cat goes, keyed by id. Desks follow the team's order, so they do not shuffle. */
@@ -146,8 +179,8 @@ export function placeCats(
   layout = layoutForTeam(workers),
 ): Map<string, Spot> {
   const spots = new Map<string, Spot>();
-  if (lead) spots.set(lead.id, whiteboardSpot(layout, 0));
-  let waiting = 1;
+  if (lead) spots.set(lead.id, leadSpot(layout));
+  let waiting = 0;
   let meeting = 0;
   workers.forEach((cat, desk) => {
     const area = areaOf(cat);
@@ -157,7 +190,7 @@ export function placeCats(
         ? deskSpot(layout, desk)
         : area === 'meeting'
           ? meetingSpot(layout, meeting++)
-          : whiteboardSpot(layout, waiting++),
+          : cushionSpot(layout, waiting++),
     );
   });
   return spots;
@@ -166,7 +199,7 @@ export function placeCats(
 /** How tall a cat stands, in canvas px (its photo; `styles.css` sizes them alike). */
 function catHeight(cat: Cat, area: Area): number {
   if (cat.role === 'orchestrator') return 118;
-  return area === 'whiteboard' ? 76 : 92;
+  return area === 'lounge' ? 76 : 92;
 }
 
 /** The box a cat takes on the canvas, with room for its bubble above and its name below. */
@@ -298,7 +331,7 @@ function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost
  * the view settles and after renders; while the view moves everything
  * moves together, so the result holds.
  */
-function arrange(overlay: HTMLElement, visible: Rect): void {
+function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
   const origin = overlay.getBoundingClientRect();
   const local = (r: DOMRect): Rect => ({
     left: r.left - origin.left,
@@ -338,6 +371,9 @@ function arrange(overlay: HTMLElement, visible: Rect): void {
       feet: { x: at.left, y: at.top },
     });
   }
+  const signs = [...(overlay.parentElement?.querySelectorAll('.room__sign') ?? [])].map((el) =>
+    local(el.getBoundingClientRect()),
+  );
   const bubbles: { anchor: HTMLElement; over: Rect; under: Rect }[] = [];
   for (const anchor of anchors) {
     const bubble = anchor.querySelector<HTMLElement>('.bubble');
@@ -360,9 +396,12 @@ function arrange(overlay: HTMLElement, visible: Rect): void {
   for (const b of bubbles) {
     const options = candidates(b.over, b.under);
     const apart = (r: Rect) => !placed.some((other) => overlaps(r, other));
-    // No cat is covered, its own included: a bubble over its photo would take its clicks.
+    // No cat is covered, its own included: a bubble over its photo would take
+    // its clicks. Nor is a room's sign.
     const clear = (r: Rect) =>
-      apart(r) && ![...bodies.values()].some((cat) => overlaps(r, cat.body));
+      apart(r) &&
+      ![...bodies.values()].some((cat) => overlaps(r, cat.body)) &&
+      !signs.some((sign) => overlaps(r, sign));
     // Best covering nothing; else covering a cat but no bubble; else at least in view.
     const choice =
       options.find((o) => inView(o.rect) && clear(o.rect)) ??
@@ -426,20 +465,24 @@ function arrange(overlay: HTMLElement, visible: Rect): void {
     if (rect.top + nudge < visible.top + EDGE) nudge = visible.top + EDGE - rect.top;
     if (nudge !== 0) anchor.style.setProperty('--card-nudge', `${String(nudge)}px`);
   }
+  return placed;
 }
 
 /**
  * Markers at the edge of the visible canvas for cats that need you and are
- * out of view, pointing their way. Moved straight in the DOM as the view
- * moves; clicking one brings the cat into view.
+ * out of view, pointing their way, stacked along the edge clear of each
+ * other and of `bubbles`. Moved straight in the DOM as the view moves;
+ * clicking one brings the cat into view.
  */
 function placeMarkers(
   overlay: HTMLElement,
   canvas: CanvasApi,
   boxes: ReadonlyMap<string, Box>,
+  bubbles: readonly Rect[] = [],
 ): void {
   const area = canvas.visible();
-  const placed: Rect[] = [];
+  // Clear of the bubbles too, once the view settles and they are placed.
+  const placed: Rect[] = [...bubbles];
   for (const marker of overlay.querySelectorAll<HTMLElement>('.edge-marker')) {
     const box = boxes.get(marker.dataset['cat'] ?? '');
     if (!box) continue;
@@ -458,33 +501,32 @@ function placeMarkers(
       Math.min(Math.max(v, area.left + EDGE + w / 2), area.right - EDGE - w / 2);
     const clampY = (v: number) =>
       Math.min(Math.max(v, area.top + EDGE + h / 2), area.bottom - EDGE - h / 2);
-    let cx = clampX(x);
-    let cy = clampY(y);
-    // Several cats the same way: the markers line up along the edge.
-    const rect = () => ({
-      left: cx - w / 2,
-      right: cx + w / 2,
-      top: cy - h / 2,
-      bottom: cy + h / 2,
-    });
-    for (
-      let tries = 0;
-      tries < placed.length + 1 && placed.some((p) => overlaps(rect(), p));
-      tries++
-    ) {
-      if (side === 'left' || side === 'right') cy = clampY(cy + h + BUBBLE_GAP);
-      else cx = clampX(cx + w + BUBBLE_GAP);
-    }
-    placed.push(rect());
-    marker.style.left = `${String(cx)}px`;
-    marker.style.top = `${String(cy)}px`;
+    const at = { x: clampX(x), y: clampY(y) };
+    const along =
+      side === 'left' || side === 'right'
+        ? { x: 0, y: h + BUBBLE_GAP }
+        : { x: w + BUBBLE_GAP, y: 0 };
+    const rectAt = (k: number) => {
+      const cx = clampX(at.x + k * along.x);
+      const cy = clampY(at.y + k * along.y);
+      return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
+    };
+    // Several cats the same way: the markers line up along the edge, either side.
+    const free = [0, 1, -1, 2, -2, 3, -3, 4, -4]
+      .map(rectAt)
+      .find((r) => !placed.some((p) => overlaps(r, p)));
+    const spot = free ?? rectAt(0);
+    placed.push(spot);
+    marker.style.left = `${String((spot.left + spot.right) / 2)}px`;
+    marker.style.top = `${String((spot.top + spot.bottom) / 2)}px`;
   }
 }
 
 /**
- * The office: a whiteboard where the lead plans and idle cats wait, desks
- * where cats work, and meeting tables where cats wait for you. A room of
- * fixed size in canvas px, sized for the team; the canvas pans and zooms it.
+ * The office: the lead's office with its whiteboard, the workspace where
+ * cats work at their desks, the meeting room where cats wait for you, and
+ * the break room where idle cats rest. Rooms of fixed size in canvas px,
+ * sized for the team and spread over the canvas, which pans and zooms them.
  * The cats stand on the canvas; their names, bubbles and cards float over it
  * in the canvas's screen-space layer, anchored to them.
  */
@@ -495,9 +537,15 @@ export function Office({
   empty,
   noWorkers,
   detailsOf = null,
+  retired = [],
+  onBringBack,
 }: {
   lead: Cat | undefined;
   workers: readonly Cat[];
+  /** Retired cats, in the out-of-office room. */
+  retired?: readonly RetiredEntry[];
+  /** Bring a retired cat back; without it (a replay) the room has no buttons. */
+  onBringBack?: (catId: string) => void;
   /** The cat whose details panel is open: its hover card stays closed. */
   detailsOf?: string | null;
   renderCat: (cat: Cat, part: 'token' | 'overlay') => ReactNode;
@@ -507,7 +555,7 @@ export function Office({
   noWorkers: ReactNode;
 }) {
   const canvas = useCanvas();
-  const layout = layoutForTeam(workers);
+  const layout = layoutForTeam(workers, retired.length);
   const spots = placeCats(lead, workers, layout);
   const cats = [...(lead ? [lead] : []), ...workers];
   const boxes = new Map(
@@ -539,8 +587,8 @@ export function Office({
   const layoutPass = useCallback(() => {
     const api = canvasRef.current;
     if (!overlay || !api) return;
-    arrange(overlay, api.visible());
-    placeMarkers(overlay, api, boxesRef.current);
+    const bubbles = arrange(overlay, api.visible());
+    placeMarkers(overlay, api, boxesRef.current, bubbles);
   }, [overlay]);
   const scheduled = useRef(0);
   const schedule = useCallback(() => {
@@ -578,43 +626,89 @@ export function Office({
       aria-label="Office"
       style={{ width: `${String(layout.width)}px`, height: `${String(layout.height)}px` }}
     >
-      <div
-        className="office__area office__area--whiteboard"
-        aria-hidden="true"
-        style={px(layout.whiteboard)}
-      >
-        <span className="office__label">Whiteboard</span>
+      <div className="room room--office" aria-hidden="true" style={px(layout.office)}>
+        <span className="room__sign">Lead&apos;s office</span>
         <div className="office__board">
           <span />
           <span />
           <span />
         </div>
+        <span className="room__plant room__plant--right">🪴</span>
       </div>
-      <div className="office__area office__area--desks" aria-hidden="true" style={px(layout.desks)}>
-        <span className="office__label">Desks</span>
+      <div className="room room--desks" aria-hidden="true" style={px(layout.desks)}>
+        <span className="room__sign">Workspace</span>
         {lead && workers.length === 0 && <div className="office__hint">{noWorkers}</div>}
+        <span className="room__plant room__plant--left">🪴</span>
+        <span className="room__plant room__plant--right">🪴</span>
       </div>
-      <div
-        className="office__area office__area--meeting"
-        aria-hidden="true"
-        style={px(layout.meeting)}
-      >
-        <span className="office__label">Meeting · needs you</span>
+      <div className="room room--meeting" aria-hidden="true" style={px(layout.meeting)}>
+        <span className="room__sign">Meeting room · needs you</span>
         {Array.from({ length: layout.tables }, (_, i) => (
           <span
             key={i}
             className="office__table"
-            style={{ top: `${String(MEETING_TOP + i * MEETING_ROW + 4)}px` }}
+            style={{ top: `${String(ROW_TOP + i * MEETING_ROW + 4)}px` }}
           />
         ))}
       </div>
+      <div className="room room--lounge" aria-hidden="true" style={px(layout.lounge)}>
+        <span className="room__sign">Break room</span>
+        <span className="room__plant room__plant--right">☕</span>
+      </div>
+      {layout.away && (
+        <section className="room room--away" aria-label="Out of office" style={px(layout.away)}>
+          <span className="room__sign" aria-hidden="true">
+            Out of office
+          </span>
+        </section>
+      )}
+      {layout.away && (
+        <ul className="office__away" aria-label="Retired cats out of office">
+          {retired.map(({ cat, retired: r }, i) => {
+            const spot = cushionSpot(layout, i, layout.away ?? layout.lounge);
+            return (
+              <li
+                key={r.catId}
+                className="away-cat"
+                style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+                title={`${r.name}: ${r.reason}`}
+              >
+                <CatPhoto catId={cat.id} variant={cat.variant} look="fired" name={r.name} />
+                <span className="away-cat__name">{r.name}</span>
+                {onBringBack && (
+                  <button
+                    type="button"
+                    className="button button--small away-cat__back"
+                    aria-label={`Bring ${r.name} back`}
+                    onClick={() => {
+                      onBringBack(r.catId);
+                    }}
+                  >
+                    Bring back
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <div className="office__furniture" aria-hidden="true">
         {Array.from({ length: layout.deskCount }, (_, i) => {
           const spot = deskSpot(layout, i);
           return (
             <span
-              key={i}
+              key={`desk-${String(i)}`}
               className="office__desk"
+              style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+            />
+          );
+        })}
+        {Array.from({ length: layout.cushions }, (_, i) => {
+          const spot = cushionSpot(layout, i);
+          return (
+            <span
+              key={`cushion-${String(i)}`}
+              className="office__cushion"
               style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
             />
           );

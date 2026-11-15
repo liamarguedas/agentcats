@@ -24,6 +24,8 @@ const ZOOM_STEP = 1.25;
 const FIT_MAX_SCALE = 1;
 /** Space kept around what is framed, in screen px. */
 const FIT_MARGIN = 16;
+/** The zoom controls' height with their margin: Fit keeps the office above them. */
+const CONTROLS_HEIGHT = 60;
 /** Below this zoom, bubbles fold away and approvals become badges. */
 export const FAR_SCALE = 0.45;
 
@@ -161,7 +163,8 @@ export function Canvas({
       if (!zoom.current) return;
       const area = visible();
       const width = area.right - area.left - 2 * FIT_MARGIN;
-      const height = area.bottom - area.top - 2 * FIT_MARGIN;
+      // Clear of the zoom controls at the bottom.
+      const height = area.bottom - area.top - FIT_MARGIN - CONTROLS_HEIGHT;
       const scale = Math.max(MIN_SCALE, Math.min(maxScale, width / box.width, height / box.height));
       void zoom.current.setTransform(
         // Too wide even at the smallest zoom (a phone): start at the left, where the lead is.
@@ -255,21 +258,34 @@ export function Canvas({
   };
   useImperativeHandle(apiRef, () => api);
 
-  // F fits from anywhere on the board, except while typing or in a dialog.
+  // Keys that work anywhere on the board. Ctrl or Cmd with + and - zoom the
+  // canvas instead of the page, and with 0 fit it. Without Ctrl, F fits and
+  // + and - zoom, except while typing or in a dialog.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.key !== 'f' && e.key !== 'F') || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.defaultPrevented) return;
+      // Not `defaultPrevented`: the library marks + and - as handled when the canvas has focus.
+      if (e.altKey) return;
+      const zoomIn = e.key === '+' || e.key === '=';
+      const zoomOut = e.key === '-' || e.key === '_';
+      const command = e.ctrlKey || e.metaKey;
       const target = e.target as HTMLElement;
-      if (target.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return;
+      if (target.closest('[aria-modal="true"]')) return;
+      if (
+        !command &&
+        target.closest('input, textarea, select, [contenteditable], [role="dialog"]')
+      ) {
+        return;
+      }
+      if (zoomIn || zoomOut) zoomBy(zoomIn ? ZOOM_STEP : 1 / ZOOM_STEP);
+      else if (command ? e.key === '0' : e.key === 'f' || e.key === 'F') fit();
+      else return;
       e.preventDefault();
-      fit();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [fit]);
+  }, [fit, zoomBy]);
 
   // Grows with the team: refit, unless the user has moved the view.
   useEffect(() => {
@@ -309,7 +325,7 @@ export function Canvas({
         wheel={{ activationKeys: ['Control', 'Meta'], step: 0.1 }}
         panning={{ excluded: ['cat-token', 'button'] }}
         doubleClick={{ disabled: true }}
-        keyboard={{ panStep: 80, zoomStep: 0.15 }}
+        keyboard={{ panStep: 80, zoomStep: 0 }}
         velocityAnimation={{ disabled: true }}
         onPanningStart={userMoved}
         onWheelStart={userMoved}
@@ -337,7 +353,7 @@ export function Canvas({
             if (target.closest('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) {
               return;
             }
-            if (e.key.startsWith('Arrow') || ['+', '-', '='].includes(e.key)) {
+            if (e.key.startsWith('Arrow')) {
               userMoved();
             }
           }}
@@ -349,7 +365,7 @@ export function Canvas({
               tabIndex: 0,
               role: 'region',
               'aria-label':
-                'Office canvas: drag or use the arrow keys to pan, + and - to zoom, F to fit',
+                'Office canvas: drag or use the arrow keys to pan, Ctrl + and Ctrl - to zoom, F to fit',
               // Focusing a cat must not scroll the viewport: the transform does the moving.
               onScroll: (e) => {
                 e.currentTarget.scrollTo(0, 0);
