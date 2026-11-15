@@ -1,7 +1,7 @@
 import type { Cat } from '@agentcats/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { areaOf, layoutFor, needsYou, placeCats } from './Office.js';
+import { areaOf, crosses, layoutFor, needsYou, placeCats } from './Office.js';
 
 const cat = (id: string, status: Cat['status'], role: Cat['role'] = 'worker', paused = false) =>
   ({ id, role, status, pausedReason: paused ? 'user' : null }) as Cat;
@@ -85,5 +85,18 @@ describe('the office', () => {
     expect(needsYou(cat('l', 'waiting_approval', 'orchestrator'))).toBe(true);
     expect(needsYou(cat('a', 'working'))).toBe(false);
     expect(needsYou(cat('c', 'error', 'candidate'))).toBe(false);
+  });
+
+  it("tells whether a bubble's line to its cat crosses a box", () => {
+    const box = { left: 10, top: 10, right: 20, bottom: 20 };
+    const line = (x1: number, y1: number, x2: number, y2: number) => ({
+      from: { x: x1, y: y1 },
+      to: { x: x2, y: y2 },
+    });
+    expect(crosses(line(0, 15, 30, 15), box)).toBe(true);
+    expect(crosses(line(0, 0, 30, 30), box)).toBe(true);
+    expect(crosses(line(0, 0, 5, 30), box)).toBe(false);
+    expect(crosses(line(0, 25, 30, 25), box)).toBe(false);
+    expect(crosses(line(12, 0, 12, 5), box)).toBe(false);
   });
 });
