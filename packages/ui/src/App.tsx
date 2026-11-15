@@ -8,9 +8,10 @@ import {
   usagePoints,
   catNames,
 } from '@agentcats/protocol';
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { ApiRequestError, type BoardClient, type ConnectionState } from './board-client.js';
+import { Canvas, type CanvasApi } from './components/Canvas.js';
 import { CatCard } from './components/CatCard.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { CatDrawer, TaskDrawer } from './components/Drawers.js';
@@ -27,7 +28,7 @@ import { LearningsSection, LevelSection, levelPerks } from './components/Learnin
 import { ReplayBar, SessionPicker } from './components/Replay.js';
 import { SettingsDialog } from './components/Settings.js';
 import { SpendMeter } from './components/SpendMeter.js';
-import { Office } from './components/Office.js';
+import { catBox, needsYou, Office, placeCats } from './components/Office.js';
 import { TaskCard } from './components/TaskCard.js';
 import { ReplayPlayer } from './replay.js';
 import { applyTheme, storedTheme, type Theme, THEMES } from './theme.js';
@@ -42,6 +43,51 @@ const CONNECTION_LABEL: Record<ConnectionState, string> = {
 
 const THEME_LABEL: Record<Theme, string> = { system: 'system', light: 'light', dark: 'dark' };
 const THEME_ICON: Record<Theme, string> = { system: '◐', light: '☀', dark: '☾' };
+
+type Panel = 'chat' | 'tasks' | 'events';
+const PANELS_KEY = 'agentcats:panel';
+/** Width of the dock on the right and of the details panel on the left, with their margin. */
+const DOCK_WIDTH = 424;
+const DETAILS_WIDTH = 484;
+/** A narrow screen, where panels become bottom sheets (`styles.css` agrees). */
+const NARROW = '(width < 640px)';
+/** How much of a narrow screen's height an open sheet takes, with its tab bar. */
+const SHEET_SHARE = 0.55;
+
+/** Whether the screen is narrow, and its height, kept current. */
+function useScreen(): { narrow: boolean; height: number } {
+  const read = () => ({ narrow: window.matchMedia(NARROW).matches, height: window.innerHeight });
+  const [screen, setScreen] = useState(read);
+  useEffect(() => {
+    const update = () => {
+      setScreen(read);
+    };
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  return screen;
+}
+
+/** The panel left open last time; the chat on a first visit. */
+function storedPanel(): Panel | null {
+  try {
+    const value = localStorage.getItem(PANELS_KEY);
+    if (value === null) return 'chat';
+    return value === 'chat' || value === 'tasks' || value === 'events' ? value : null;
+  } catch {
+    return 'chat';
+  }
+}
+
+function storePanel(panel: Panel | null): void {
+  try {
+    localStorage.setItem(PANELS_KEY, panel ?? 'none');
+  } catch {
+    // Storage blocked: the panels open as on a first visit.
+  }
+}
 
 interface Replay {
   readonly player: ReplayPlayer;
@@ -143,6 +189,15 @@ export function App({ client }: { client: BoardClient }) {
   const [drawer, setDrawer] = useState<Drawer>(null);
   const [hiring, setHiring] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanelState] = useState<Panel | null>(storedPanel);
+  const setPanel = (next: Panel | null) => {
+    setPanelState(next);
+    storePanel(next);
+  };
+  const canvas = useRef<CanvasApi>(null);
+  const screen = useScreen();
+  /** The last cat `N` brought into view. */
+  const attentionStep = useRef(-1);
   const [retiring, setRetiring] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [errors, setErrors] = useState<readonly { id: number; text: string }[]>([]);
@@ -154,6 +209,57 @@ export function App({ client }: { client: BoardClient }) {
   );
   const lead = cats.find((c) => c.role === 'orchestrator');
   const workers = cats.filter((c) => c.role === 'worker');
+  const attention = [...(lead ? [lead] : []), ...workers].filter(needsYou);
+  const attentionBoxes = (list: readonly Cat[]) => {
+    const spots = placeCats(lead, workers);
+    return list.flatMap((cat) => {
+      const spot = spots.get(cat.id);
+      return spot ? [catBox(cat, spot)] : [];
+    });
+  };
+  /** Bring every cat that needs you into view. */
+  const showAttention = () => {
+    const boxes = attentionBoxes(attention);
+    if (boxes.length === 0) return;
+    const x = Math.min(...boxes.map((b) => b.x));
+    const y = Math.min(...boxes.map((b) => b.y));
+    canvas.current?.show({
+      x,
+      y,
+      width: Math.max(...boxes.map((b) => b.x + b.width)) - x,
+      height: Math.max(...boxes.map((b) => b.y + b.height)) - y,
+    });
+  };
+  /** Bring the next cat that needs you into view and give it focus, for A, D and P. */
+  const stepAttention = () => {
+    if (attention.length === 0) return;
+    attentionStep.current = (attentionStep.current + 1) % attention.length;
+    const cat = attention[attentionStep.current];
+    const box = cat && attentionBoxes([cat])[0];
+    if (!cat || !box) return;
+    canvas.current?.show(box);
+    document
+      .querySelector<HTMLElement>(`.cat-token[data-cat="${CSS.escape(cat.name)}"] button`)
+      ?.focus({ preventScroll: true });
+  };
+  const stepAttentionRef = useRef(stepAttention);
+  useEffect(() => {
+    stepAttentionRef.current = stepAttention;
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'n' && e.key !== 'N') return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+      const target = e.target as HTMLElement;
+      if (target.closest('input, textarea, select, [contenteditable], [role="dialog"]')) return;
+      e.preventDefault();
+      stepAttentionRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
   const tasks = useMemo(
     () => Object.values(board.tasks).sort((a, b) => b.createdAt - a.createdAt),
     [board.tasks],
@@ -339,12 +445,18 @@ export function App({ client }: { client: BoardClient }) {
     [client],
   );
 
-  const catCard = (cat: Cat, size: 'lead' | 'worker', layout: 'card' | 'token' = 'card') => (
+  const catCard = (
+    cat: Cat,
+    size: 'lead' | 'worker',
+    layout: 'card' | 'token' = 'card',
+    part?: 'token' | 'overlay',
+  ) => (
     <CatCard
       key={cat.id}
       cat={cat}
       size={size}
       layout={layout}
+      {...(part && { part })}
       promoted={promotedRecently(cat.id)}
       approval={approvalOf(cat.id)}
       usage={board.usage[cat.id]}
@@ -386,12 +498,23 @@ export function App({ client }: { client: BoardClient }) {
   const openCat = drawer?.kind === 'cat' ? board.cats[drawer.id] : undefined;
 
   return (
-    <div className={`app${drawer ? ' app--drawer-open' : ''}${replay ? ' app--replay' : ''}`}>
+    <div className={`app${replay ? ' app--replay' : ''}`}>
       <header className="app__header">
         <h1 className="app__title">
           agent<span>cats</span>
         </h1>
         <div className="app__header-right">
+          {attention.length > 0 && (
+            <button
+              type="button"
+              className="button button--small needs-you"
+              aria-keyshortcuts="N"
+              title="Show the cats that need you (N steps through them)"
+              onClick={showAttention}
+            >
+              Needs you <span className="needs-you__count">{attention.length}</span>
+            </button>
+          )}
           {!replay && (
             <button
               type="button"
@@ -455,12 +578,28 @@ export function App({ client }: { client: BoardClient }) {
       </header>
 
       <main className="board">
-        <div className="board__canvas">
+        <Canvas
+          apiRef={canvas}
+          // On a narrow screen the panels are bottom sheets.
+          coveredLeft={drawer && !screen.narrow ? DETAILS_WIDTH : 0}
+          coveredRight={panel && !screen.narrow ? DOCK_WIDTH : 0}
+          coveredBottom={
+            screen.narrow && (panel || drawer) ? Math.round(screen.height * SHEET_SHARE) : 0
+          }
+          // The view is remembered per project; the lead is the project's own.
+          storageKey={replay || !lead ? null : `agentcats:view:${lead.id}`}
+        >
           <Office
             lead={lead}
             workers={workers}
-            renderCat={(cat) =>
-              catCard(cat, cat.role === 'orchestrator' ? 'lead' : 'worker', 'token')
+            detailsOf={drawer?.kind === 'cat' ? drawer.id : null}
+            retired={retiredCats}
+            {...(!replay && {
+              onBringBack: (catId: string) =>
+                void run(() => client.request('resurrectCat', { catId })),
+            })}
+            renderCat={(cat, part) =>
+              catCard(cat, cat.role === 'orchestrator' ? 'lead' : 'worker', 'token', part)
             }
             empty={
               <p className="board__empty">
@@ -473,63 +612,181 @@ export function App({ client }: { client: BoardClient }) {
               </p>
             }
           />
-          {interviews.map((interview) => (
-            <InterviewPanel
-              key={interview.id}
-              interview={interview}
-              cats={board.cats}
-              renderCandidate={(cat) => catCard(cat, 'worker')}
-              onStart={() =>
-                void run(() => client.request('startInterview', { interviewId: interview.id }))
-              }
-              onCancel={() =>
-                void run(() => client.request('cancelInterview', { interviewId: interview.id }))
-              }
-              onPick={(catId) =>
-                void run(() =>
-                  client.request('pickCandidate', { interviewId: interview.id }, { catId }),
-                )
-              }
+        </Canvas>
+        {interviews.length > 0 && (
+          <div className="board__interviews">
+            {interviews.map((interview) => (
+              <InterviewPanel
+                key={interview.id}
+                interview={interview}
+                cats={board.cats}
+                renderCandidate={(cat) => catCard(cat, 'worker')}
+                onStart={() =>
+                  void run(() => client.request('startInterview', { interviewId: interview.id }))
+                }
+                onCancel={() =>
+                  void run(() => client.request('cancelInterview', { interviewId: interview.id }))
+                }
+                onPick={(catId) =>
+                  void run(() =>
+                    client.request('pickCandidate', { interviewId: interview.id }, { catId }),
+                  )
+                }
+              />
+            ))}
+          </div>
+        )}
+        <aside className={`dock${panel ? '' : ' dock--closed'}`} aria-label="Panels">
+          <div className="dock__tabs" role="tablist">
+            {(['chat', 'tasks', 'events'] as const).map((id) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={panel === id}
+                className="dock__tab"
+                onClick={() => {
+                  setPanel(panel === id ? null : id);
+                }}
+              >
+                {id === 'chat'
+                  ? 'Chat'
+                  : id === 'tasks'
+                    ? `Tasks ${String(tasks.length)}`
+                    : 'Events'}
+              </button>
+            ))}
+          </div>
+          <div className="dock__panel" hidden={panel !== 'chat'}>
+            <ChatPanel
+              cat={lead}
+              events={events}
+              live={view.connection === 'live'}
+              readOnly={replay !== null}
+              onSend={(text) => run(() => client.request('chat', {}, { text }))}
             />
-          ))}
-          <section className="board__tasks" aria-label="Tasks">
-            <h2 className="section-title">
-              Tasks <span className="panel__count">{tasks.length}</span>
-            </h2>
-            {tasks.length === 0 ? (
-              <p className="board__empty">No tasks yet.</p>
-            ) : (
-              <div className="task-grid">
-                {tasks.map((task) => (
-                  <TaskCard
-                    key={task.id}
-                    task={task}
-                    cat={task.assigneeCatId ? board.cats[task.assigneeCatId] : undefined}
-                    onOpen={() => {
-                      setDrawer({ kind: 'task', id: task.id });
-                    }}
-                  />
-                ))}
-              </div>
-            )}
-          </section>
-          <RetiredList
-            retired={retiredCats}
-            onResurrect={(catId) => void run(() => client.request('resurrectCat', { catId }))}
+          </div>
+          {
+            <div className="dock__panel dock__panel--scroll" hidden={panel !== 'tasks'}>
+              <section className="board__tasks" aria-label="Tasks">
+                <h2 className="section-title">
+                  Tasks <span className="panel__count">{tasks.length}</span>
+                </h2>
+                {tasks.length === 0 ? (
+                  <p className="board__empty">No tasks yet.</p>
+                ) : (
+                  <div className="task-grid">
+                    {tasks.map((task) => (
+                      <TaskCard
+                        key={task.id}
+                        task={task}
+                        cat={task.assigneeCatId ? board.cats[task.assigneeCatId] : undefined}
+                        onOpen={() => {
+                          setDrawer({ kind: 'task', id: task.id });
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+              <RetiredList
+                retired={retiredCats}
+                onResurrect={(catId) => void run(() => client.request('resurrectCat', { catId }))}
+              />
+            </div>
+          }
+          <div className="dock__panel" hidden={panel !== 'events'}>
+            <EventLog events={events} />
+          </div>
+        </aside>
+        {openTask && (
+          <TaskDrawer
+            task={openTask}
+            cat={openTask.assigneeCatId ? board.cats[openTask.assigneeCatId] : undefined}
+            loadHistory={loadHistory}
+            onReview={(decision, note) =>
+              void run(() =>
+                client.request(
+                  'reviewTask',
+                  { taskId: openTask.id },
+                  { decision, ...(note && { note }) },
+                ),
+              )
+            }
+            onRerun={() => void run(() => client.request('rerunTask', { taskId: openTask.id }))}
+            onCancel={() => void run(() => client.request('cancelTask', { taskId: openTask.id }))}
+            onClose={() => {
+              setDrawer(null);
+            }}
           />
-        </div>
+        )}
+        {openCat && (
+          <CatDrawer
+            key={openCat.id}
+            cat={openCat}
+            adapters={view.adapters}
+            usage={board.usage[openCat.id]}
+            canNudge={
+              openCat.role === 'worker' &&
+              activeTask(openCat.id) !== null &&
+              openCat.pausedReason === null
+            }
+            onSave={(patch) => run(() => client.request('updateCat', { catId: openCat.id }, patch))}
+            onNudge={() => void run(() => client.request('nudgeCat', { catId: openCat.id }, {}))}
+            {...(openCat.role === 'worker' && {
+              onRetire: () => {
+                setDrawer(null);
+                setRetiring(openCat.id);
+              },
+            })}
+            onClose={() => {
+              setDrawer(null);
+            }}
+          >
+            {openCat.role === 'worker' && (
+              <>
+                <LevelSection cat={openCat} />
+                <LearningsSection
+                  cat={openCat}
+                  proposals={proposalsOf(openCat.id)}
+                  tasks={board.tasks}
+                  undoVersion={undoVersionOf(events, openCat.id)}
+                  onAdd={(text) =>
+                    run(() => client.request('addLearning', { catId: openCat.id }, { text }))
+                  }
+                  onEdit={(learningId, text) =>
+                    run(() =>
+                      client.request('editLearning', { catId: openCat.id, learningId }, { text }),
+                    )
+                  }
+                  onDelete={(learningId) =>
+                    void run(() =>
+                      client.request('deleteLearning', { catId: openCat.id, learningId }),
+                    )
+                  }
+                  onResolve={(proposalId, decision) =>
+                    void run(() => client.request('resolveProposal', { proposalId }, { decision }))
+                  }
+                  onConsolidate={() =>
+                    void run(() => client.request('consolidateLearnings', { catId: openCat.id }))
+                  }
+                  onRestore={(versionId) =>
+                    void run(() =>
+                      client.request('restoreLearnings', { catId: openCat.id }, { versionId }),
+                    )
+                  }
+                  loadHistory={async () =>
+                    (await client.request('learningsHistory', { catId: openCat.id })).versions
+                  }
+                  onOpenTask={(taskId) => {
+                    setDrawer({ kind: 'task', id: taskId });
+                  }}
+                />
+              </>
+            )}
+          </CatDrawer>
+        )}
       </main>
-
-      <aside className="sidebar">
-        <ChatPanel
-          cat={lead}
-          events={events}
-          live={view.connection === 'live'}
-          readOnly={replay !== null}
-          onSend={(text) => run(() => client.request('chat', {}, { text }))}
-        />
-        <EventLog events={events} />
-      </aside>
 
       <div className="toasts" aria-live="polite">
         {notices.map((n) => (
@@ -661,93 +918,6 @@ export function App({ client }: { client: BoardClient }) {
             setRetiring(null);
           }}
         />
-      )}
-      {openTask && (
-        <TaskDrawer
-          task={openTask}
-          cat={openTask.assigneeCatId ? board.cats[openTask.assigneeCatId] : undefined}
-          loadHistory={loadHistory}
-          onReview={(decision, note) =>
-            void run(() =>
-              client.request(
-                'reviewTask',
-                { taskId: openTask.id },
-                { decision, ...(note && { note }) },
-              ),
-            )
-          }
-          onRerun={() => void run(() => client.request('rerunTask', { taskId: openTask.id }))}
-          onCancel={() => void run(() => client.request('cancelTask', { taskId: openTask.id }))}
-          onClose={() => {
-            setDrawer(null);
-          }}
-        />
-      )}
-      {openCat && (
-        <CatDrawer
-          key={openCat.id}
-          cat={openCat}
-          adapters={view.adapters}
-          usage={board.usage[openCat.id]}
-          canNudge={
-            openCat.role === 'worker' &&
-            activeTask(openCat.id) !== null &&
-            openCat.pausedReason === null
-          }
-          onSave={(patch) => run(() => client.request('updateCat', { catId: openCat.id }, patch))}
-          onNudge={() => void run(() => client.request('nudgeCat', { catId: openCat.id }, {}))}
-          {...(openCat.role === 'worker' && {
-            onRetire: () => {
-              setDrawer(null);
-              setRetiring(openCat.id);
-            },
-          })}
-          onClose={() => {
-            setDrawer(null);
-          }}
-        >
-          {openCat.role === 'worker' && (
-            <>
-              <LevelSection cat={openCat} />
-              <LearningsSection
-                cat={openCat}
-                proposals={proposalsOf(openCat.id)}
-                tasks={board.tasks}
-                undoVersion={undoVersionOf(events, openCat.id)}
-                onAdd={(text) =>
-                  run(() => client.request('addLearning', { catId: openCat.id }, { text }))
-                }
-                onEdit={(learningId, text) =>
-                  run(() =>
-                    client.request('editLearning', { catId: openCat.id, learningId }, { text }),
-                  )
-                }
-                onDelete={(learningId) =>
-                  void run(() =>
-                    client.request('deleteLearning', { catId: openCat.id, learningId }),
-                  )
-                }
-                onResolve={(proposalId, decision) =>
-                  void run(() => client.request('resolveProposal', { proposalId }, { decision }))
-                }
-                onConsolidate={() =>
-                  void run(() => client.request('consolidateLearnings', { catId: openCat.id }))
-                }
-                onRestore={(versionId) =>
-                  void run(() =>
-                    client.request('restoreLearnings', { catId: openCat.id }, { versionId }),
-                  )
-                }
-                loadHistory={async () =>
-                  (await client.request('learningsHistory', { catId: openCat.id })).versions
-                }
-                onOpenTask={(taskId) => {
-                  setDrawer({ kind: 'task', id: taskId });
-                }}
-              />
-            </>
-          )}
-        </CatDrawer>
       )}
       {meter && (
         <Dialog

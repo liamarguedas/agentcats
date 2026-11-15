@@ -3,23 +3,17 @@ import { join } from 'node:path';
 
 import { expect, type Page, test } from '@playwright/test';
 
-import { E2E_STATE_FILE, E2E_TOKEN } from '../playwright.config.js';
-
-const SHOTS = 'test-results/screenshots';
-const shot = (page: Page, name: string, fullPage = false) =>
-  page.screenshot({ path: `${SHOTS}/${name}.png`, animations: 'disabled', fullPage });
-
-async function openBoard(page: Page) {
-  await page.goto(`/#token=${E2E_TOKEN}`);
-  await expect(page.getByTestId('connection')).toHaveText('Live');
-}
-
-async function chat(page: Page, text: string) {
-  const input = page.getByLabel('Task for the cat');
-  await expect(input).toBeEnabled({ timeout: 15_000 });
-  await input.fill(text);
-  await input.press('Enter');
-}
+import { E2E_STATE_FILE } from '../playwright.config.js';
+import {
+  chat,
+  chatPanel,
+  expectInView,
+  openBoard,
+  shot,
+  SHOTS,
+  showPanel,
+  tasks,
+} from './helpers.js';
 
 const lead = (page: Page) => page.getByTestId('cat-Tux');
 
@@ -34,7 +28,6 @@ function learningsOnDisk(catName: string): string {
     return '';
   }
 }
-const tasks = (page: Page) => page.getByRole('region', { name: 'Tasks' });
 
 test.describe.configure({ mode: 'serial' });
 
@@ -62,9 +55,9 @@ test('the lead splits a request between two workers who work in parallel', async
     }).observe(document.body, { subtree: true, childList: true, characterData: true });
   });
   await chat(page, 'Add a login endpoint and write tests for it');
-  await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
+  await expect(await chatPanel(page)).toContainText('Add a login endpoint');
 
-  const workers = page.getByRole('group', { name: 'Cats' }).locator('.cat-card--worker');
+  const workers = page.getByRole('group', { name: 'Cats' }).locator('.cat-token--worker');
   await expect(workers).toHaveCount(2, { timeout: 15_000 });
   await expect
     .poll(() =>
@@ -73,9 +66,11 @@ test('the lead splits a request between two workers who work in parallel', async
     .toEqual(expect.arrayContaining([expect.stringMatching(/Thinking|Working/)]));
   await shot(page, 'team-working');
 
-  await expect(tasks(page).locator('.task-card--review')).toHaveCount(2, { timeout: 20_000 });
-  await expect(tasks(page)).toContainText('agentcats/');
-  await expect(page.getByRole('region', { name: 'Chat' })).toContainText('ready for review', {
+  await expect((await tasks(page)).locator('.task-card--review')).toHaveCount(2, {
+    timeout: 20_000,
+  });
+  await expect(await tasks(page)).toContainText('agentcats/');
+  await expect(await chatPanel(page)).toContainText('ready for review', {
     timeout: 15_000,
   });
   await shot(page, 'team-review');
@@ -83,7 +78,7 @@ test('the lead splits a request between two workers who work in parallel', async
 
 test('a result is reviewed in the drawer and accepted', async ({ page }) => {
   await openBoard(page);
-  await tasks(page).locator('.task-card--review').first().click();
+  await (await tasks(page)).locator('.task-card--review').first().click();
   const drawer = page.getByRole('dialog');
   await expect(drawer).toContainText('Worker summary');
   await expect(drawer).toContainText('Tests');
@@ -98,7 +93,7 @@ test('a result is reviewed in the drawer and accepted', async ({ page }) => {
 
 test('a rejection can say why', async ({ page }) => {
   await openBoard(page);
-  await tasks(page).locator('.task-card--review').first().click();
+  await (await tasks(page)).locator('.task-card--review').first().click();
   const drawer = page.getByRole('dialog');
   await drawer.getByRole('button', { name: 'Reject…' }).click();
   await drawer
@@ -119,12 +114,13 @@ test('an accepted result earns XP; its learning can be kept, edited and deleted'
     page,
     'Document the API\n/single\nlearn: The API docs live in docs/api.md; update them with every route change',
   );
-  const card = tasks(page).locator('.task-card', { hasText: 'Document the API' });
+  const card = (await tasks(page)).locator('.task-card', { hasText: 'Document the API' });
   await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
   await card.click();
   await page.getByRole('dialog').getByRole('button', { name: 'Accept' }).click();
   await page.keyboard.press('Escape');
 
+  await showPanel(page, 'Events');
   await expect(page.getByRole('region', { name: 'Event log' })).toContainText(
     'XP, result accepted',
   );
@@ -172,7 +168,7 @@ test('a worker asks before reaching the network; Deny blocks it', async ({ page 
   await shot(page, 'approval');
   await bubble.getByRole('button', { name: 'Deny' }).click();
   await expect(bubble).toBeHidden();
-  await expect(tasks(page).getByText('Read the API docs')).toBeVisible();
+  await expect((await tasks(page)).getByText('Read the API docs')).toBeVisible();
 });
 
 test('a focused cat answers its approval from the keyboard, and shows its details on hover', async ({
@@ -193,50 +189,36 @@ test('a focused cat answers its approval from the keyboard, and shows its detail
   await page.keyboard.press('a');
   await expect(bubble).toBeHidden();
 
-  await lead(page).getByRole('button', { name: 'Tux: open details' }).hover();
+  await page.getByRole('button', { name: 'Tux: open details' }).hover();
   await expect(lead(page).getByTestId('cat-status')).toBeVisible();
   await shot(page, 'hover-card');
   await page.mouse.move(0, 0);
 });
 
-test("the lead's approval bubble fits in the office, however long the request", async ({
-  page,
-}) => {
+test("the lead's approval bubble stays in view, however long the request", async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Look at the history\n/lead-asks');
   const bubble = page.getByRole('alertdialog', { name: 'Approval request from Tux' });
   await expect(bubble).toBeVisible({ timeout: 15_000 });
-  // The office scrolls sideways, so anything above its top edge is cut off.
-  await expect(async () => {
-    const box = (await bubble.boundingBox())!;
-    const office = (await page.getByRole('region', { name: 'Office' }).boundingBox())!;
-    expect(box.y).toBeGreaterThanOrEqual(office.y);
-  }).toPass({ timeout: 5_000 });
+  await expectInView(page, bubble);
   await expect(bubble.getByRole('button', { name: 'Allow' })).toBeInViewport();
   await shot(page, 'lead-approval');
   await bubble.getByRole('button', { name: 'Allow' }).click();
   await expect(bubble).toBeHidden();
 });
 
-test("a cat's card opens where it fits, also for cats in the bottom row", async ({ page }) => {
+test("a cat's card opens where it fits, inside the visible canvas", async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Sort the imports\n/single');
-  const card = tasks(page).locator('.task-card', { hasText: 'Sort the imports' });
+  const card = (await tasks(page)).locator('.task-card', { hasText: 'Sort the imports' });
   await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
   const name = ((await card.locator('.task-card__cat').textContent()) ?? '').trim();
-  // Done: it waits in the row at the bottom of the whiteboard.
-  const cat = page.locator(`.office__cat:has([data-testid="cat-${name}"])`);
-  await expect(cat).toHaveAttribute('data-area', 'whiteboard');
+  // Done: it rests in the break room.
+  await expect(page.locator(`.anchor[data-cat="${name}"]`)).toHaveAttribute('data-area', 'lounge');
   await page.getByRole('button', { name: `${name}: open details` }).hover();
   const meta = page.getByTestId(`cat-${name}`).locator('.cat-card__meta');
   await expect(meta).toBeVisible();
-  // The office scrolls sideways, so anything below its bottom edge is cut off.
-  await expect(async () => {
-    const box = (await meta.boundingBox())!;
-    const office = (await page.getByRole('region', { name: 'Office' }).boundingBox())!;
-    expect(box.y + box.height).toBeLessThanOrEqual(office.y + office.height);
-    expect(box.y).toBeGreaterThanOrEqual(office.y);
-  }).toPass({ timeout: 5_000 });
+  await expectInView(page, meta);
   await shot(page, 'card-bottom-row');
   await page.mouse.move(0, 0);
 });
@@ -244,7 +226,7 @@ test("a cat's card opens where it fits, also for cats in the bottom row", async 
 test('a crashing worker is retried once, then failed, and can be re-run', async ({ page }) => {
   await openBoard(page);
   await chat(page, 'Build the thing\n/single\n/crash');
-  const card = tasks(page).locator('.task-card', { hasText: 'Build the thing' });
+  const card = (await tasks(page)).locator('.task-card', { hasText: 'Build the thing' });
   await expect(card.locator('.chip')).toHaveText('Failed', { timeout: 20_000 });
   await expect(card).toContainText('attempt 2');
   // A meme caption on the worker who failed, from the default template file.
@@ -367,16 +349,22 @@ test('a cat can be retired and brought back with its XP', async ({ page }) => {
   await shot(page, 'retire-dialog');
   await dialog.getByRole('button', { name: 'Retire Miso' }).click();
   await expect(page.getByTestId('cat-Miso')).toHaveCount(0);
+  // Out of office, in its box, until it is brought back.
+  const away = page.getByRole('list', { name: 'Retired cats out of office' });
+  await expect(away).toContainText('Miso');
+  await expect(away.getByRole('img', { name: 'Miso, retired' })).toBeVisible();
 
+  await showPanel(page, 'Tasks');
   const retired = page.getByRole('region', { name: 'Retired cats' });
   await retired.locator('summary').click();
   await expect(retired).toContainText('Miso');
   await expect(retired).toContainText('Taking a nap');
   await expect(retired.getByRole('img', { name: 'Miso, retired' })).toBeVisible();
   await retired.screenshot({ path: `${SHOTS}/retired-list.png`, animations: 'disabled' });
-  await retired.getByRole('button', { name: 'Bring back' }).click();
+  await away.getByRole('button', { name: 'Bring Miso back' }).click();
   await expect(page.getByTestId('cat-Miso')).toContainText(/\d+ XP/);
   await expect(retired).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Out of office' })).toHaveCount(0);
 });
 
 test('a cat moved to an agent without cost reporting shows cost unknown, its time budget and a sandbox warning', async ({
@@ -446,8 +434,8 @@ test('the board resyncs after a reload', async ({ page }) => {
   await openBoard(page);
   await page.reload();
   await expect(page.getByTestId('connection')).toHaveText('Live');
-  await expect(tasks(page)).toContainText('Build the thing');
-  await expect(page.getByRole('region', { name: 'Chat' })).toContainText('Add a login endpoint');
+  await expect(await tasks(page)).toContainText('Build the thing');
+  await expect(await chatPanel(page)).toContainText('Add a login endpoint');
 });
 
 test('a past session replays read-only, exports without long texts, and imports back', async ({
@@ -521,7 +509,7 @@ test('settings change the defaults for new cats, and can move existing ones', as
   await openBoard(page);
   // A worker on the board, also when this test runs alone.
   await chat(page, 'Tidy the changelog\n/single');
-  const card = tasks(page).locator('.task-card', { hasText: 'Tidy the changelog' });
+  const card = (await tasks(page)).locator('.task-card', { hasText: 'Tidy the changelog' });
   await expect(card.locator('.chip')).toHaveText('Review', { timeout: 20_000 });
   await page.getByRole('button', { name: 'Settings' }).click();
   const dialog = page.getByRole('dialog', { name: 'Settings' });

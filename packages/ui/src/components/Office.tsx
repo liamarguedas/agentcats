@@ -1,75 +1,251 @@
-import type { Cat } from '@agentcats/protocol';
-import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { Cat, RetiredEntry } from '@agentcats/protocol';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 
-/** Where a cat stands: planning at the whiteboard, at its desk, or at the table waiting for you. */
-export type Area = 'whiteboard' | 'desks' | 'meeting';
+import { CatPhoto } from './Cat.js';
+import { type Box, type CanvasApi, useCanvas } from './Canvas.js';
+
+/**
+ * Where a cat is: the lead in its office, a busy cat at its desk in the
+ * workspace, a cat that needs you in the meeting room, an idle or finished
+ * one in the break room.
+ */
+export type Area = 'office' | 'desks' | 'meeting' | 'lounge';
 
 export function areaOf(cat: Cat): Area {
-  if (cat.role === 'orchestrator') return 'whiteboard';
+  if (cat.role === 'orchestrator') return 'office';
   if (cat.pausedReason || ['waiting_approval', 'blocked', 'error'].includes(cat.status)) {
     return 'meeting';
   }
   if (cat.status === 'thinking' || cat.status === 'working') return 'desks';
-  return 'whiteboard';
+  return 'lounge';
 }
 
-/** Scene coordinates in percent: `x` is the cat's center, `y` where its feet are. */
-interface Spot {
+/** Canvas coordinates in px: `x` is the cat's center, `y` where its feet are. */
+export interface Spot {
   readonly x: number;
   readonly y: number;
 }
 
-const DESK_COLUMNS = 3;
+/** The floor plan for a team, in canvas px: each room, and the size of the whole. */
+export interface Layout {
+  readonly width: number;
+  readonly height: number;
+  readonly office: Box;
+  readonly desks: Box;
+  readonly meeting: Box;
+  readonly lounge: Box;
+  /** Retired cats; `null` while nobody is retired. */
+  readonly away: Box | null;
+  /** One table per two seats. */
+  readonly tables: number;
+  readonly deskCount: number;
+  readonly cushions: number;
+}
+
+/** Space around the floor plan, and between the rooms. */
+const PAD = 40;
+const GAP = 120;
+/** From a room's top to the feet of its first row: room for its sign and a bubble. */
+const ROW_TOP = 210;
+/** Below the last row: room for the name tags. */
+const ROW_BOTTOM = 80;
+const OFFICE = { width: 620, height: 430 };
+/** The lead stands by the whiteboard (`styles.css` draws it). */
+const LEAD = { x: 150, y: 340 };
+const DESK_COLUMNS = 4;
+const DESK_WIDTH = 210;
+const DESK_ROW = 230;
+const DESKS_SIDE = 40;
+const SIDE_WIDTH = 640;
+/** Two cats per table, one table per row; a row leaves room for an approval bubble. */
+const MEETING_ROW = 320;
+const CUSHION_COLUMNS = 3;
+/** Wide enough that name tags stay apart when zoomed out to Fit. */
+const CUSHION_STEP = 170;
+const CUSHION_ROW = 170;
+
+const rowsHeight = (rows: number, step: number) => ROW_TOP + (rows - 1) * step + ROW_BOTTOM;
+
+/**
+ * The floor plan for a team of `workers`, `meeting` of them waiting for you
+ * and `waiting` idle, and `retired` cats: the lead's office above the
+ * workspace, the meeting room and the break room beside them, and, once a
+ * cat is retired, the out-of-office room below those. Each room grows on its own: the
+ * workspace by a row of desks per four workers, the meeting room by a table
+ * per two cats, the break room by a row of cushions per three.
+ */
+export function layoutFor(workers: number, meeting: number, waiting: number, retired = 0): Layout {
+  const rows = Math.max(1, Math.ceil(workers / DESK_COLUMNS));
+  const tables = Math.max(1, Math.ceil(meeting / 2));
+  const cushionRows = Math.max(1, Math.ceil(waiting / CUSHION_COLUMNS));
+  const desksWidth = DESK_COLUMNS * DESK_WIDTH + 2 * DESKS_SIDE;
+  const office: Box = {
+    x: PAD + (desksWidth - OFFICE.width) / 2,
+    y: PAD,
+    ...OFFICE,
+  };
+  const desks: Box = {
+    x: PAD,
+    y: office.y + office.height + GAP,
+    width: desksWidth,
+    height: rowsHeight(rows, DESK_ROW),
+  };
+  const meetingBox: Box = {
+    x: PAD + desksWidth + GAP,
+    y: PAD,
+    width: SIDE_WIDTH,
+    height: Math.max(OFFICE.height, rowsHeight(tables, MEETING_ROW)),
+  };
+  const lounge: Box = {
+    x: meetingBox.x,
+    y: meetingBox.y + meetingBox.height + GAP,
+    width: SIDE_WIDTH,
+    height: rowsHeight(cushionRows, CUSHION_ROW),
+  };
+  const away: Box | null =
+    retired > 0
+      ? {
+          x: lounge.x,
+          y: lounge.y + lounge.height + GAP,
+          width: SIDE_WIDTH,
+          height: rowsHeight(Math.ceil(retired / CUSHION_COLUMNS), CUSHION_ROW),
+        }
+      : null;
+  const right = away ?? lounge;
+  return {
+    width: meetingBox.x + SIDE_WIDTH + PAD,
+    height: Math.max(desks.y + desks.height, right.y + right.height) + PAD,
+    office,
+    desks,
+    meeting: meetingBox,
+    lounge,
+    away,
+    tables,
+    deskCount: rows * DESK_COLUMNS,
+    cushions: cushionRows * CUSHION_COLUMNS,
+  };
+}
+
 /** Desk spots, row by row; a worker keeps the same desk for as long as it is on the team. */
-function deskSpot(index: number): Spot {
+function deskSpot(layout: Layout, index: number): Spot {
   const col = index % DESK_COLUMNS;
   const row = Math.floor(index / DESK_COLUMNS);
-  return { x: 39 + col * 11, y: 52 + row * 42 };
+  return {
+    x: layout.desks.x + DESKS_SIDE + (col + 0.5) * DESK_WIDTH,
+    y: layout.desks.y + ROW_TOP + row * DESK_ROW,
+  };
 }
 
-function whiteboardSpot(index: number): Spot {
-  // The lead stands beside the board; everyone else waits in a row in front of it.
-  return index === 0 ? { x: 22.5, y: 56 } : { x: 6 + ((index - 1) % 3) * 10.5, y: 95 };
+function leadSpot(layout: Layout): Spot {
+  return { x: layout.office.x + LEAD.x, y: layout.office.y + LEAD.y };
 }
 
-function meetingSpot(index: number): Spot {
-  // Two behind the table, two in front of it.
-  const seats: readonly Spot[] = [
-    { x: 78, y: 62 },
-    { x: 92, y: 62 },
-    { x: 78, y: 98 },
-    { x: 92, y: 98 },
-  ];
-  return seats[index % seats.length] ?? { x: 86, y: 70 };
+function meetingSpot(layout: Layout, index: number): Spot {
+  const { x, y, width } = layout.meeting;
+  return {
+    x: x + width * (index % 2 === 0 ? 0.27 : 0.73),
+    y: y + ROW_TOP + Math.floor(index / 2) * MEETING_ROW,
+  };
+}
+
+function cushionSpot(layout: Layout, index: number, room = layout.lounge): Spot {
+  const { x, y, width } = room;
+  const col = index % CUSHION_COLUMNS;
+  return {
+    x: x + width / 2 + (col - (CUSHION_COLUMNS - 1) / 2) * CUSHION_STEP,
+    y: y + ROW_TOP + Math.floor(index / CUSHION_COLUMNS) * CUSHION_ROW,
+  };
+}
+
+/** The floor plan for this team, as it stands now. */
+export function layoutForTeam(workers: readonly Cat[], retired = 0): Layout {
+  const count = (area: Area) => workers.filter((c) => areaOf(c) === area).length;
+  return layoutFor(workers.length, count('meeting'), count('lounge'), retired);
 }
 
 /** Where every cat goes, keyed by id. Desks follow the team's order, so they do not shuffle. */
-export function placeCats(lead: Cat | undefined, workers: readonly Cat[]): Map<string, Spot> {
+export function placeCats(
+  lead: Cat | undefined,
+  workers: readonly Cat[],
+  layout = layoutForTeam(workers),
+): Map<string, Spot> {
   const spots = new Map<string, Spot>();
-  if (lead) spots.set(lead.id, whiteboardSpot(0));
-  let waiting = 1;
+  if (lead) spots.set(lead.id, leadSpot(layout));
+  let waiting = 0;
   let meeting = 0;
   workers.forEach((cat, desk) => {
     const area = areaOf(cat);
     spots.set(
       cat.id,
       area === 'desks'
-        ? deskSpot(desk)
+        ? deskSpot(layout, desk)
         : area === 'meeting'
-          ? meetingSpot(meeting++)
-          : whiteboardSpot(waiting++),
+          ? meetingSpot(layout, meeting++)
+          : cushionSpot(layout, waiting++),
     );
   });
   return spots;
 }
 
+/** How tall a cat stands, in canvas px (its photo; `styles.css` sizes them alike). */
+function catHeight(cat: Cat, area: Area): number {
+  if (cat.role === 'orchestrator') return 118;
+  return area === 'lounge' ? 76 : 92;
+}
+
+/** The box a cat takes on the canvas, with room for its bubble above and its name below. */
+export function catBox(cat: Cat, spot: Spot): Box {
+  const height = catHeight(cat, areaOf(cat));
+  return { x: spot.x - 130, y: spot.y - height - 150, width: 260, height: height + 190 };
+}
+
+/** Whether a cat waits for the user: an approval, a pause, a block or an error. */
+export function needsYou(cat: Cat): boolean {
+  return (
+    cat.role !== 'candidate' &&
+    (cat.pausedReason !== null || ['waiting_approval', 'blocked', 'error'].includes(cat.status))
+  );
+}
+
+const px = (box: Box) => ({
+  left: `${String(box.x)}px`,
+  top: `${String(box.y)}px`,
+  width: `${String(box.width)}px`,
+  height: `${String(box.height)}px`,
+});
+
 /** One cat on the floor, sliding to its spot, with a little walk while it moves. */
-function Walker({ spot, area, children }: { spot: Spot; area: Area; children: ReactNode }) {
+function Walker({
+  spot,
+  area,
+  children,
+  onEnter,
+  onLeave,
+}: {
+  spot: Spot;
+  area: Area;
+  children: ReactNode;
+  onEnter: (focus: boolean) => void;
+  onLeave: () => void;
+}) {
   const previous = useRef(spot);
   const [walking, setWalking] = useState(false);
+  const touched = useRef(false);
+  // Keyed on the coordinates: a new spot object each render must not restart
+  // the effect, whose cleanup would cancel the end of the walk.
+  const { x, y } = spot;
   useEffect(() => {
-    if (previous.current.x === spot.x && previous.current.y === spot.y) return;
-    previous.current = spot;
+    if (previous.current.x === x && previous.current.y === y) return;
+    previous.current = { x, y };
     setWalking(true);
     const timer = setTimeout(() => {
       setWalking(false);
@@ -77,74 +253,282 @@ function Walker({ spot, area, children }: { spot: Spot; area: Area; children: Re
     return () => {
       clearTimeout(timer);
     };
-  }, [spot]);
+  }, [x, y]);
   return (
     <div
       className={`office__cat${walking ? ' office__cat--walking' : ''}`}
-      // Near a wall, bubbles and cards open toward the room instead of off the edge.
-      data-edge={spot.x < 25 ? 'left' : spot.x > 84 ? 'right' : undefined}
       data-area={area}
-      data-y={spot.y}
-      style={{ left: `${String(spot.x)}%`, top: `${String(spot.y)}%` }}
+      style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+      // No hover card for a touch: a tap opens the cat's details, and a card
+      // sliding in under the finger would take the tap.
+      onPointerDown={(e) => {
+        touched.current = e.pointerType === 'touch';
+      }}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'touch') onEnter(false);
+      }}
+      onPointerLeave={onLeave}
+      // Only keyboard focus brings the cat into view: a click must not move it away.
+      onFocus={(e) => {
+        if (!touched.current) onEnter(e.target.matches(':focus-visible'));
+      }}
+      onBlur={onLeave}
     >
       {children}
     </div>
   );
 }
 
-/** Space kept between a bubble and the top of the office. */
-const BUBBLE_MARGIN = 12;
+/** Space kept between what floats over the cats and the edges of the visible canvas. */
+const EDGE = 8;
+/** Space kept between two bubbles. */
+const BUBBLE_GAP = 6;
 
-/**
- * How tall the office must be for every cat's bubble to fit below its top
- * edge (the office scrolls sideways, so anything above it is cut off). A cat
- * stands at a share of the height, so it needs (feet to bubble top) / share.
- * Measured with layout offsets, which ignore transforms, so a cat that is
- * still walking or a bubble that is still popping in gives the same answer.
- */
-function heightForBubbles(office: HTMLElement): number {
-  let needed = 0;
-  for (const cat of office.querySelectorAll<HTMLElement>('.office__cat')) {
-    const bubble = cat.querySelector<HTMLElement>('.bubble');
-    const share = Number(cat.dataset['y']) / 100;
-    if (!bubble || !(share > 0)) continue;
-    // The bubble's top, relative to the cat's box.
-    let top = 0;
-    for (let el: HTMLElement | null = bubble; el && el !== cat;) {
-      top += el.offsetTop;
-      el = el.offsetParent as HTMLElement | null;
+interface Rect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+const overlaps = (a: Rect, b: Rect) =>
+  a.left < b.right + BUBBLE_GAP &&
+  b.left < a.right + BUBBLE_GAP &&
+  a.top < b.bottom + BUBBLE_GAP &&
+  b.top < a.bottom + BUBBLE_GAP;
+
+const scaleOf = (overlay: HTMLElement) => Number(overlay.style.getPropertyValue('--s') || 1);
+
+const width = (r: Rect) => r.right - r.left;
+const height = (r: Rect) => r.bottom - r.top;
+const moveBy = (r: Rect, dx: number, dy: number): Rect => ({
+  left: r.left + dx,
+  top: r.top + dy,
+  right: r.right + dx,
+  bottom: r.bottom + dy,
+});
+
+/** Where a bubble may go, from its spot over the cat's head, nearest first. */
+function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost: number }[] {
+  const w = width(over) + BUBBLE_GAP;
+  const h = height(over) + BUBBLE_GAP;
+  const list: { rect: Rect; below: boolean; cost: number }[] = [];
+  for (const dx of [0, -0.55, 0.55, -1.1, 1.1, -1.65, 1.65, -2.2, 2.2].map((k) => k * w)) {
+    for (const lift of [0, 0.5 * h, h, 1.5 * h, 2 * h, 3 * h]) {
+      list.push({ rect: moveBy(over, dx, -lift), below: false, cost: Math.abs(dx) + 1.5 * lift });
     }
-    const reach = cat.offsetHeight - top;
-    needed = Math.max(needed, (reach + BUBBLE_MARGIN) / share);
+    list.push({ rect: moveBy(under, dx, 0), below: true, cost: Math.abs(dx) + 0.9 * h });
   }
-  return Math.ceil(needed);
+  return list.sort((a, b) => a.cost - b.cost);
 }
 
-/** Space kept between a cat's card and the edge of the office. */
-const CARD_MARGIN = 8;
-
 /**
- * Open each cat's details card below the cat when it fits in the office,
- * else above it (the cats in the bottom rows), else where there is more
- * room. Cards are laid out while hidden, so they can be measured.
+ * Lay out what floats over the cats, in screen space. Each bubble takes the
+ * nearest spot (above its cat, then lifted or to the side, then below it)
+ * that is inside the visible canvas, clear of the panels, and covers no
+ * other bubble and no cat; a bubble moved off its cat gets a line to
+ * it. The open card goes below its cat if it fits, else above it. Run when
+ * the view settles and after renders; while the view moves everything
+ * moves together, so the result holds.
  */
-function placeCards(office: HTMLElement): void {
-  const height = office.clientHeight;
-  for (const cat of office.querySelectorAll<HTMLElement>('.office__cat')) {
-    const card = cat.querySelector<HTMLElement>('.cat-card__meta');
-    const share = Number(cat.dataset['y']) / 100;
-    if (!card || !(share > 0)) continue;
-    const feet = share * height;
-    const below = height - feet - CARD_MARGIN;
-    const above = feet - cat.offsetHeight - CARD_MARGIN;
-    const needed = card.offsetHeight + 6;
-    cat.dataset['open'] = needed <= below || below >= above ? 'down' : 'up';
+function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
+  const origin = overlay.getBoundingClientRect();
+  const local = (r: DOMRect): Rect => ({
+    left: r.left - origin.left,
+    top: r.top - origin.top,
+    right: r.right - origin.left,
+    bottom: r.bottom - origin.top,
+  });
+  const scale = scaleOf(overlay);
+  const anchors = [...overlay.querySelectorAll<HTMLElement>('.anchor')];
+  for (const anchor of anchors) {
+    for (const name of [
+      '--lift',
+      '--shift',
+      '--card-shift',
+      '--card-rise',
+      '--card-drop',
+      '--card-nudge',
+      '--leader-length',
+      '--leader-angle',
+    ]) {
+      anchor.style.removeProperty(name);
+    }
+    delete anchor.dataset['bubble'];
+    delete anchor.dataset['leader'];
+  }
+  // Every cat, from the top of its head to the bottom of its name tag.
+  const bodies = new Map<HTMLElement, { body: Rect; feet: { x: number; y: number } }>();
+  for (const anchor of anchors) {
+    const label = anchor.querySelector<HTMLElement>('.cat-card__label');
+    if (!label) continue;
+    const at = local(anchor.getBoundingClientRect());
+    const tag = local(label.getBoundingClientRect());
+    const head = Number(anchor.dataset['height'] ?? 0) * scale;
+    const half = Math.max(width(tag), head * 0.8) / 2;
+    bodies.set(anchor, {
+      body: { left: at.left - half, right: at.left + half, top: at.top - head, bottom: tag.bottom },
+      feet: { x: at.left, y: at.top },
+    });
+  }
+  const signs = [...(overlay.parentElement?.querySelectorAll('.room__sign') ?? [])].map((el) =>
+    local(el.getBoundingClientRect()),
+  );
+  const bubbles: { anchor: HTMLElement; over: Rect; under: Rect }[] = [];
+  for (const anchor of anchors) {
+    const bubble = anchor.querySelector<HTMLElement>('.bubble');
+    const cat = bodies.get(anchor);
+    if (!bubble || bubble.offsetParent === null || !cat) continue;
+    const over = local(bubble.getBoundingClientRect());
+    // Below the cat, the bubble starts under its name tag (styles.css).
+    const under = { ...over, top: cat.body.bottom + 7, bottom: cat.body.bottom + 7 + height(over) };
+    bubbles.push({ anchor, over, under });
+  }
+  const inView = (r: Rect) =>
+    r.left >= visible.left + EDGE &&
+    r.right <= visible.right - EDGE &&
+    r.top >= visible.top + EDGE &&
+    r.bottom <= visible.bottom - EDGE;
+  // The front rows first: their bubbles stay closest to their cats.
+  bubbles.sort((a, b) => b.over.bottom - a.over.bottom);
+  const placed: Rect[] = [];
+  const bubbleOf = new Map<HTMLElement, { rect: Rect; below: boolean }>();
+  for (const b of bubbles) {
+    const options = candidates(b.over, b.under);
+    const apart = (r: Rect) => !placed.some((other) => overlaps(r, other));
+    // No cat is covered, its own included: a bubble over its photo would take
+    // its clicks. Nor is a room's sign.
+    const clear = (r: Rect) =>
+      apart(r) &&
+      ![...bodies.values()].some((cat) => overlaps(r, cat.body)) &&
+      !signs.some((sign) => overlaps(r, sign));
+    // Best covering nothing; else covering a cat but no bubble; else at least in view.
+    const choice =
+      options.find((o) => inView(o.rect) && clear(o.rect)) ??
+      options.find((o) => inView(o.rect) && apart(o.rect)) ??
+      options.find((o) => inView(o.rect)) ??
+      options[0];
+    if (!choice) continue;
+    placed.push(choice.rect);
+    bubbleOf.set(b.anchor, choice);
+    const dx = choice.rect.left - (choice.below ? b.under : b.over).left;
+    const lift = choice.below ? 0 : b.over.top - choice.rect.top;
+    if (choice.below) b.anchor.dataset['bubble'] = 'below';
+    if (dx !== 0) b.anchor.style.setProperty('--shift', `${String(dx)}px`);
+    if (lift !== 0) b.anchor.style.setProperty('--lift', `${String(lift)}px`);
+    // Still over its cat: the tail points at it. Moved away: a line to it.
+    const cat = bodies.get(b.anchor);
+    if (!cat || (lift === 0 && Math.abs(dx) <= width(b.over) / 2 - 18)) continue;
+    const from = {
+      x: (choice.rect.left + choice.rect.right) / 2,
+      y: choice.below ? choice.rect.top : choice.rect.bottom,
+    };
+    const to = { x: cat.feet.x, y: choice.below ? cat.body.bottom : cat.body.top };
+    b.anchor.dataset['leader'] = '';
+    b.anchor.style.setProperty(
+      '--leader-length',
+      `${String(Math.hypot(to.x - from.x, to.y - from.y))}px`,
+    );
+    b.anchor.style.setProperty(
+      '--leader-angle',
+      `${String(Math.atan2(to.y - from.y, to.x - from.x))}rad`,
+    );
+  }
+  // The open card: below the cat if it fits, else above it, kept in view
+  // sideways. It never covers the cat's own bubble: an approval is answered there.
+  for (const anchor of anchors) {
+    if (anchor.dataset['open'] === undefined) continue;
+    const card = anchor.querySelector<HTMLElement>('.cat-card__meta');
+    const label = anchor.querySelector<HTMLElement>('.cat-card__label');
+    if (!card || !label) continue;
+    const tag = local(label.getBoundingClientRect());
+    const head =
+      local(anchor.getBoundingClientRect()).top - Number(anchor.dataset['height'] ?? 0) * scale;
+    const own = bubbleOf.get(anchor);
+    const ceiling = own && !own.below ? Math.min(head, own.rect.top) : head;
+    const floor = own?.below ? own.rect.bottom : tag.bottom;
+    const below = visible.bottom - floor - EDGE;
+    const above = ceiling - visible.top - EDGE;
+    const up = card.offsetHeight > below && above > below;
+    anchor.dataset['card'] = up ? 'up' : 'down';
+    if (up) anchor.style.setProperty('--card-rise', `${String(tag.top - ceiling + 6)}px`);
+    else anchor.style.setProperty('--card-drop', `${String(floor - tag.bottom + 6)}px`);
+    const rect = local(card.getBoundingClientRect());
+    let shift = 0;
+    if (rect.left < visible.left + EDGE) shift = visible.left + EDGE - rect.left;
+    else if (rect.right > visible.right - EDGE) shift = visible.right - EDGE - rect.right;
+    if (shift !== 0) anchor.style.setProperty('--card-shift', `${String(shift)}px`);
+    // Room on neither side (zoomed far in on a short screen): slide it into view,
+    // over the cat if it must.
+    let nudge = 0;
+    if (rect.bottom > visible.bottom - EDGE) nudge = visible.bottom - EDGE - rect.bottom;
+    if (rect.top + nudge < visible.top + EDGE) nudge = visible.top + EDGE - rect.top;
+    if (nudge !== 0) anchor.style.setProperty('--card-nudge', `${String(nudge)}px`);
+  }
+  return placed;
+}
+
+/**
+ * Markers at the edge of the visible canvas for cats that need you and are
+ * out of view, pointing their way, stacked along the edge clear of each
+ * other and of `bubbles`. Moved straight in the DOM as the view moves;
+ * clicking one brings the cat into view.
+ */
+function placeMarkers(
+  overlay: HTMLElement,
+  canvas: CanvasApi,
+  boxes: ReadonlyMap<string, Box>,
+  bubbles: readonly Rect[] = [],
+): void {
+  const area = canvas.visible();
+  // Clear of the bubbles too, once the view settles and they are placed.
+  const placed: Rect[] = [...bubbles];
+  for (const marker of overlay.querySelectorAll<HTMLElement>('.edge-marker')) {
+    const box = boxes.get(marker.dataset['cat'] ?? '');
+    if (!box) continue;
+    const a = canvas.toScreen(box.x, box.y);
+    const b = canvas.toScreen(box.x + box.width, box.y + box.height);
+    const x = (a.x + b.x) / 2;
+    const y = (a.y + b.y) / 2;
+    const inside = x > area.left && x < area.right && y > area.top && y < area.bottom;
+    marker.hidden = inside;
+    if (inside) continue;
+    const side = y < area.top ? 'up' : y > area.bottom ? 'down' : x < area.left ? 'left' : 'right';
+    marker.dataset['side'] = side;
+    const w = marker.offsetWidth;
+    const h = marker.offsetHeight;
+    const clampX = (v: number) =>
+      Math.min(Math.max(v, area.left + EDGE + w / 2), area.right - EDGE - w / 2);
+    const clampY = (v: number) =>
+      Math.min(Math.max(v, area.top + EDGE + h / 2), area.bottom - EDGE - h / 2);
+    const at = { x: clampX(x), y: clampY(y) };
+    const along =
+      side === 'left' || side === 'right'
+        ? { x: 0, y: h + BUBBLE_GAP }
+        : { x: w + BUBBLE_GAP, y: 0 };
+    const rectAt = (k: number) => {
+      const cx = clampX(at.x + k * along.x);
+      const cy = clampY(at.y + k * along.y);
+      return { left: cx - w / 2, right: cx + w / 2, top: cy - h / 2, bottom: cy + h / 2 };
+    };
+    // Several cats the same way: the markers line up along the edge, either side.
+    const free = [0, 1, -1, 2, -2, 3, -3, 4, -4]
+      .map(rectAt)
+      .find((r) => !placed.some((p) => overlaps(r, p)));
+    const spot = free ?? rectAt(0);
+    placed.push(spot);
+    marker.style.left = `${String((spot.left + spot.right) / 2)}px`;
+    marker.style.top = `${String((spot.top + spot.bottom) / 2)}px`;
   }
 }
 
 /**
- * The office: a whiteboard where the lead plans and idle cats wait, desks
- * where cats work, and a meeting table where cats wait for you.
+ * The office: the lead's office with its whiteboard, the workspace where
+ * cats work at their desks, the meeting room where cats wait for you, and
+ * the break room where idle cats rest. Rooms of fixed size in canvas px,
+ * sized for the team and spread over the canvas, which pans and zooms them.
+ * The cats stand on the canvas; their names, bubbles and cards float over it
+ * in the canvas's screen-space layer, anchored to them.
  */
 export function Office({
   lead,
@@ -152,77 +536,275 @@ export function Office({
   renderCat,
   empty,
   noWorkers,
+  detailsOf = null,
+  retired = [],
+  onBringBack,
 }: {
   lead: Cat | undefined;
   workers: readonly Cat[];
-  renderCat: (cat: Cat) => ReactNode;
+  /** Retired cats, in the out-of-office room. */
+  retired?: readonly RetiredEntry[];
+  /** Bring a retired cat back; without it (a replay) the room has no buttons. */
+  onBringBack?: (catId: string) => void;
+  /** The cat whose details panel is open: its hover card stays closed. */
+  detailsOf?: string | null;
+  renderCat: (cat: Cat, part: 'token' | 'overlay') => ReactNode;
   /** Shown on the floor when there is no cat at all. */
   empty: ReactNode;
   /** Shown at the desks while there are no workers. */
   noWorkers: ReactNode;
 }) {
-  const spots = placeCats(lead, workers);
-  const rows = Math.max(1, Math.ceil(workers.length / DESK_COLUMNS));
-  const desks = Math.max(DESK_COLUMNS, rows * DESK_COLUMNS);
-  // Room above the first row for an approval bubble, which must never be cut off.
-  const minHeight = 420 + (rows - 1) * 150;
-  const officeRef = useRef<HTMLElement>(null);
-  // After every render, grow the office if a long approval needs more room.
-  // Written straight to the element: no state, so no second render.
+  const canvas = useCanvas();
+  const layout = layoutForTeam(workers, retired.length);
+  const spots = placeCats(lead, workers, layout);
+  const cats = [...(lead ? [lead] : []), ...workers];
+  const boxes = new Map(
+    cats.flatMap((cat) => {
+      const spot = spots.get(cat.id);
+      return spot ? [[cat.id, catBox(cat, spot)] as const] : [];
+    }),
+  );
+  const boxesRef = useRef(boxes);
+  const overlay = canvas?.overlay ?? null;
+
+  // The card of the cat under the pointer or with focus; a short grace lets
+  // the pointer travel from the cat to its card.
+  const [open, setOpen] = useState<string | null>(null);
+  const closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hold = useCallback((id: string) => {
+    clearTimeout(closing.current);
+    setOpen(id);
+  }, []);
+  const release = useCallback(() => {
+    clearTimeout(closing.current);
+    closing.current = setTimeout(() => {
+      setOpen(null);
+    }, 150);
+  }, []);
+
+  // The canvas's api is a new object on every render; keep the latest for the callbacks.
+  const canvasRef = useRef(canvas);
+  const layoutPass = useCallback(() => {
+    const api = canvasRef.current;
+    if (!overlay || !api) return;
+    const bubbles = arrange(overlay, api.visible());
+    placeMarkers(overlay, api, boxesRef.current, bubbles);
+  }, [overlay]);
+  const scheduled = useRef(0);
+  const schedule = useCallback(() => {
+    cancelAnimationFrame(scheduled.current);
+    scheduled.current = requestAnimationFrame(layoutPass);
+  }, [layoutPass]);
+
+  // After every render: the bubbles' text, the team or the open card may have changed.
   useLayoutEffect(() => {
-    const office = officeRef.current;
-    if (!office) return;
-    office.style.minHeight = `${String(Math.max(minHeight, heightForBubbles(office)))}px`;
-    placeCards(office);
+    boxesRef.current = boxes;
+    canvasRef.current = canvas;
+    layoutPass();
   });
+  useEffect(() => {
+    const api = canvasRef.current;
+    if (!overlay || !api) return;
+    // While the view moves only the markers need placing; once it settles, everything.
+    const unsubscribe = api.subscribe((settled) => {
+      if (settled) schedule();
+      else placeMarkers(overlay, api, boxesRef.current);
+    });
+    // A cat finished walking somewhere else.
+    overlay.addEventListener('transitionend', schedule);
+    return () => {
+      unsubscribe();
+      overlay.removeEventListener('transitionend', schedule);
+      cancelAnimationFrame(scheduled.current);
+    };
+  }, [overlay, schedule]);
+
+  const attention = cats.filter(needsYou);
   return (
-    <div className="office-scroll">
-      <section
-        ref={officeRef}
-        className="office"
-        aria-label="Office"
-        style={{ minHeight: `${String(minHeight)}px` }}
-      >
-        <div className="office__area office__area--whiteboard" aria-hidden="true">
-          <span className="office__label">Whiteboard</span>
-          <div className="office__board">
-            <span />
-            <span />
-            <span />
-          </div>
+    <section
+      className="office"
+      aria-label="Office"
+      style={{ width: `${String(layout.width)}px`, height: `${String(layout.height)}px` }}
+    >
+      <div className="room room--office" aria-hidden="true" style={px(layout.office)}>
+        <span className="room__sign">Lead&apos;s office</span>
+        <div className="office__board">
+          <span />
+          <span />
+          <span />
         </div>
-        <div className="office__area office__area--desks" aria-hidden="true">
-          <span className="office__label">Desks</span>
-          {lead && workers.length === 0 && <div className="office__hint">{noWorkers}</div>}
-        </div>
-        <div className="office__area office__area--meeting" aria-hidden="true">
-          <span className="office__label">Meeting · needs you</span>
-          <span className="office__table" />
-        </div>
-        <div className="office__furniture" aria-hidden="true">
-          {Array.from({ length: desks }, (_, i) => {
-            const spot = deskSpot(i);
+        <span className="room__plant room__plant--right">🪴</span>
+      </div>
+      <div className="room room--desks" aria-hidden="true" style={px(layout.desks)}>
+        <span className="room__sign">Workspace</span>
+        {lead && workers.length === 0 && <div className="office__hint">{noWorkers}</div>}
+        <span className="room__plant room__plant--left">🪴</span>
+        <span className="room__plant room__plant--right">🪴</span>
+      </div>
+      <div className="room room--meeting" aria-hidden="true" style={px(layout.meeting)}>
+        <span className="room__sign">Meeting room · needs you</span>
+        {Array.from({ length: layout.tables }, (_, i) => (
+          <span
+            key={i}
+            className="office__table"
+            style={{ top: `${String(ROW_TOP + i * MEETING_ROW + 4)}px` }}
+          />
+        ))}
+      </div>
+      <div className="room room--lounge" aria-hidden="true" style={px(layout.lounge)}>
+        <span className="room__sign">Break room</span>
+        <span className="room__plant room__plant--right">☕</span>
+      </div>
+      {layout.away && (
+        <section className="room room--away" aria-label="Out of office" style={px(layout.away)}>
+          <span className="room__sign" aria-hidden="true">
+            Out of office
+          </span>
+        </section>
+      )}
+      {layout.away && (
+        <ul className="office__away" aria-label="Retired cats out of office">
+          {retired.map(({ cat, retired: r }, i) => {
+            const spot = cushionSpot(layout, i, layout.away ?? layout.lounge);
             return (
-              <span
-                key={i}
-                className="office__desk"
-                style={{ left: `${String(spot.x)}%`, top: `${String(spot.y)}%` }}
-              />
+              <li
+                key={r.catId}
+                className="away-cat"
+                style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+                title={`${r.name}: ${r.reason}`}
+              >
+                <CatPhoto catId={cat.id} variant={cat.variant} look="fired" name={r.name} />
+                <span className="away-cat__name">{r.name}</span>
+                {onBringBack && (
+                  <button
+                    type="button"
+                    className="button button--small away-cat__back"
+                    aria-label={`Bring ${r.name} back`}
+                    onClick={() => {
+                      onBringBack(r.catId);
+                    }}
+                  >
+                    Bring back
+                  </button>
+                )}
+              </li>
             );
           })}
-        </div>
-        {!lead && workers.length === 0 && <div className="office__empty">{empty}</div>}
-        <div className="office__floor" aria-label="Cats" role="group">
-          {[...(lead ? [lead] : []), ...workers].map((cat) => {
-            const spot = spots.get(cat.id);
-            return spot ? (
-              <Walker key={cat.id} spot={spot} area={areaOf(cat)}>
-                {renderCat(cat)}
-              </Walker>
-            ) : null;
-          })}
-        </div>
-      </section>
-    </div>
+        </ul>
+      )}
+      <div className="office__furniture" aria-hidden="true">
+        {Array.from({ length: layout.deskCount }, (_, i) => {
+          const spot = deskSpot(layout, i);
+          return (
+            <span
+              key={`desk-${String(i)}`}
+              className="office__desk"
+              style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+            />
+          );
+        })}
+        {Array.from({ length: layout.cushions }, (_, i) => {
+          const spot = cushionSpot(layout, i);
+          return (
+            <span
+              key={`cushion-${String(i)}`}
+              className="office__cushion"
+              style={{ left: `${String(spot.x)}px`, top: `${String(spot.y)}px` }}
+            />
+          );
+        })}
+      </div>
+      {cats.length === 0 && <div className="office__empty">{empty}</div>}
+      <div className="office__floor" aria-label="Cats" role="group">
+        {cats.map((cat) => {
+          const spot = spots.get(cat.id);
+          return spot ? (
+            <Walker
+              key={cat.id}
+              spot={spot}
+              area={areaOf(cat)}
+              onEnter={(focus) => {
+                hold(cat.id);
+                // Tabbing to a cat off screen brings it into view.
+                const box = boxes.get(cat.id);
+                if (focus && box) canvas?.reveal(box);
+              }}
+              onLeave={release}
+            >
+              {renderCat(cat, 'token')}
+            </Walker>
+          ) : null;
+        })}
+      </div>
+      {overlay &&
+        createPortal(
+          <>
+            {cats.map((cat) => {
+              const spot = spots.get(cat.id);
+              if (!spot) return null;
+              const area = areaOf(cat);
+              const anchor: CSSProperties & Record<`--${string}`, number> = {
+                '--wx': spot.x,
+                '--wy': spot.y,
+                '--ch': catHeight(cat, area),
+              };
+              return (
+                <div
+                  key={cat.id}
+                  className="anchor"
+                  data-cat={cat.name}
+                  data-area={area}
+                  data-role={cat.role}
+                  data-height={catHeight(cat, area)}
+                  data-open={open === cat.id ? '' : undefined}
+                  data-details={detailsOf === cat.id ? '' : undefined}
+                  style={anchor}
+                  onPointerEnter={() => {
+                    if (open === cat.id) hold(cat.id);
+                  }}
+                  onPointerLeave={() => {
+                    if (open === cat.id) release();
+                  }}
+                  onFocus={() => {
+                    hold(cat.id);
+                  }}
+                  onBlur={release}
+                >
+                  {renderCat(cat, 'overlay')}
+                  {cat.status === 'waiting_approval' && (
+                    <button
+                      type="button"
+                      className="approval-badge"
+                      aria-label={`${cat.name} asks for approval: show`}
+                      onClick={() => {
+                        const box = boxes.get(cat.id);
+                        if (box) canvas?.show(box);
+                      }}
+                    >
+                      ?
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {attention.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                className="edge-marker"
+                data-cat={cat.id}
+                hidden
+                onClick={() => {
+                  const box = boxes.get(cat.id);
+                  if (box) canvas?.show(box);
+                }}
+              >
+                {cat.name} needs you
+              </button>
+            ))}
+          </>,
+          overlay,
+        )}
+    </section>
   );
 }
