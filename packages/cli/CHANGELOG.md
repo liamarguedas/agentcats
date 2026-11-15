@@ -1,5 +1,16 @@
 # agentcats
 
+## 0.2.0
+
+### Minor Changes
+
+- 5990dd8: The board is a full-screen canvas: pan and zoom the office (drag, scroll, Ctrl or Cmd and scroll, Ctrl or Cmd and + or -, pinch, arrow keys, F or Ctrl 0 to fit), with the chat, tasks and event log in panels on the right and a cat's or task's details on the left. The office is a set of rooms spread over the canvas: the lead's office, the workspace, the meeting room, the break room and, for retired cats, out of office. Each room grows with the team. Names, bubbles and cards stay readable and in view at any zoom, and bubbles move aside instead of covering each other or a cat. **Needs you** in the header and the N key bring the cats waiting for you into view, and markers at the edge point to those out of view. On a phone the panels are bottom sheets.
+- 978bfca: Settings on the board: the default agent, the lead's and workers' agent and model, team size, budgets and captions, saved for the project or as your defaults for every project (`~/.agentcats/agentcats.config.json`). Cats on another agent than their role's default are listed and can be moved, and agentcats says at start when one is.
+
+### Patch Changes
+
+- 32f7603: Cats whose meme photo cut through their body now fade out at that edge instead of ending in a straight line.
+
 ## 0.1.0
 
 ### Minor Changes
