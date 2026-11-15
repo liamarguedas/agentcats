@@ -2909,6 +2909,11 @@ button.team-spend:focus-visible {
   left: calc(50% - var(--shift, 0px));
 }
 
+/* Walking to its spot: the bubble shows once the cat gets there. */
+.anchor[data-moving] .cat-card--token .bubble {
+  visibility: hidden;
+}
+
 .anchor[data-leader] .cat-card--token .bubble::after {
   display: none;
 }

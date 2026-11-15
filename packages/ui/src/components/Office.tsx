@@ -223,6 +223,9 @@ const px = (box: Box) => ({
   height: `${String(box.height)}px`,
 });
 
+/** How long a walk between spots takes (`styles.css` agrees). */
+const WALK_MS = 900;
+
 /** One cat on the floor, sliding to its spot, with a little walk while it moves. */
 function Walker({
   spot,
@@ -249,7 +252,7 @@ function Walker({
     setWalking(true);
     const timer = setTimeout(() => {
       setWalking(false);
-    }, 900);
+    }, WALK_MS);
     return () => {
       clearTimeout(timer);
     };
@@ -331,7 +334,7 @@ function candidates(over: Rect, under: Rect): { rect: Rect; below: boolean; cost
  * the view settles and after renders; while the view moves everything
  * moves together, so the result holds.
  */
-function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
+function arrange(overlay: HTMLElement, visible: Rect): { placed: Rect[]; walking: boolean } {
   const origin = overlay.getBoundingClientRect();
   // Under CSS `zoom` on the page, client rects are zoomed and the visible
   // area (from clientWidth) is not: measure everything in the layer's own px.
@@ -359,6 +362,17 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     }
     delete anchor.dataset['bubble'];
     delete anchor.dataset['leader'];
+    // Still walking to its spot: its bubble waits until it gets there.
+    const style = getComputedStyle(anchor);
+    const moving =
+      Math.abs(
+        Number(style.getPropertyValue('--wx')) - Number(anchor.style.getPropertyValue('--wx')),
+      ) > 0.5 ||
+      Math.abs(
+        Number(style.getPropertyValue('--wy')) - Number(anchor.style.getPropertyValue('--wy')),
+      ) > 0.5;
+    if (moving) anchor.dataset['moving'] = '';
+    else delete anchor.dataset['moving'];
   }
   // Every cat, from the top of its head to the bottom of its name tag.
   const bodies = new Map<HTMLElement, { body: Rect; feet: { x: number; y: number } }>();
@@ -382,6 +396,7 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     const bubble = anchor.querySelector<HTMLElement>('.bubble');
     const cat = bodies.get(anchor);
     if (!bubble || bubble.offsetParent === null || !cat) continue;
+    if (anchor.dataset['moving'] !== undefined) continue;
     const over = local(bubble.getBoundingClientRect());
     // Below the cat, the bubble starts under its name tag (styles.css).
     const under = { ...over, top: cat.body.bottom + 7, bottom: cat.body.bottom + 7 + height(over) };
@@ -468,7 +483,7 @@ function arrange(overlay: HTMLElement, visible: Rect): Rect[] {
     if (rect.top + nudge < visible.top + EDGE) nudge = visible.top + EDGE - rect.top;
     if (nudge !== 0) anchor.style.setProperty('--card-nudge', `${String(nudge)}px`);
   }
-  return placed;
+  return { placed, walking: anchors.some((a) => a.dataset['moving'] !== undefined) };
 }
 
 /**
@@ -587,23 +602,35 @@ export function Office({
 
   // The canvas's api is a new object on every render; keep the latest for the callbacks.
   const canvasRef = useRef(canvas);
-  const layoutPass = useCallback(() => {
+  const arrived = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  /** Lay everything out; whether a cat is still walking to its spot. */
+  const layoutPass = useCallback((): boolean => {
     const api = canvasRef.current;
-    if (!overlay || !api) return;
-    const bubbles = arrange(overlay, api.visible());
-    placeMarkers(overlay, api, boxesRef.current, bubbles);
+    if (!overlay || !api) return false;
+    const { placed, walking } = arrange(overlay, api.visible());
+    placeMarkers(overlay, api, boxesRef.current, placed);
+    return walking;
   }, [overlay]);
   const scheduled = useRef(0);
   const schedule = useCallback(() => {
     cancelAnimationFrame(scheduled.current);
-    scheduled.current = requestAnimationFrame(layoutPass);
+    scheduled.current = requestAnimationFrame(function pass() {
+      // A cat is walking: place its bubble when it arrives, whether or not
+      // the browser reports the end of the walk.
+      clearTimeout(arrived.current);
+      if (layoutPass()) {
+        arrived.current = setTimeout(() => {
+          scheduled.current = requestAnimationFrame(pass);
+        }, WALK_MS + 50);
+      }
+    });
   }, [layoutPass]);
 
   // After every render: the bubbles' text, the team or the open card may have changed.
   useLayoutEffect(() => {
     boxesRef.current = boxes;
     canvasRef.current = canvas;
-    layoutPass();
+    if (layoutPass()) schedule();
   });
   useEffect(() => {
     const api = canvasRef.current;
@@ -619,6 +646,7 @@ export function Office({
       unsubscribe();
       overlay.removeEventListener('transitionend', schedule);
       cancelAnimationFrame(scheduled.current);
+      clearTimeout(arrived.current);
     };
   }, [overlay, schedule]);
 
