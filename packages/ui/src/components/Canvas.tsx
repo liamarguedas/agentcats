@@ -18,6 +18,8 @@ import {
 
 export const MIN_SCALE = 0.3;
 export const MAX_SCALE = 2;
+/** Zoom per px of wheel with Ctrl or Cmd: e^(0.001 * 100) is about 10% a notch. */
+const WHEEL_ZOOM = 0.001;
 /** Each click on + or - zooms by this factor. */
 const ZOOM_STEP = 1.25;
 /** Fit never zooms in past 100%: a small team stays at its natural size. */
@@ -213,6 +215,40 @@ export function Canvas({
     [userMoved, view, visible],
   );
 
+  /**
+   * Ctrl or Cmd and the wheel (a trackpad pinch sends the same) zoom about
+   * the pointer, at once: the page itself never zooms over the canvas.
+   */
+  useEffect(() => {
+    const wrapper = zoom.current?.instance.wrapperComponent;
+    if (!wrapper) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      userMoved();
+      const from = view();
+      // A notch of a mouse wheel is about 100 px: a 10% step. A pinch is finer.
+      const scale = Math.min(
+        MAX_SCALE,
+        Math.max(MIN_SCALE, from.scale * Math.exp(-e.deltaY * WHEEL_ZOOM)),
+      );
+      const box = wrapper.getBoundingClientRect();
+      const px = e.clientX - box.left;
+      const py = e.clientY - box.top;
+      target.current = null;
+      void zoom.current?.setTransform(
+        px - ((px - from.positionX) / from.scale) * scale,
+        py - ((py - from.positionY) / from.scale) * scale,
+        scale,
+        0,
+      );
+    };
+    wrapper.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      wrapper.removeEventListener('wheel', onWheel);
+    };
+  }, [userMoved, view]);
+
   const fit = useCallback(() => {
     moved.current = false;
     if (key.current) writeViewport(key.current, null);
@@ -322,7 +358,10 @@ export function Canvas({
         minScale={MIN_SCALE}
         maxScale={MAX_SCALE}
         limitToBounds={false}
-        wheel={{ activationKeys: ['Control', 'Meta'], step: 0.1 }}
+        // The wheel pans; with Ctrl or Cmd it zooms, in our own handler above.
+        wheel={{ disabled: true }}
+        // Off by default in the library: the wheel and two-finger scrolling pan.
+        trackPadPanning={{ disabled: false, velocityDisabled: true }}
         panning={{ excluded: ['cat-token', 'button'] }}
         doubleClick={{ disabled: true }}
         keyboard={{ panStep: 80, zoomStep: 0 }}

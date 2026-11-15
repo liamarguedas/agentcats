@@ -349,6 +349,30 @@ test('panels open and collapse, and the board remembers them and the view', asyn
   expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
   await page.locator('body').press('Control+0');
   await expect(zoomLabel(page)).toHaveText(fitted!);
+
+  // Ctrl and the wheel over the canvas zoom it about the pointer, not the page.
+  const view = (await page.locator('.canvas__viewport').boundingBox())!;
+  await page.mouse.move(view.x + view.width / 3, view.y + view.height / 2);
+  await page.waitForTimeout(400); // Fit's animation ends
+  // Without Ctrl the wheel pans: the cats move, the zoom stays.
+  const tux = async () =>
+    (await page.getByRole('button', { name: 'Tux: open details' }).boundingBox())!.y;
+  const before = await tux();
+  await page.mouse.wheel(0, 200);
+  await expect.poll(tux).toBeLessThan(before - 50);
+  await expect(zoomLabel(page)).toHaveText(fitted!);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up('Control');
+  await expect.poll(percent).toBeGreaterThan(Number(fitted!.replace('%', '')));
+  expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+  await page.keyboard.down('Control');
+  await page.mouse.wheel(0, 600);
+  await page.keyboard.up('Control');
+  await expect.poll(percent).toBeLessThan(Number(fitted!.replace('%', '')));
+  expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
+  await page.locator('body').press('Control+0');
+  await expect(zoomLabel(page)).toHaveText(fitted!);
   await page.waitForTimeout(800);
   await page.reload();
   await expect(zoomLabel(page)).toHaveText(fitted!);
